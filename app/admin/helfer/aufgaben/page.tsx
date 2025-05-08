@@ -14,6 +14,8 @@ interface Aufgabe {
   titel: string;
   beschreibung: string | null;
   bedarf: number;
+  zeitfenster: string; // Fehlende Eigenschaft hinzugefügt
+  rueckmeldungen_count?: number;
 }
 
 interface Rueckmeldung {
