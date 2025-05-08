@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { SpendenBedarf } from './SpendenView';
+import { SpendenBedarf } from './types';
 
 interface Kind {
   id: string;
