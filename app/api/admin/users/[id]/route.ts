@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-type RouteParams = { params: { id: string } };
-
-export async function PATCH(req: NextRequest, context: RouteParams) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   const supabase = createAdminClient();
   const updates = await req.json();
   
   const { data, error } = await supabase.auth.admin.updateUserById(
-    context.params.id,
+    params.id,
     updates
   );
 
