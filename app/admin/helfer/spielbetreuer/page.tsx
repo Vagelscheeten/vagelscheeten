@@ -165,12 +165,23 @@ export default function SpielbetreuerPage() {
           ...spiel,
           assigned_helpers: (zuteilungenData || [])
             .filter(z => z.spiel_id === spiel.id)
-            .map(z => ({
-              helfer_id: z.helfer_id,
-              spiel_id: z.spiel_id,
-              helfer: helferData?.find(h => h.id === z.helfer_id)
-            }))
-            .filter(z => z.helfer) as HelferZuteilung[]
+            .map(z => {
+              const helfer = helferData?.find(h => h.id === z.helfer_id);
+              if (!helfer) return null;
+              
+              // Korrigiere die kind-Eigenschaft, falls sie ein Array ist
+              const korrigierterHelfer = {
+                ...helfer,
+                kind: Array.isArray(helfer.kind) ? helfer.kind[0] : helfer.kind
+              };
+              
+              return {
+                helfer_id: z.helfer_id,
+                spiel_id: z.spiel_id,
+                helfer: korrigierterHelfer
+              } as HelferZuteilung;
+            })
+            .filter((z): z is HelferZuteilung => z !== null)
         })) || [];
         
         setSpiele(spieleMitHelfer);

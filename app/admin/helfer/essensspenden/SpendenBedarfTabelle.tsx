@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Edit, Trash2, UserPlus } from 'lucide-react';
-import { SpendenBedarf, SpendenBedarfMitSumme } from './SpendenView';
+import { SpendenBedarf, SpendenBedarfMitSumme } from './types';
 
 // SpendenBedarfMitSumme wird jetzt aus SpendenView importiert
 

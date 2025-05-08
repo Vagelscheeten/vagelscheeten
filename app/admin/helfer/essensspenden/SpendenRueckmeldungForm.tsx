@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'react-hot-toast';
-import { SpendenBedarf } from './SpendenView';
+import { SpendenBedarf } from './types';
 import {
   Dialog,
   DialogContent,

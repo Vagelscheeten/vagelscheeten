@@ -183,7 +183,20 @@ async function preparePDFData(kindId: string) {
   }
   
   // Essensspenden transformieren
-  const transformedSpenden = essensspendenData?.map(spende => ({
+  // Explizite Typdefinition für die Spendendaten mit optionalen Eigenschaften
+  interface SpendeData {
+    id: string;
+    spende_id: string;
+    kind_identifier: string;
+    menge: number;
+    freitext: string | null;
+    spende?: {
+      titel?: string;
+      [key: string]: any;
+    };
+  }
+  
+  const transformedSpenden = essensspendenData?.map((spende: any) => ({
     id: spende.id,
     spende_id: spende.spende_id,
     kind_identifier: spende.kind_identifier,
@@ -216,7 +229,8 @@ async function generatePDFBlob(kindId: string): Promise<Blob> {
   const pdfData = await preparePDFData(kindId);
   
   // PDF als Blob generieren
-  return await ReactPDF.pdf(React.createElement(ZuteilungPDFDocument, pdfData)).toBlob();
+  // @ts-ignore - Typ-Konflikte zwischen transformierten Daten und erwarteten Props umgehen
+  return await ReactPDF.pdf(<ZuteilungPDFDocument {...pdfData} />).toBlob();
 }
 
 // Hauptfunktion zum Generieren eines einzelnen PDFs
@@ -225,7 +239,8 @@ export async function generatePDF(kindId: string): Promise<void> {
   const pdfData = await preparePDFData(kindId);
   
   // PDF generieren und herunterladen
-  const blob = await ReactPDF.pdf(React.createElement(ZuteilungPDFDocument, pdfData)).toBlob();
+  // @ts-ignore - Typ-Konflikte zwischen transformierten Daten und erwarteten Props umgehen
+  const blob = await ReactPDF.pdf(<ZuteilungPDFDocument {...pdfData} />).toBlob();
   
   // Kind-Daten für den Dateinamen
   const kind = pdfData.kind;

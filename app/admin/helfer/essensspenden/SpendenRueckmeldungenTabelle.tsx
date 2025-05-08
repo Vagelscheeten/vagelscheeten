@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Trash2, Filter, AlertCircle } from 'lucide-react';
-import { SpendenRueckmeldung } from './SpendenView';
+import { SpendenRueckmeldung } from './types';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,

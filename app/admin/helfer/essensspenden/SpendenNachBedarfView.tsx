@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { SpendenBedarf, SpendenRueckmeldung } from './SpendenView';
+import { SpendenBedarf, SpendenRueckmeldung } from './types';
 import { SpendenBedarfCard } from './SpendenBedarfCard';
 
 // Erweiterte Schnittstelle mit Zuteilungen

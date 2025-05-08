@@ -68,8 +68,15 @@ export default function AssignHelferModal({ slot, onClose }: AssignHelferModalPr
         return;
       }
 
-      // Speichere die geladenen Daten
-      setAufgabenZuteilungen(aufgabenZuteilungenData || []);
+      // Speichere die geladenen Daten - mit Typenkorrektur
+      const typedZuteilungen = (aufgabenZuteilungenData || []).map(z => {
+        // Stelle sicher, dass kind ein einzelnes Objekt ist, kein Array
+        return {
+          ...z,
+          kind: Array.isArray(z.kind) ? z.kind[0] : z.kind
+        } as HelferZuteilung;
+      });
+      setAufgabenZuteilungen(typedZuteilungen);
       setSlotZuteilungIds((slotZuteilungenData || []).map(z => z.zuteilung_id));
       setLoading(false);
     }
