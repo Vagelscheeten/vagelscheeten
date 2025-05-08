@@ -1,0 +1,495 @@
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Plus, Minus, Users, MoveHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Interfaces
+interface Klassenstufe {
+  id: string;
+  name: string;
+}
+
+interface Spielgruppe {
+  id: string;
+  name: string;
+  klassenstufe_id: string;
+  leiter_zugangscode: string;
+  event_id: string;
+}
+
+interface Kind {
+  id: string;
+  vorname: string;
+  nachname: string;
+  geschlecht: string;
+  klasse: string;
+  event_id: string;
+}
+
+interface KindZuordnung {
+  id: string;
+  kind_id: string;
+  spielgruppe_id: string;
+  event_id: string;
+}
+
+interface GruppenStatistik {
+  anzahlKinder: number;
+  anzahlJungen: number;
+  anzahlMaedchen: number;
+}
+
+interface GruppenVerwaltungProps {
+  klassenstufe: Klassenstufe;
+  spielgruppen: Spielgruppe[];
+  kinder: Kind[];
+  kinderZuordnungen: KindZuordnung[];
+  eventId: string;
+  onDataChange: () => void;
+}
+
+// Komponente für ein Kind mit Verschiebe-Button
+const KindItem = ({ kind, spielgruppeId, onMoveKind }: { kind: Kind, spielgruppeId: string, onMoveKind: (kindId: string, gruppeId: string) => void }) => {
+  return (
+    <div className="p-2 mb-2 bg-white rounded-md shadow-sm border hover:bg-gray-50 flex justify-between items-center">
+      <div>
+        {kind.vorname} {kind.nachname} ({kind.geschlecht === 'männlich' ? '♂️' : '♀️'})
+      </div>
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        onClick={() => onMoveKind(kind.id, spielgruppeId)}
+        title="Kind in andere Gruppe verschieben"
+      >
+        <MoveHorizontal className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+};
+
+export default function GruppenVerwaltung({
+  klassenstufe,
+  spielgruppen,
+  kinder,
+  kinderZuordnungen,
+  eventId,
+  onDataChange
+}: GruppenVerwaltungProps): React.ReactElement {
+  const [localSpielgruppen, setLocalSpielgruppen] = useState<Spielgruppe[]>([]);
+  const [localKinderZuordnungen, setLocalKinderZuordnungen] = useState<KindZuordnung[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedKind, setSelectedKind] = useState<{id: string, gruppeId: string} | null>(null);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  
+  const supabase = createClient();
+
+  // Initialisiere lokale Zustände
+  useEffect(() => {
+    setLocalSpielgruppen(spielgruppen);
+    setLocalKinderZuordnungen(kinderZuordnungen);
+  }, [spielgruppen, kinderZuordnungen]);
+
+  // Generiere einen zufälligen Zugangscode für Gruppenleiter
+  const generateAccessCode = () => {
+    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Ohne ähnlich aussehende Zeichen
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+  };
+
+  // Füge eine neue Spielgruppe hinzu
+  const addGruppe = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Bestimme die nächste Gruppennummer
+      const nextGroupNumber = localSpielgruppen.length + 1;
+      const gruppenName = klassenstufe.name === 'Schulis' 
+        ? `Schuli-${nextGroupNumber}` 
+        : `${klassenstufe.name}-${nextGroupNumber}`;
+      
+      // Erstelle neue Gruppe
+      const { data, error } = await supabase
+        .from('spielgruppen')
+        .insert({
+          name: gruppenName,
+          klassenstufe_id: klassenstufe.id,
+          event_id: eventId,
+          leiter_zugangscode: generateAccessCode()
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Aktualisiere lokalen Zustand
+      setLocalSpielgruppen([...localSpielgruppen, data]);
+      onDataChange();
+      toast.success(`Gruppe ${gruppenName} wurde erstellt`);
+    } catch (error) {
+      console.error('Fehler beim Erstellen der Gruppe:', error);
+      toast.error('Fehler beim Erstellen der Gruppe');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Entferne eine Spielgruppe
+  const removeGruppe = async (gruppeId: string) => {
+    // Prüfe, ob es die letzte Gruppe ist
+    if (localSpielgruppen.length <= 1) {
+      toast.error('Es muss mindestens eine Gruppe vorhanden sein');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Prüfe, ob Kinder zugeordnet sind
+      const zugeordneteKinder = localKinderZuordnungen.filter((z: KindZuordnung) => z.spielgruppe_id === gruppeId);
+      
+      if (zugeordneteKinder.length > 0) {
+        // Lösche Zuordnungen
+        const { error: zuordnungError } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .delete()
+          .eq('spielgruppe_id', gruppeId);
+        
+        if (zuordnungError) throw zuordnungError;
+      }
+      
+      // Lösche Gruppe
+      const { error } = await supabase
+        .from('spielgruppen')
+        .delete()
+        .eq('id', gruppeId);
+      
+      if (error) throw error;
+      
+      // Aktualisiere lokalen Zustand
+      setLocalSpielgruppen(localSpielgruppen.filter((g: Spielgruppe) => g.id !== gruppeId));
+      setLocalKinderZuordnungen(localKinderZuordnungen.filter((z: KindZuordnung) => z.spielgruppe_id !== gruppeId));
+      
+      onDataChange();
+      toast.success('Gruppe wurde gelöscht');
+    } catch (error) {
+      console.error('Fehler beim Löschen der Gruppe:', error);
+      toast.error('Fehler beim Löschen der Gruppe');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Kinder automatisch zuweisen
+  const zuweiseKinderAutomatisch = async () => {
+    if (localSpielgruppen.length === 0) {
+      toast.error('Es müssen zuerst Gruppen erstellt werden');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Finde alle Kinder ohne Zuordnung
+      const zugeordneteKinderIds = localKinderZuordnungen.map((z: KindZuordnung) => z.kind_id);
+      const unzugeordneteKinder = kinder.filter((k: Kind) => !zugeordneteKinderIds.includes(k.id));
+      
+      if (unzugeordneteKinder.length === 0) {
+        toast.info('Alle Kinder sind bereits zugeordnet');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Sortiere Kinder nach Geschlecht und Klasse
+      const maedchen = unzugeordneteKinder.filter((k: Kind) => k.geschlecht === 'weiblich');
+      const jungen = unzugeordneteKinder.filter((k: Kind) => k.geschlecht === 'männlich');
+      
+      // Verteile Kinder gleichmäßig auf Gruppen
+      const gruppenIds = localSpielgruppen.map((g: Spielgruppe) => g.id);
+      const neueZuordnungen: { kind_id: string; spielgruppe_id: string; event_id: string }[] = [];
+      
+      // Verteile Mädchen
+      maedchen.forEach((kind: Kind, index: number) => {
+        const gruppeIndex = index % gruppenIds.length;
+        neueZuordnungen.push({
+          kind_id: kind.id,
+          spielgruppe_id: gruppenIds[gruppeIndex],
+          event_id: eventId
+        });
+      });
+      
+      // Verteile Jungen
+      jungen.forEach((kind: Kind, index: number) => {
+        const gruppeIndex = index % gruppenIds.length;
+        neueZuordnungen.push({
+          kind_id: kind.id,
+          spielgruppe_id: gruppenIds[gruppeIndex],
+          event_id: eventId
+        });
+      });
+      
+      // Speichere neue Zuordnungen in der Datenbank
+      if (neueZuordnungen.length > 0) {
+        const { data, error } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .insert(neueZuordnungen)
+          .select();
+        
+        if (error) throw error;
+        
+        // Aktualisiere lokalen Zustand
+        setLocalKinderZuordnungen([...localKinderZuordnungen, ...data]);
+        onDataChange();
+        toast.success(`${neueZuordnungen.length} Kinder wurden automatisch zugewiesen`);
+      }
+    } catch (error) {
+      console.error('Fehler bei der automatischen Zuweisung:', error);
+      toast.error('Fehler bei der automatischen Zuweisung');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Zeige Dialog zum Verschieben eines Kindes
+  const handleMoveKind = (kindId: string, quellGruppeId: string) => {
+    setSelectedKind({id: kindId, gruppeId: quellGruppeId});
+    setShowMoveDialog(true);
+  };
+
+  // Verschiebe ein Kind in eine andere Gruppe
+  const moveKindToGruppe = async (kindId: string, quellGruppeId: string, zielGruppeId: string) => {
+    if (quellGruppeId === zielGruppeId) {
+      setShowMoveDialog(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Suche nach bestehenden Zuordnungen für dieses Kind
+      const { data: existingZuordnungen, error: fetchError } = await supabase
+        .from('kind_spielgruppe_zuordnung')
+        .select('*')
+        .eq('kind_id', kindId)
+        .eq('event_id', eventId);
+        
+      if (fetchError) {
+        console.error('Fehler beim Laden der Zuordnungen:', fetchError);
+        throw fetchError;
+      }
+      
+      console.log('Bestehende Zuordnungen:', existingZuordnungen);
+      
+      if (existingZuordnungen && existingZuordnungen.length > 0) {
+        // Kind hat bereits eine Zuordnung - aktualisiere diese
+        const zuordnung = existingZuordnungen[0];
+        
+        const { error } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .update({ spielgruppe_id: zielGruppeId })
+          .eq('id', zuordnung.id);
+        
+        if (error) {
+          console.error('Supabase Fehler beim Update:', error);
+          throw error;
+        }
+        
+        // Aktualisiere lokalen Zustand
+        const updatedZuordnungen = localKinderZuordnungen.map((z: KindZuordnung) => {
+          if (z.id === zuordnung.id) {
+            return { ...z, spielgruppe_id: zielGruppeId };
+          }
+          return z;
+        });
+        
+        console.log('Aktualisierte Zuordnungen:', updatedZuordnungen);
+        setLocalKinderZuordnungen(updatedZuordnungen);
+        toast.success('Kind wurde in eine andere Gruppe verschoben');
+      } else {
+        // Falls keine Zuordnung gefunden wurde, erstelle eine neue
+        const neueZuordnung = {
+          kind_id: kindId,
+          spielgruppe_id: zielGruppeId,
+          event_id: eventId
+        };
+        
+        const { data, error } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .insert(neueZuordnung)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error('Supabase Fehler beim Insert:', error);
+          throw error;
+        }
+        
+        // Aktualisiere lokalen Zustand
+        setLocalKinderZuordnungen([...localKinderZuordnungen, data]);
+        toast.success('Kind wurde einer neuen Gruppe zugewiesen');
+      }
+      
+      // Lade die aktualisierten Daten
+      onDataChange();
+      
+    } catch (error) {
+      console.error('Fehler beim Verschieben des Kindes:', error);
+      toast.error('Fehler beim Verschieben des Kindes');
+    } finally {
+      setIsLoading(false);
+      setShowMoveDialog(false);
+    }
+  };
+
+  // Berechne Statistiken für eine Gruppe
+  const berechneGruppenStatistik = (gruppeId: string): GruppenStatistik => {
+    const zuordnungen = localKinderZuordnungen.filter((z: KindZuordnung) => z.spielgruppe_id === gruppeId);
+    const kinderIds = zuordnungen.map((z: KindZuordnung) => z.kind_id);
+    const gruppenKinder = kinder.filter((k: Kind) => kinderIds.includes(k.id));
+    
+    return {
+      anzahlKinder: gruppenKinder.length,
+      anzahlJungen: gruppenKinder.filter((k: Kind) => k.geschlecht === 'männlich').length,
+      anzahlMaedchen: gruppenKinder.filter((k: Kind) => k.geschlecht === 'weiblich').length
+    };
+  };
+
+  // Hole die Kinder für eine Gruppe
+  const getKinderForGruppe = (gruppeId: string): Kind[] => {
+    const zuordnungen = localKinderZuordnungen.filter((z: KindZuordnung) => z.spielgruppe_id === gruppeId);
+    const kinderIds = zuordnungen.map((z: KindZuordnung) => z.kind_id);
+    return kinder.filter((k: Kind) => kinderIds.includes(k.id));
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold">Spielgruppen für {klassenstufe.name}</h2>
+        <div className="space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={addGruppe} 
+            disabled={isLoading}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Gruppe hinzufügen
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={zuweiseKinderAutomatisch} 
+            disabled={isLoading || localSpielgruppen.length === 0}
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Kinder automatisch zuweisen
+          </Button>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="text-center py-4">
+          Lade Daten...
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {localSpielgruppen.map((gruppe: Spielgruppe) => {
+          const statistik = berechneGruppenStatistik(gruppe.id);
+          const gruppenKinder = getKinderForGruppe(gruppe.id);
+          
+          return (
+            <Card key={gruppe.id} className="overflow-hidden h-full">
+              <CardHeader className="bg-muted">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg">{gruppe.name}</CardTitle>
+                  {localSpielgruppen.length > 1 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => removeGruppe(gruppe.id)}
+                      disabled={isLoading}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="text-sm mb-3">
+                  <div>Kinder: {statistik.anzahlKinder}</div>
+                  <div>Mädchen: {statistik.anzahlMaedchen} | Jungen: {statistik.anzahlJungen}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Zugangscode: {gruppe.leiter_zugangscode}
+                  </div>
+                </div>
+                
+                <div className="border rounded-md p-3 min-h-[200px] w-full">
+                  {gruppenKinder.map((kind: Kind) => (
+                    <KindItem 
+                      key={kind.id} 
+                      kind={kind} 
+                      spielgruppeId={gruppe.id}
+                      onMoveKind={handleMoveKind}
+                    />
+                  ))}
+                  
+                  {gruppenKinder.length === 0 && (
+                    <div className="text-center text-muted-foreground py-4 text-sm">
+                      Keine Kinder zugewiesen
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+      
+      {/* Dialog zum Verschieben eines Kindes */}
+      {showMoveDialog && selectedKind && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4">Kind verschieben</h3>
+            <p className="mb-4">Wähle eine Zielgruppe aus:</p>
+            
+            <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+              {localSpielgruppen
+                .filter((g: Spielgruppe) => g.id !== selectedKind.gruppeId)
+                .map((gruppe: Spielgruppe) => (
+                  <button
+                    key={gruppe.id}
+                    className="w-full text-left p-2 hover:bg-gray-100 rounded flex justify-between items-center"
+                    onClick={() => moveKindToGruppe(selectedKind.id, selectedKind.gruppeId, gruppe.id)}
+                    disabled={isLoading}
+                  >
+                    <span>{gruppe.name}</span>
+                    <MoveHorizontal className="h-4 w-4" />
+                  </button>
+                ))
+              }
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowMoveDialog(false)}
+                disabled={isLoading}
+              >
+                Abbrechen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {localSpielgruppen.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground">
+          Keine Spielgruppen vorhanden. Klicke auf &quot;Gruppe hinzufügen&quot;, um zu beginnen.
+        </div>
+      )}
+    </div>
+  );
+}

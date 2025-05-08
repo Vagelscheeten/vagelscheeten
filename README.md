@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vogelschießen Webapp
 
-## Getting Started
+## 🎯 Zielbild
+Die App soll die gesamte Organisation und Durchführung des jährlichen Vogelschießens für Kinder (Schulis bis Klasse 4) digital unterstützen – von der Planung über die Spielauswertung bis hin zur Öffentlichkeitsdarstellung.
 
-First, run the development server:
+---
+
+## 👤 Benutzerrollen & Zugriff
+| Rolle      | Beschreibung                                                                 |
+|------------|------------------------------------------------------------------------------|
+| 🌐 Besucher | Öffentlich, nicht eingeloggt. Sie sehen nur das Frontend (Infos, Galerie usw.) |
+| 🛠️ Admin    | Eingeloggte Nutzer via Supabase Auth. Sie haben Zugriff auf alle Verwaltungsfunktionen |
+| 🧢 Leiter   | Spielleiter. Kein Supabase-Login, sondern Zugang per Direktlink (QR-Code). Können Ergebnisse für ihre Gruppe erfassen |
+
+---
+
+## 🧱 Modulübersicht
+
+### 1. 🔐 Authentifizierung & Benutzerprofil
+- Supabase Auth für Admins
+- Profil mit Nickname, Avatar, Name
+- Einstellungsseite für Benutzer
+- Kein Login für Leiter – stattdessen dedizierter Link je Gruppe
+
+### 2. 🧒 Kinder- & Gruppenverwaltung
+- Excel-Import oder Formular-Eingabe (inkl. Geschlecht "Junde", "Mädchen")
+- Es gibt nur klassen und dazu Spielgruppen. Je Klasse kann es mehrere Spielgruppen geben.
+- mobil-freundliche Gruppenzuweisung
+- Kinder verschieben oder löschen
+- Mehrere Gruppen pro Klasse definierbar
+- Kinder aus Vorjahr übernehmen --> In dem Fall alle Kinder um eine Klasse nach oben verschieben (Schuli -> Klasse 1, Klasse 1a -> Klasse 2a, etc.) --> Klasse 4 -->  Entfernen
+
+### 3. 🎯 Spieleverwaltung
+- Spielname, Zielbeschreibung, Spielort, Regeln
+- Spiele bestimmten Klassen zuordnen
+- Einheitlicher Spielekatalog je Klasse - auch, wenn es mehrere Spielgruppen je Klasse gibt.
+
+### 4. 📝 Spielergebnisseingabe (mobil optimiert)
+- Nur per Link für Spielleiter zugänglich (kein Login)
+- Eingabe je Spielgruppe, Spiel, Kind
+- Automatische Punktevergabe nach Rangprinzip (z. B. 10–1)
+- Gleichstände erkennen und korrekt bewerten
+- Möglichkeit zur Korrektur, Ergänzung, Hinzufügen während der Veranstaltung
+
+### 5. 🧑‍🔧 Helferverwaltung
+- Liste vordefinierter Aufgaben (z. B. Aufbau, Cafeteria, Spielebetreuung, Spenden)
+- Personen zu Schichten oder Aufgaben zuweisen
+- Status (offen, besetzt) & Kontaktmöglichkeit
+- Übersicht für die gesamte Helferplanung
+
+### 6. 💌 Sponsoring & Serienanschreiben
+- Sponsoren-Kontaktverwaltung
+- Textbausteine für Serienanschreiben
+- PDF-Erstellung & Export für Druck oder Versand
+- Nachverfolgung: zugesagt / offen / abgelehnt
+
+### 7. 📊 Auswertung & Administration
+- Live-Übersicht der Ergebnisse pro Spiel & Gruppe
+- Nachträgliche Bearbeitung, manuelle Punktkorrektur
+- Kinder oder Gruppen nachträglich hinzufügen
+- König/Königin automatisch berechnen pro Klassenstufe
+
+### 8. 📈 Reporting & Statistiken
+- Übersicht nach Gruppen, Spielen, Klassenstufen
+- Exportmöglichkeiten (CSV, PDF)
+- Highlighting: Top-Ergebnisse, Vergleiche, Beteiligung
+
+### 9. 🌍 Öffentliches Frontend
+- Responsive Seitenstruktur mit Navigation
+- Unterseiten:
+  - Spieleübersicht (öffentlich)
+  - Historie des Vogelschießens
+  - Galerie (Bilder, z. B. via Upload)
+  - Informationen für Eltern / Besucher
+  - Sponsorenübersicht (Logo + Info)
+  - Kontakt & Impressum
+
+---
+
+## ✅ Ziel
+**Einfache Bedienung, klar getrennte Bereiche, vollständige Übersicht – mobil & Desktop**
+
+---
+
+## ℹ️ Hinweise
+- Die App befindet sich in aktiver Entwicklung. Nicht alle Module sind bereits umgesetzt.
+- Für Feedback, Vorschläge oder Bugs bitte Issues im Repository nutzen.
+
+---
+
+## 👨‍💻 Setup & Entwicklung
+_(Hier kannst du noch technische Hinweise, Installationsanleitung, .env-Beispiele etc. ergänzen)_
 
 ```bash
+# Beispiel: Lokales Setup
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Copyright ©️ Vogelschießen-Team**

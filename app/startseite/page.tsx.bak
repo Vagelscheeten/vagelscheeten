@@ -1,0 +1,1036 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Button } from "@/components/ui/button";
+import { RouteMap, RouteButton } from "@/components/route/RouteComponents";
+import Image from 'next/image';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { ImageUpload } from '@/components/ImageUpload';
+
+// Typen für die Daten aus Supabase
+type Game = {
+  id: string;
+  name: string;
+  beschreibung: string;
+};
+
+type GalleryImage = {
+  id: number;
+  name: string;
+  url: string;
+};
+
+type DownloadFile = {
+  id: number;
+  name: string;
+  url: string;
+};
+
+// UI-Komponenten
+const CountdownItem = ({ value, label }: { value: number; label: string }) => (
+  <div className="bg-white rounded-lg shadow-sm p-4 min-w-[80px] text-center mx-2">
+    <div className="text-4xl font-bold text-blue-400">{value}</div>
+    <div className="text-xs font-medium text-gray-500 mt-1">{label}</div>
+  </div>
+);
+
+const EventCountdown = ({ targetDate }: { targetDate: Date }) => {
+  const [timeLeft, setTimeLeft] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0
+  });
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const difference = targetDate.getTime() - new Date().getTime();
+      
+      if (difference > 0) {
+        setTimeLeft({
+          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((difference / 1000 / 60) % 60),
+          seconds: Math.floor((difference / 1000) % 60)
+        });
+      } else {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      }
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 1000);
+
+    return () => clearInterval(timer);
+  }, [targetDate]);
+
+  return (
+    <div className="flex flex-wrap justify-center gap-4">
+      <CountdownItem value={timeLeft.days} label="Tage" />
+      <CountdownItem value={timeLeft.hours} label="Stunden" />
+      <CountdownItem value={timeLeft.minutes} label="Minuten" />
+      <CountdownItem value={timeLeft.seconds} label="Sekunden" />
+    </div>
+  );
+};
+
+const GameCard = ({ game, onClick }: { game: Game; onClick: (game: Game) => void }) => (
+  <div 
+    className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-lg p-5 cursor-pointer transition-all duration-300 hover:-translate-y-1"
+    onClick={() => onClick(game)}
+  >
+    <h3 className="text-lg font-medium text-green-700 mb-2">{game.name || 'Unbenanntes Spiel'}</h3>
+    <p className="text-sm text-gray-600 line-clamp-2">{game.beschreibung || 'Keine Beschreibung verfügbar'}</p>
+    <div className="mt-3 text-green-600 text-sm font-medium">Details anzeigen</div>
+  </div>
+);
+
+const Modal = ({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div 
+        className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-end p-4">
+          <button 
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-800 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-6 pb-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GalleryImageComponent = ({ image }: { image: GalleryImage }) => (
+  <div className="relative aspect-square rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 group">
+    <Image 
+      src={image.url} 
+      alt={image.name}
+      fill
+      className="object-cover group-hover:scale-105 transition-transform duration-500"
+    />
+    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3">
+      <p className="text-white text-sm truncate w-full">{image.name}</p>
+    </div>
+  </div>
+);
+
+const ContactForm = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    message: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
+    
+    try {
+      const supabase = createClient();
+      
+      const { error } = await supabase
+        .from('kontaktanfragen')
+        .insert([{
+          name: formData.name,
+          email: formData.email || null,
+          nachricht: formData.message,
+          created_at: new Date().toISOString()
+        }]);
+      
+      if (error) throw error;
+      
+      setSubmitStatus('success');
+      setFormData({ name: '', email: '', message: '' });
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          required
+          value={formData.name}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          value={formData.email}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">Nachricht *</label>
+        <textarea
+          id="message"
+          name="message"
+          required
+          rows={4}
+          value={formData.message}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+        />
+      </div>
+      
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="bg-green-700 hover:bg-green-800 text-white font-medium py-2 px-6 rounded-lg transition-colors disabled:opacity-50"
+      >
+        {isSubmitting ? 'Wird gesendet...' : 'Nachricht senden'}
+      </button>
+      
+      {submitStatus === 'success' && (
+        <p className="text-green-600 font-medium">Vielen Dank für Ihre Nachricht!</p>
+      )}
+      
+      {submitStatus === 'error' && (
+        <p className="text-red-600 font-medium">Es ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.</p>
+      )}
+    </form>
+  );
+};
+
+export default function Startseite() {
+  // Datum des nächsten Vogelschießens
+  const eventDate = new Date('2025-06-14T10:00:00');
+  
+  // Refs für Scroll-Navigation
+  const ablaufRef = useRef<HTMLDivElement>(null);
+  const spieleRef = useRef<HTMLDivElement>(null);
+  const spendenRef = useRef<HTMLDivElement>(null);
+  const galerieRef = useRef<HTMLDivElement>(null);
+  const kontaktRef = useRef<HTMLDivElement>(null);
+  const downloadsRef = useRef<HTMLDivElement>(null);
+  
+  // State für Daten aus Supabase
+  const [games, setGames] = useState<Game[]>([]);
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+  const [downloadFiles, setDownloadFiles] = useState<DownloadFile[]>([]);
+  const [loading, setLoading] = useState({
+    games: true,
+    gallery: true,
+    downloads: true
+  });
+  
+  // State für Modal
+  const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+  const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
+  
+  // State für Fehlermeldungen
+  const [error, setError] = useState<string | null>(null);
+
+  // Laden der Spiele aus Supabase
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        setError(null);
+        const supabase = createClient();
+        
+        // Debug: Log Supabase URL and connection
+        console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+        
+        const { data, error: supabaseError } = await supabase
+          .from('spiele')
+          .select('*')
+          .order('id');
+        
+        // Debug: Log raw response
+        console.log('Supabase response:', { data, error: supabaseError });
+          
+        if (supabaseError) {
+          console.error('Fehler beim Laden der Spiele:', supabaseError);
+          setError('Die Spiele konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
+          return;
+        }
+        
+        if (!data || data.length === 0) {
+          const msg = 'Keine Spiele in der Datenbank gefunden';
+          console.error(msg);
+          setError(msg);
+          return;
+        }
+
+        // Validiere die Spieldaten - nur essentielle Felder
+        const invalidGames = data.filter(game => 
+          !game.id || !game.name // Nur ID und Name sind required
+        );
+
+        if (invalidGames.length > 0) {
+          console.error('Spiele mit fehlenden Daten:', invalidGames);
+          // Zeige die Spiele trotzdem an, aber logge den Fehler
+        }
+
+        // Debug: Log valid games
+        console.log('Gültige Spiele:', data);
+        
+        setGames(data);
+      } catch (error) {
+        console.error('Fehler beim Laden der Spiele:', error);
+        setError('Ein unbekannter Fehler ist aufgetreten');
+      } finally {
+        setLoading(prev => ({ ...prev, games: false }));
+      }
+    };
+    
+    fetchGames();
+  }, []);
+  
+  // Laden der Galerie-Bilder aus Supabase
+  useEffect(() => {
+    const fetchGalleryImages = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .storage
+          .from('galerie')
+          .list('');
+          
+        if (error) throw error;
+        
+        // Konvertieren der Dateien in das GalleryImage-Format
+        const images: GalleryImage[] = await Promise.all(
+          (data || []).filter(file => 
+            file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
+          ).map(async (file, index) => {
+            const { data: { publicUrl } } = supabase
+              .storage
+              .from('galerie')
+              .getPublicUrl(file.name);
+              
+            return {
+              id: index + 1,
+              name: file.name,
+              url: publicUrl
+            };
+          })
+        );
+        
+        setGalleryImages(images);
+      } catch (error) {
+        console.error('Error fetching gallery images:', error);
+      } finally {
+        setLoading(prev => ({ ...prev, gallery: false }));
+      }
+    };
+    
+    fetchGalleryImages();
+  }, []);
+  
+  // Laden der Download-Dateien aus Supabase
+  useEffect(() => {
+    const fetchDownloadFiles = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .storage
+          .from('downloads')
+          .list('');
+          
+        if (error) throw error;
+        
+        // Konvertieren der Dateien in das DownloadFile-Format
+        const files: DownloadFile[] = await Promise.all(
+          (data || []).map(async (file, index) => {
+            const { data: { publicUrl } } = supabase
+              .storage
+              .from('downloads')
+              .getPublicUrl(file.name);
+              
+            return {
+              id: index + 1,
+              name: file.name,
+              url: publicUrl
+            };
+          })
+        );
+        
+        setDownloadFiles(files);
+      } catch (error) {
+        console.error('Error fetching download files:', error);
+      } finally {
+        setLoading(prev => ({ ...prev, downloads: false }));
+      }
+    };
+    
+    fetchDownloadFiles();
+  }, []);
+  
+  // Scroll-Funktion für die Navigation
+  const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
+    if (ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+  
+  return (
+    <div className="w-full">
+      {/* Hero-Sektion */}
+      <div className="section-full section-blue pt-32">
+        <div className="container-main">
+          <div className="w-full flex flex-col items-center justify-center text-center">
+            <div className="max-w-4xl mx-auto">
+            <div className="flex justify-center mb-8">
+              <Image 
+                src="/2025_Logo_transparent.png" 
+                alt="Melsdörper Vagelscheeten" 
+                width={180} 
+                height={180} 
+                className="mb-4"
+              />
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold mb-6 text-red-500">Melsdörper Vagelscheeten 2025</h1>
+            
+            <div className="flex items-center justify-center mb-8 text-blue-400">
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <span className="text-lg font-medium">Samstag, 14. Juni 2025</span>
+            </div>
+            
+            <div className="mb-12">
+              <EventCountdown targetDate={eventDate} />
+            </div>
+            
+            <div className="mt-8 mb-16">
+              <a 
+                href="#spenden"
+                onClick={(e) => {
+                  e.preventDefault();
+                  scrollToSection(spendenRef);
+                }}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-md font-medium transition-all duration-300 inline-flex items-center shadow-sm text-base"
+              >
+                Jetzt mit einer Spende unterstützen!
+                <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Termin-Sektion wurde entfernt, da das Datum bereits im Header angezeigt wird */}
+      
+      {/* Willkommen zum Vagelscheeten */}
+      <div className="section-full section-white">
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Willkommen zum Vagelscheeten!</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-sm p-8 border border-gray-100">
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Liebe Eltern der Regenbogenschule Melsdorf,<br />
+              liebe Einwohner von Melsdorf,
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              wir freuen uns sehr auf das alljährliche Vogelschießen!
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Das Vogelschießen wird in Melsdorf traditionell von uns Eltern organisiert.
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Das Fest besteht aus Wettspielen am Vormittag für alle Schulkinder der Grundschule Melsdorf und für die Schulis aus dem Kindergarten, d. h. den Kindern, die im nächsten Schuljahr die Regenbogenschule besuchen werden.
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Am Nachmittag werden die Königspaare (= Sieger, d. h. bester Junge und bestes Mädchen der Wettspiele pro Klasse) proklamiert und es gibt Aufführungen der Kinder sowie den traditionellen Bändertanz.
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Im Anschluss findet ein Festumzug durch das geschmückte Dorf statt. Abgerundet wird der Tag mit einem fröhlichen Beisammensein bei Kaffee und Kuchen draußen auf der Schulwiese.
+            </p>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              Für die erfolgreiche Teilnahme am Vogelschießen erhalten alle Klassen ein Geschenk in Form eines individuellen Klassenausfluges.
+              Um dies zu ermöglichen, werden im Dorf Spenden gesammelt. Die Sammler wurden über die klasseninternen WhatsApp-Gruppen rekrutiert.
+            </p>
+          </div>
+        </div>
+      </section>
+      
+      {/* Ablaufplan */}
+      <div id="ablauf" className="section-full section-light" ref={ablaufRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Ablaufplan</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="max-w-4xl mx-auto relative">
+            {/* Zeitleiste */}
+            <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-blue-200"></div>
+            
+            {/* 08:00 Uhr */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-blue-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8 md:text-right mb-4 md:mb-0">
+                  <div className="bg-white rounded-lg shadow-sm p-5 md:ml-auto transition-transform duration-300 hover:shadow-md hover:-translate-y-1">
+                    <h3 className="text-xl font-bold text-gray-800 mb-1">08:00 Uhr</h3>
+                    <h4 className="text-lg font-medium text-gray-700 mb-2">Beginn des Vogelschießens</h4>
+                    <p className="text-gray-600">Eröffnung und Start der Wettkämpfe für die Schulkinder</p>
+                  </div>
+                </div>
+                <div className="md:w-1/2 md:pl-8"></div>
+              </div>
+            </div>
+            
+            {/* 10:30 Uhr */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-blue-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8"></div>
+                <div className="md:w-1/2 md:pl-8 md:text-left mb-4 md:mb-0">
+                  <div className="bg-white rounded-lg shadow-sm p-5 transition-transform duration-300 hover:shadow-md hover:-translate-y-1">
+                    <h3 className="text-xl font-bold text-gray-800 mb-1">10:30 Uhr</h3>
+                    <h4 className="text-lg font-medium text-gray-700 mb-2">Pausenzeit</h4>
+                    <p className="text-gray-600">Erfrischung und kleine Stärkung für alle Teilnehmer</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 11:00 Uhr */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-blue-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8 md:text-right mb-4 md:mb-0">
+                  <div className="bg-white rounded-lg shadow-sm p-5 md:ml-auto transition-transform duration-300 hover:shadow-md hover:-translate-y-1">
+                    <h3 className="text-xl font-bold text-gray-800 mb-1">11:00 Uhr</h3>
+                    <h4 className="text-lg font-medium text-gray-700 mb-2">Fortsetzung der Wettspiele</h4>
+                    <p className="text-gray-600">Weitere Spiele und Wettkämpfe für alle Schulkinder</p>
+                  </div>
+                </div>
+                <div className="md:w-1/2 md:pl-8"></div>
+              </div>
+            </div>
+            
+            {/* Mittagspause */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-amber-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8"></div>
+                <div className="md:w-1/2 md:pl-8 md:text-left mb-4 md:mb-0">
+                  <div className="bg-amber-50 rounded-lg shadow-sm p-5 transition-transform duration-300 hover:shadow-md hover:-translate-y-1 border-l-4 border-amber-400">
+                    <h4 className="text-xl font-bold text-amber-700">Mittagspause</h4>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 14:00 Uhr */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-blue-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8 md:text-right mb-4 md:mb-0">
+                  <div className="bg-white rounded-lg shadow-sm p-5 md:ml-auto transition-transform duration-300 hover:shadow-md hover:-translate-y-1">
+                    <h3 className="text-xl font-bold text-gray-800 mb-1">14:00 Uhr</h3>
+                    <h4 className="text-lg font-medium text-gray-700 mb-2">Aufführungen & Bändertanz</h4>
+                    <p className="text-gray-600">Vorführungen der Schulklassen und traditioneller Bändertanz</p>
+                  </div>
+                </div>
+                <div className="md:w-1/2 md:pl-8"></div>
+              </div>
+            </div>
+            
+            {/* 15:00 Uhr */}
+            <div className="mb-16 relative">
+              <div className="absolute left-1/2 transform -translate-x-1/2 -top-2">
+                <div className="w-10 h-10 rounded-full bg-blue-400 border-4 border-white shadow-md flex items-center justify-center z-10">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+              </div>
+              <div className="flex flex-col md:flex-row items-center">
+                <div className="md:w-1/2 md:pr-8"></div>
+                <div className="md:w-1/2 md:pl-8 md:text-left mb-4 md:mb-0">
+                  <div className="bg-white rounded-lg shadow-sm p-5 transition-transform duration-300 hover:shadow-md hover:-translate-y-1">
+                    <h3 className="text-xl font-bold text-gray-800 mb-1">15:00 Uhr</h3>
+                    <h4 className="text-lg font-medium text-gray-700 mb-2">Proklamation der Königspaare</h4>
+                    <p className="text-gray-600">Ehrung der Sieger der Wettspiele</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Willkommenstext */}
+      <div className="section-full section-white">
+        <div className="container-main">
+          <div className="bg-blue-50 rounded-xl shadow-md p-8 text-center">
+            <h2 className="text-3xl font-bold text-blue-800 mb-6">Alle Melsdorfer*innen und Freunde<br />der Regenbogenschule<br />sind herzlich willkommen!</h2>
+            
+            <p className="text-lg text-gray-700 mb-6">
+              Bitte bringe für das Fest bzw. Picknick am Nachmittag auf der Schulwiese eigene Kaltgetränke / Kaffeebecher / Geschirr / Picknickdecke oder andere Sitzgelegenheit mit.
+            </p>
+            
+            <p className="text-xl font-medium text-blue-700 mb-4">
+              Für Kaffee und Kuchen ist gesorgt!
+            </p>
+            
+            <p className="text-xl font-medium text-blue-800">
+              Wir freuen uns auf deinen Besuch!
+            </p>
+          </div>
+        </div>
+      </section>
+      
+      {/* Umzugsroute */}
+      <div id="route" className="section-full section-green">
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Umzugsroute</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md overflow-hidden">
+            <div className="aspect-[16/9] relative">
+              <RouteMap />
+            </div>
+            <div className="p-4 bg-white">
+              <p className="text-gray-700">
+                Der Festumzug startet an der Regenbogenschule und führt durch das Dorf Melsdorf. 
+                Bitte schmücke dein Haus entlang der Route festlich!
+              </p>
+              <div className="mt-4 flex justify-center">
+                <RouteButton />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Spiele-Sektion */}
+      <div id="spiele" className="section-full section-white" ref={spieleRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Unsere Spiele</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto px-4">
+            {loading.games ? (
+              <div className="col-span-full text-center py-12">
+                <p className="text-gray-600">Spiele werden geladen...</p>
+              </div>
+            ) : error ? (
+              <div className="col-span-full text-center text-red-600 bg-red-50 rounded-lg p-4 shadow-sm">
+                {error}
+              </div>
+            ) : games.length === 0 ? (
+              <div className="col-span-full text-center py-12">
+                <p className="text-gray-600">Keine Spiele gefunden.</p>
+              </div>
+            ) : (
+              games.map((game) => (
+                <GameCard
+                  key={game.id}
+                  game={game}
+                  onClick={setSelectedGame}
+                />
+              ))
+            )}
+          </div>
+          
+          {/* Modal für Spieldetails */}
+          <Modal isOpen={selectedGame !== null} onClose={() => setSelectedGame(null)}>
+            {selectedGame && (
+              <div>
+                <h3 className="text-2xl font-bold text-green-700 mb-4">{selectedGame?.name || 'Spieldetails'}</h3>
+                
+                <div className="mb-4">
+                  <h4 className="text-lg font-medium text-gray-800 mb-1">Beschreibung</h4>
+                  <p className="text-gray-700">{selectedGame?.beschreibung || 'Keine Beschreibung verfügbar'}</p>
+                </div>
+              </div>
+            )}
+          </Modal>
+        </div>
+      </section>
+      
+      {/* Spenden-Sektion */}
+      <div id="spenden" className="section-full section-amber" ref={spendenRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Spenden</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="max-w-3xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md p-8">
+            <p className="text-gray-700 mb-6">
+              Das Vogelschießen wird durch Spenden finanziert. Mit Ihren Spenden ermöglichen wir den Kindern einen schönen Tag und die Finanzierung der Klassenausflüge.
+            </p>
+            
+            <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+              <h3 className="text-xl font-medium text-green-800 mb-4">Bankverbindung</h3>
+              <div className="space-y-2">
+                <p className="flex justify-between">
+                  <span className="font-medium">Kontoinhaber:</span>
+                  <span>Förderverein der Regenbogenschule Melsdorf</span>
+                </p>
+                <p className="flex justify-between">
+                  <span className="font-medium">IBAN:</span>
+                  <span>DE12 3456 7890 1234 5678 90</span>
+                </p>
+                <p className="flex justify-between">
+                  <span className="font-medium">BIC:</span>
+                  <span>ABCDEFGHIJK</span>
+                </p>
+                <p className="flex justify-between">
+                  <span className="font-medium">Verwendungszweck:</span>
+                  <span>Spende Vogelschießen 2025</span>
+                </p>
+              </div>
+            </div>
+            
+            <p className="text-gray-700">
+              Alternativ können Sie auch direkt vor Ort am Vogelschießen-Tag spenden. Sprechen Sie uns gerne an!
+            </p>
+          </div>
+        </div>
+      </section>
+      
+      {/* Galerie-Sektion */}
+      <div id="galerie" className="section-full section-white" ref={galerieRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Galerie</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          {/* Upload-Komponente */}
+          <div className="max-w-3xl mx-auto mb-8">
+            <ImageUpload />
+          </div>
+
+          {loading.gallery ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">Bilder werden geladen...</p>
+            </div>
+          ) : galleryImages.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">Keine Bilder gefunden.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+              {galleryImages.map(image => (
+                <GalleryImageComponent key={image.id} image={image} />
+              ))}
+            </div>
+          )}
+          
+          <div className="text-center mt-8">
+            <Link href="/galerie" className="inline-flex items-center text-green-700 hover:text-green-800 font-medium">
+              Zur vollständigen Galerie
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </Link>
+          </div>
+        </div>
+      </section>
+      
+      {/* Kontakt-Sektion */}
+      <div id="kontakt" className="section-full section-blue" ref={kontaktRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Kontakt</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          <div className="max-w-3xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md p-8">
+            <p className="text-gray-700 mb-6">
+              Haben Sie Fragen zum Vogelschießen? Kontaktieren Sie uns gerne!
+            </p>
+            
+            <ContactForm />
+          </div>
+        </div>
+      </section>
+      
+      {/* Downloads-Sektion */}
+      <div id="downloads" className="section-full section-white" ref={downloadsRef}>
+        <div className="container-main">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Downloads</h2>
+            <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+          </div>
+          
+          {loading.downloads ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">Dateien werden geladen...</p>
+            </div>
+          ) : downloadFiles.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600">Keine Dateien gefunden.</p>
+            </div>
+          ) : (
+            <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md overflow-hidden">
+              <ul className="divide-y divide-gray-200">
+                {downloadFiles.map(file => (
+                  <li key={file.id} className="p-4 hover:bg-gray-50 transition-colors">
+                    <a 
+                      href={file.url} 
+                      download={file.name}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-gray-700">{file.name}</span>
+                      <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                        Herunterladen
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          <div className="text-center mt-8">
+            <Link href="/downloads" className="inline-flex items-center text-green-700 hover:text-green-800 font-medium">
+    </div>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto px-4">
+      {loading.games ? (
+        <div className="col-span-full text-center py-12">
+          <p className="text-gray-600">Spiele werden geladen...</p>
+        </div>
+      ) : error ? (
+        <div className="col-span-full text-center text-red-600 bg-red-50 rounded-lg p-4 shadow-sm">
+          {error}
+        </div>
+      ) : games.length === 0 ? (
+        <div className="col-span-full text-center py-12">
+          <p className="text-gray-600">Keine Spiele gefunden.</p>
+        </div>
+      ) : (
+        games.map((game) => (
+          <GameCard
+            key={game.id}
+            game={game}
+            onClick={setSelectedGame}
+          />
+        ))
+      )}
+    </div>
+    
+    {/* Modal für Spieldetails */}
+    <Modal isOpen={selectedGame !== null} onClose={() => setSelectedGame(null)}>
+      {selectedGame && (
+        <div>
+          <h3 className="text-2xl font-bold text-green-700 mb-4">{selectedGame?.name || 'Spieldetails'}</h3>
+          
+          <div className="mb-4">
+            <h4 className="text-lg font-medium text-gray-800 mb-1">Beschreibung</h4>
+            <p className="text-gray-700">{selectedGame?.beschreibung || 'Keine Beschreibung verfügbar'}</p>
+          </div>
+        </div>
+      )}
+    </Modal>
+  </div>
+</section>
+
+{/* Spenden-Sektion */}
+<div id="spenden" className="section-full section-amber" ref={spendenRef}>
+  <div className="container-main">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Spenden</h2>
+      <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+    </div>
+    
+    <div className="max-w-3xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md p-8">
+      <p className="text-gray-700 mb-6">
+        Das Vogelschießen wird durch Spenden finanziert. Mit Ihren Spenden ermöglichen wir den Kindern einen schönen Tag und die Finanzierung der Klassenausflüge.
+      </p>
+      
+      <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+        <h3 className="text-xl font-medium text-green-800 mb-4">Bankverbindung</h3>
+        <div className="space-y-2">
+          <p className="flex justify-between">
+            <span className="font-medium">Kontoinhaber:</span>
+            <span>Förderverein der Regenbogenschule Melsdorf</span>
+          </p>
+          <p className="flex justify-between">
+            <span className="font-medium">IBAN:</span>
+            <span>DE12 3456 7890 1234 5678 90</span>
+          </p>
+          <p className="flex justify-between">
+            <span className="font-medium">BIC:</span>
+            <span>ABCDEFGHIJK</span>
+          </p>
+          <p className="flex justify-between">
+            <span className="font-medium">Verwendungszweck:</span>
+            <span>Spende Vogelschießen 2025</span>
+          </p>
+        </div>
+      </div>
+      
+      <p className="text-gray-700">
+        Alternativ können Sie auch direkt vor Ort am Vogelschießen-Tag spenden. Sprechen Sie uns gerne an!
+      </p>
+    </div>
+  </div>
+</section>
+
+{/* Galerie-Sektion */}
+<div id="galerie" className="section-full section-white" ref={galerieRef}>
+  <div className="container-main">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Galerie</h2>
+      <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+    </div>
+    
+    {/* Upload-Komponente */}
+    <div className="max-w-3xl mx-auto mb-8">
+      <ImageUpload />
+    </div>
+
+    {loading.gallery ? (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Bilder werden geladen...</p>
+      </div>
+    ) : galleryImages.length === 0 ? (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Keine Bilder gefunden.</p>
+      </div>
+    ) : (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+        {galleryImages.map(image => (
+          <GalleryImageComponent key={image.id} image={image} />
+        ))}
+      </div>
+    )}
+    
+    <div className="text-center mt-8">
+      <Link href="/galerie" className="inline-flex items-center text-green-700 hover:text-green-800 font-medium">
+        Zur vollständigen Galerie
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </Link>
+    </div>
+  </div>
+</section>
+
+{/* Kontakt-Sektion */}
+<div id="kontakt" className="section-full section-blue" ref={kontaktRef}>
+  <div className="container-main">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Kontakt</h2>
+      <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+    </div>
+    
+    <div className="max-w-3xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md p-8">
+      <p className="text-gray-700 mb-6">
+        Haben Sie Fragen zum Vogelschießen? Kontaktieren Sie uns gerne!
+      </p>
+      
+      <ContactForm />
+    </div>
+  </div>
+</section>
+
+{/* Downloads-Sektion */}
+<div id="downloads" className="section-full section-white" ref={downloadsRef}>
+  <div className="container-main">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-3">Downloads</h2>
+      <div className="w-24 h-1 bg-red-500 mx-auto"></div>
+    </div>
+    
+    {loading.downloads ? (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Dateien werden geladen...</p>
+      </div>
+    ) : downloadFiles.length === 0 ? (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Keine Dateien gefunden.</p>
+      </div>
+    ) : (
+      <div className="max-w-4xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md overflow-hidden">
+        <ul className="divide-y divide-gray-200">
+          {downloadFiles.map(file => (
+            <li key={file.id} className="p-4 hover:bg-gray-50 transition-colors">
+              <a 
+                href={file.url} 
+                download={file.name}
+                className="flex items-center justify-between"
+              >
+                <span className="text-gray-700">{file.name}</span>
+                <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                  Herunterladen
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+    
+    <div className="text-center mt-8">
+      <Link href="/downloads" className="inline-flex items-center text-green-700 hover:text-green-800 font-medium">
+        Alle Downloads anzeigen
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </Link>
+    </div>
+  </div>
+</section>
+</div>
+);

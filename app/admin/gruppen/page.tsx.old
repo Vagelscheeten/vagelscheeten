@@ -1,0 +1,304 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { AlertCircle } from 'lucide-react';
+
+// Import shared types
+import { Kind, Spielgruppe, KindZuordnung, Event, Spiel } from '@/lib/types'; 
+
+// Importiere Komponenten
+import KinderVerwaltung from './KinderVerwaltung'; 
+import GruppenVerwaltung from './GruppenVerwaltung';
+import ImportDialog from './ImportDialog';
+
+// Interfaces
+interface Klasse {
+  klasse: string;
+  event_id: string;
+}
+
+export default function GruppenVerwaltungPage() {
+  // State
+  const [activeTab, setActiveTab] = useState('gruppen');
+  const [klassen, setKlassen] = useState<string[]>([]);
+  const [selectedKlasseName, setSelectedKlasseName] = useState<string | null>(null);
+  const [spielgruppen, setSpielgruppen] = useState<Spielgruppe[]>([]);
+  const [kinder, setKinder] = useState<Kind[]>([]); 
+  const [zugehoerigeKinder, setZugehoerigeKinder] = useState<Kind[]>([]); 
+  const [kinderZuordnungen, setKinderZuordnungen] = useState<KindZuordnung[]>([]);
+  const [spiele, setSpiele] = useState<Spiel[]>([]);
+  const [activeEventId, setActiveEventId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoadingEvent, setIsLoadingEvent] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const supabase = createClient();
+
+  // Fetch Active Event
+  const fetchActiveEvent = useCallback(async () => {
+    setIsLoadingEvent(true);
+    setError(null);
+    try {
+      const { data, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('ist_aktiv', true)
+        .single();
+
+      if (eventError) {
+        if (eventError.code === 'PGRST116') {
+          throw new Error('Kein aktives Event gefunden.');
+        } else {
+          throw eventError;
+        }
+      }
+      if (data?.id) {
+        setActiveEventId(data.id);
+      } else {
+        throw new Error('Aktives Event konnte nicht geladen werden.');
+      }
+    } catch (err: any) {
+      console.error('Error fetching active event:', err);
+      setError(`Fehler beim Laden des aktiven Events: ${err.message}`);
+      toast.error(`Aktives Event nicht geladen: ${err.message}`);
+      setActiveEventId(null);
+    } finally {
+      setIsLoadingEvent(false);
+    }
+  }, [supabase]);
+
+  // Lade Basis-Daten (Klassen, Kinder, Spiele für das aktive Event)
+  const loadInitialData = useCallback(async () => {
+    if (!activeEventId) {
+        setIsLoading(false);
+        return;
+    }
+    setIsLoading(true);
+    setError(null); // Reset error specific to this load
+    
+    try {
+      // Lade eindeutige Klassen-Strings aus der kinder Tabelle für das aktive Event
+      const { data: kinderKlassenData, error: kinderKlassenError } = await supabase
+        .from('kinder')
+        .select('klasse')
+        .eq('event_id', activeEventId)
+        .not('klasse', 'is', null); // Nur Kinder mit Klassenzuordnung
+      
+      if (kinderKlassenError) throw kinderKlassenError;
+
+      // Extrahiere eindeutige Klassen-Strings und sortiere sie
+      const uniqueKlassen = Array.from(new Set(kinderKlassenData?.map(k => k.klasse).filter(k => k !== null) as string[]));
+      uniqueKlassen.sort(); // Sortiere alphabetisch/numerisch
+      setKlassen(uniqueKlassen);
+      console.log('Geladene Klassen (Strings):', uniqueKlassen);
+
+      // Lade alle Kinder für das aktive Event
+      const { data: alleKinderData, error: kinderError } = await supabase
+        .from('kinder')
+        .select('*')
+        .eq('event_id', activeEventId);
+      if (kinderError) throw kinderError;
+      setKinder(alleKinderData || []);
+
+      // Lade alle Zuordnungen für das aktive Event
+      const { data: alleZuordnungenData, error: zuordnungenError } = await supabase
+        .from('kind_spielgruppe_zuordnung')
+        .select('*')
+        .eq('event_id', activeEventId);
+       if (zuordnungenError) throw zuordnungenError;
+       setKinderZuordnungen(alleZuordnungenData || []);
+
+       // Lade alle Spiele (optional, wenn für KinderVerwaltung benötigt)
+       const { data: spieleData, error: spieleError } = await supabase
+        .from('spiele')
+        .select('*');
+       if (spieleError) throw spieleError;
+       setSpiele(spieleData || []);
+
+    } catch (error: any) {
+      console.error("Fehler beim Laden der Initialdaten:", error);
+      toast.error(`Fehler beim Laden der Daten: ${error.message}`);
+      setError(`Fehler beim Laden der Daten: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabase, activeEventId]);
+
+  // Lade Daten für die ausgewählte Klasse (Spielgruppen, Zuordnungen)
+  const loadKlasseData = useCallback(async (klasseName: string) => { 
+    if (!activeEventId) return; 
+    setIsLoading(true); // Indicate loading class specific data
+    console.log(`Lade klassenspezifische Daten für: ${klasseName}`);
+
+    try {
+      // 1. Lade Spielgruppen für die ausgewählte Klasse (wie bisher)
+      const { data: klassenSpielgruppen, error: gruppenError } = await supabase
+        .from('spielgruppen')
+        .select('*')
+        .eq('event_id', activeEventId)
+        .eq('klasse', klasseName); // Filtern nach Klassenname (string)
+
+      if (gruppenError) throw gruppenError;
+      const currentSpielgruppen = klassenSpielgruppen || [];
+      setSpielgruppen(currentSpielgruppen); // Setze Spielgruppen sofort
+
+      // 2. Filter Kinder für diese Klasse (client-seitig)
+      const kinderDieserKlasse = kinder.filter(k => k.klasse === klasseName);
+      
+      // 3. Setze die gefilterten Kinder im State
+      setZugehoerigeKinder(kinderDieserKlasse);
+
+    } catch (error: any) {
+      console.error(`Fehler beim Laden der Daten für Klasse ${klasseName}:`, error);
+      toast.error(`Fehler beim Laden der Klassendaten: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabase, activeEventId, kinder]);
+
+  // Lade aktives Event beim Mounten
+  useEffect(() => {
+    fetchActiveEvent();
+  }, [fetchActiveEvent]);
+
+  // Lade Initialdaten, wenn Event bekannt ist
+  useEffect(() => {
+    if (activeEventId) {
+      loadInitialData();
+    } else if (!isLoadingEvent) {
+        // Clear data if event loading finished and no event found
+        setKlassen([]);
+        setSpielgruppen([]);
+        setKinder([]);
+        setKinderZuordnungen([]);
+        setSpiele([]);
+        setSelectedKlasseName(null);
+        setIsLoading(false);
+    }
+  }, [activeEventId, loadInitialData, isLoadingEvent]);
+
+  // Lade Daten für die ausgewählte Klasse, wenn sie sich ändert
+  useEffect(() => {
+    if (selectedKlasseName && activeEventId) {
+      loadKlasseData(selectedKlasseName);
+    } else {
+        // Clear class-specific data if no class is selected
+        setSpielgruppen([]);
+        setZugehoerigeKinder([]);
+    }
+  }, [selectedKlasseName, activeEventId, loadKlasseData]);
+
+  // --- Helper Funktionen --- 
+
+  // Funktion zum Neuladen der Daten für die aktuell ausgewählte Klasse
+  const reloadCurrentKlasseData = () => {
+    if (selectedKlasseName) {
+      loadKlasseData(selectedKlasseName);
+    }
+  };
+
+  // --- UI Rendering --- //
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Gruppen & Kinder Verwaltung</h1>
+
+      {/* Event Loading/Error Handling */} 
+      {isLoadingEvent && <p>Lade aktives Event...</p>}
+      {!isLoadingEvent && !activeEventId && (
+         <Card className="mb-4 bg-destructive/10 border-destructive">
+             <CardHeader>
+                 <CardTitle className="flex items-center text-destructive">
+                     <AlertCircle className="mr-2 h-5 w-5" /> Fehlendes Event
+                 </CardTitle>
+             </CardHeader>
+             <CardContent>
+                 <p>Es wurde kein aktives Event gefunden. Bitte gehe zur <a href="/admin/events" className="underline font-semibold">Event-Verwaltung</a> und aktiviere ein Event, um Gruppen und Kinder zu verwalten.</p>
+                 {error && <p className="mt-2 text-sm ">Detail: {error}</p>}
+             </CardContent>
+         </Card>
+      )}
+
+      {/* Main Content - Only show if event is loaded */} 
+      {!isLoadingEvent && activeEventId && (
+        <>
+          {/* Klassen Auswahl Dropdown */} 
+          <div className="mb-6">
+            <label htmlFor="klassen-select" className="block text-sm font-medium text-gray-700 mb-1">
+              Klasse auswählen:
+            </label>
+            <Select onValueChange={setSelectedKlasseName} value={selectedKlasseName || ''}>
+              <SelectTrigger id="klassen-select" className="w-[280px]">
+                <SelectValue placeholder="Bitte eine Klasse wählen..." />
+              </SelectTrigger>
+              <SelectContent>
+                {klassen.map((klasse) => (
+                  <SelectItem key={klasse} value={klasse}>
+                    {klasse}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Tabs für Gruppen und Kinder */} 
+          {selectedKlasseName && (
+            <Tabs defaultValue="gruppen" className="w-full">
+              <TabsList>
+                <TabsTrigger value="gruppen">Gruppen</TabsTrigger>
+                <TabsTrigger value="kinder">Kinder dieser Klasse</TabsTrigger>
+              </TabsList>
+              <TabsContent value="gruppen">
+                {selectedKlasseName && activeEventId && (
+                  (() => {
+                    // Filter Zuordnungen direkt hier für die Übergabe
+                    const kinderIdsDieserKlasse = zugehoerigeKinder.map(k => k.id);
+                    const zuordnungenDieserKlasse = kinderZuordnungen.filter(z => kinderIdsDieserKlasse.includes(z.kind_id));
+                    return (
+                      <GruppenVerwaltung
+                        selectedKlasseName={selectedKlasseName}
+                        spielgruppen={spielgruppen} 
+                        kinder={zugehoerigeKinder}             
+                        kinderZuordnungen={zuordnungenDieserKlasse} 
+                        activeEventId={activeEventId}
+                        onGruppenChange={reloadCurrentKlasseData} 
+                        isLoading={isLoading} 
+                      />
+                    );
+                  })()
+                )}
+              </TabsContent>
+              <TabsContent value="kinder">
+                {selectedKlasseName && activeEventId && (
+                  (() => {
+                    // Filter Zuordnungen direkt hier für die Übergabe
+                    const kinderIdsDieserKlasse = zugehoerigeKinder.map(k => k.id);
+                    const zuordnungenDieserKlasse = kinderZuordnungen.filter(z => kinderIdsDieserKlasse.includes(z.kind_id));
+                    return (
+                      <KinderVerwaltung
+                        alleKinderDesEvents={zugehoerigeKinder} // Übergebe nur die Kinder der Klasse
+                        spielgruppenDieserKlasse={spielgruppen} // Gruppen der Klasse sind korrekt
+                        kinderZuordnungen={zuordnungenDieserKlasse} // Übergebe hier gefilterte Zuordnungen
+                        selectedKlasseName={selectedKlasseName} // Name wird übergeben (ersetzt ID)
+                        activeEventId={activeEventId} 
+                        onKinderChange={reloadCurrentKlasseData} // Callback
+                        isLoading={isLoading}
+                      />
+                    );
+                  })()
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+          {/* More content later */}
+        </>
+      )}
+    </div>
+  );
+}

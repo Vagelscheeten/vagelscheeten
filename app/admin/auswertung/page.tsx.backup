@@ -1,0 +1,525 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ArrowDown, ArrowUp, Download, FileText, RefreshCw, CheckCircle, AlertCircle, XCircle, Crown } from 'lucide-react';
+
+interface Kind {
+  id: string;
+  vorname: string;
+  nachname: string;
+  geschlecht: string; // 'männlich' oder 'weiblich'
+  klassenstufe: number; // z.B. 1, 2, 3, 4
+  event_id: string;
+}
+
+interface Spiel {
+  id: string;
+  name: string;
+  beschreibung: string | null;
+  wertungstyp: string;
+  einheit: string | null;
+}
+
+interface Spielgruppe {
+  id: string;
+  name: string; // z.B. '3-1', '3-2'
+  klassenstufe: number; // z.B. 3
+  event_id: string;
+}
+
+interface KindSpielgruppeZuordnung {
+  id: string;
+  kind_id: string;
+  spielgruppe_id: string;
+  kind?: Kind;
+  spielgruppe?: Spielgruppe;
+}
+
+interface Ergebnis {
+  id: string;
+  kind_id: string;
+  spiel_id: string;
+  spielgruppe_id: string;
+  event_id: string;
+  wert_numeric: number;
+  erfasst_am: string;
+  kind?: Kind;
+  spiel?: Spiel;
+  spielgruppe?: Spielgruppe;
+  rang?: number;
+  punkte?: number;
+}
+
+interface GruppeSpielStatus {
+  spielgruppe_id: string;
+  spiel_id: string;
+  status: 'abgeschlossen' | 'teilweise' | 'offen';
+  anzahlErgebnisse: number;
+  anzahlKinder: number;
+}
+
+interface KlassenstufenStatistik {
+  klassenstufe: number;
+  gruppenIds: string[];
+  spieleIds: string[];
+  kinder: {
+    id: string;
+    vorname: string;
+    nachname: string;
+    geschlecht: string;
+    gesamtPunkte: number;
+    platz: number;
+    spielgruppe_name: string;
+    status?: 'koenig' | 'koenigin' | null;
+  }[];
+  koenig: { kind_id: string; punkte: number } | null;
+  koenigin: { kind_id: string; punkte: number } | null;
+  alleErgebnisseVorhanden: boolean;
+}
+
+export default function AuswertungAdmin() {
+  // Aktiver Tab/Sektion
+  const [activeTab, setActiveTab] = useState('live');
+  
+  // Daten aus der Datenbank
+  const [spiele, setSpiele] = useState<Spiel[]>([]);
+  const [spielgruppen, setSpielgruppen] = useState<Spielgruppe[]>([]);
+  const [ergebnisse, setErgebnisse] = useState<Ergebnis[]>([]);
+  const [kinder, setKinder] = useState<Kind[]>([]);
+  const [kinderSpielgruppenZuordnungen, setKinderSpielgruppenZuordnungen] = useState<KindSpielgruppeZuordnung[]>([]);
+  
+  // Filter für Live-Zwischenstand
+  const [selectedKlassenstufe, setSelectedKlassenstufe] = useState<number | null>(null);
+  const [selectedGruppeId, setSelectedGruppeId] = useState<string>('');
+  
+  // Status und Berechnete Daten
+  const [isLoading, setIsLoading] = useState(true);
+  const [matrixDaten, setMatrixDaten] = useState<GruppeSpielStatus[]>([]);
+  const [klassenstufenStatistik, setKlassenstufenStatistik] = useState<KlassenstufenStatistik[]>([]);
+  const [liveZwischenstand, setLiveZwischenstand] = useState<{
+    kinder: any[];
+    fortschritt: { abgeschlossen: number; gesamt: number };
+  }>({ kinder: [], fortschritt: { abgeschlossen: 0, gesamt: 0 } });
+  
+  // Dialog für Detailansicht
+  const [detailViewOpen, setDetailViewOpen] = useState(false);
+  const [detailViewData, setDetailViewData] = useState<{
+    spielgruppe: Spielgruppe | null;
+    spiel: Spiel | null;
+    ergebnisse: Ergebnis[];
+  }>({ spielgruppe: null, spiel: null, ergebnisse: [] });
+  
+  const supabase = createClient();
+
+  // Lade Daten beim ersten Rendern
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Lade gefilterte Ergebnisse, wenn sich die Auswahl ändert
+  useEffect(() => {
+    if (selectedSpiel || selectedGruppe) {
+      loadErgebnisse(selectedSpiel, selectedGruppe);
+    }
+  }, [selectedSpiel, selectedGruppe]);
+
+  // Hauptfunktion zum Laden aller relevanten Daten
+  const loadData = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Lade Spiele
+      const { data: spieleData, error: spieleError } = await supabase
+        .from('spiele')
+        .select('*')
+        .order('name');
+      
+      if (spieleError) throw spieleError;
+      setSpiele(spieleData || []);
+      
+      // Lade Spielgruppen
+      const { data: gruppenData, error: gruppenError } = await supabase
+        .from('spielgruppen')
+        .select('*')
+        .order('name');
+      
+      if (gruppenError) throw gruppenError;
+      setSpielgruppen(gruppenData || []);
+      
+      // Lade alle Kinder für spätere Referenz
+      const { data: kinderData, error: kinderError } = await supabase
+        .from('kinder')
+        .select('*');
+      
+      if (kinderError) throw kinderError;
+      setKinder(kinderData || []);
+      
+      // Setze Standardwerte, falls vorhanden
+      if (spieleData && spieleData.length > 0) {
+        setSelectedSpiel(spieleData[0].id);
+      }
+      
+      if (gruppenData && gruppenData.length > 0) {
+        setSelectedGruppe(gruppenData[0].id);
+      }
+    } catch (error) {
+      console.error('Fehler beim Laden der Daten:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Lade Ergebnisse basierend auf Filtern
+  const loadErgebnisse = async (spielId: string, gruppeId: string) => {
+    setIsLoading(true);
+    
+    try {
+      let query = supabase
+        .from('ergebnisse')
+        .select('*');
+      
+      if (spielId) {
+        query = query.eq('spiel_id', spielId);
+      }
+      
+      if (gruppeId) {
+        query = query.eq('spielgruppe_id', gruppeId);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      // Verarbeite die Ergebnisse und füge Informationen hinzu
+      const verarbeiteteDaten = await verarbeiteErgebnisse(data || []);
+      setErgebnisse(verarbeiteteDaten);
+    } catch (error) {
+      console.error('Fehler beim Laden der Ergebnisse:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Verarbeitet die Ergebnisse, indem Kinder- und Spielinformationen hinzugefügt werden
+  const verarbeiteErgebnisse = async (rohErgebnisse: Ergebnis[]): Promise<Ergebnis[]> => {
+    // Füge Kind- und Spielinformationen hinzu
+    const ergebnisseMitDetails = rohErgebnisse.map(ergebnis => {
+      const kind = kinder.find(k => k.id === ergebnis.kind_id);
+      const spiel = spiele.find(s => s.id === ergebnis.spiel_id);
+      const spielgruppe = spielgruppen.find(g => g.id === ergebnis.spielgruppe_id);
+      
+      return {
+        ...ergebnis,
+        kind,
+        spiel,
+        spielgruppe
+      };
+    });
+    
+    // Sortiere nach Wert (höher = besser)
+    const sortierteDaten = [...ergebnisseMitDetails].sort((a, b) => {
+      // Für Wertungstypen, bei denen niedriger besser ist (z.B. Zeit)
+      if (a.spiel?.wertungstyp === 'ZEIT_MIN_STRAFE') {
+        return a.wert_numeric - b.wert_numeric;
+      }
+      // Standardfall: höher ist besser
+      return b.wert_numeric - a.wert_numeric;
+    });
+    
+    // Weise Ränge zu
+    let letzterRang = 1;
+    let letzterWert = sortierteDaten.length > 0 ? sortierteDaten[0].wert_numeric : 0;
+    let letzterWertungstyp = sortierteDaten.length > 0 ? sortierteDaten[0].spiel?.wertungstyp : '';
+    
+    const datenMitRang = sortierteDaten.map((ergebnis, index) => {
+      // Bei gleichen Werten gleicher Rang
+      if (index > 0) {
+        const gleicheWertung = (
+          (letzterWertungstyp === 'ZEIT_MIN_STRAFE' && letzterWert === ergebnis.wert_numeric) ||
+          (letzterWertungstyp !== 'ZEIT_MIN_STRAFE' && letzterWert === ergebnis.wert_numeric)
+        );
+        
+        if (!gleicheWertung) {
+          letzterRang = index + 1;
+          letzterWert = ergebnis.wert_numeric;
+        }
+      }
+      
+      // Punkte basierend auf Rang (max 10 Punkte für Rang 1, dann absteigend)
+      const punkte = 11 - letzterRang;
+      const effektivePunkte = punkte > 0 ? punkte : 1; // Mindestens 1 Punkt
+      
+      return {
+        ...ergebnis,
+        rang: letzterRang,
+        punkte: effektivePunkte
+      };
+    });
+    
+    return datenMitRang;
+  };
+
+  // Sortieren der Tabelle
+  const requestSort = (key: string) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Sortierte Ergebnisse basierend auf aktueller Konfiguration
+  const sortedErgebnisse = React.useMemo(() => {
+    const sortableItems = [...ergebnisse];
+    
+    if (sortConfig.key) {
+      sortableItems.sort((a: any, b: any) => {
+        // Behandle verschachtelte Eigenschaften wie 'kind.vorname'
+        const aValue = sortConfig.key.includes('.') 
+          ? sortConfig.key.split('.').reduce((obj, key) => obj && obj[key], a)
+          : a[sortConfig.key];
+        
+        const bValue = sortConfig.key.includes('.')
+          ? sortConfig.key.split('.').reduce((obj, key) => obj && obj[key], b)
+          : b[sortConfig.key];
+          
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    
+    return sortableItems;
+  }, [ergebnisse, sortConfig]);
+
+  // Export der Ergebnisse als CSV
+  const exportToCSV = () => {
+    if (ergebnisse.length === 0) return;
+    
+    const headers = [
+      'Rang', 
+      'Vorname', 
+      'Nachname', 
+      'Geschlecht', 
+      'Gruppe', 
+      'Spiel', 
+      'Wert', 
+      'Einheit', 
+      'Punkte'
+    ];
+    
+    const csvData = sortedErgebnisse.map(e => [
+      e.rang,
+      e.kind?.vorname,
+      e.kind?.nachname,
+      e.kind?.geschlecht,
+      e.spielgruppe?.name,
+      e.spiel?.name,
+      e.wert_numeric,
+      e.spiel?.einheit || '',
+      e.punkte
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ergebnisse_${selectedSpiel}_${selectedGruppe}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Sortier-Indikator für Tabellenspalten
+  const SortIndicator = ({ column }: { column: string }) => {
+    if (sortConfig.key !== column) return null;
+    
+    return (
+      <span className="ml-1">
+        {sortConfig.direction === 'asc' ? <ArrowUp className="inline h-4 w-4" /> : <ArrowDown className="inline h-4 w-4" />}
+      </span>
+    );
+  };
+
+  // UI-Darstellung
+  return (
+    <main className="p-6">
+      <h1 className="text-3xl font-bold mb-6">📊 Auswertung & Administration</h1>
+      
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Auswertung</CardTitle>
+          <CardDescription>Ergebnisse auswerten und Ranglisten erstellen</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="rangliste" value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="rangliste">Rangliste</TabsTrigger>
+              <TabsTrigger value="gruppe">Nach Gruppe</TabsTrigger>
+              <TabsTrigger value="spiel">Nach Spiel</TabsTrigger>
+            </TabsList>
+            
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="w-full md:w-1/3">
+                <Label htmlFor="spiel-select">Spiel</Label>
+                <Select 
+                  value={selectedSpiel} 
+                  onValueChange={setSelectedSpiel}
+                >
+                  <SelectTrigger id="spiel-select">
+                    <SelectValue placeholder="Spiel auswählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {spiele.map(spiel => (
+                      <SelectItem key={spiel.id} value={spiel.id}>
+                        {spiel.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="w-full md:w-1/3">
+                <Label htmlFor="gruppe-select">Gruppe</Label>
+                <Select 
+                  value={selectedGruppe} 
+                  onValueChange={setSelectedGruppe}
+                >
+                  <SelectTrigger id="gruppe-select">
+                    <SelectValue placeholder="Gruppe auswählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {spielgruppen.map(gruppe => (
+                      <SelectItem key={gruppe.id} value={gruppe.id}>
+                        {gruppe.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="w-full md:w-1/3 flex items-end">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={loadData}
+                    className="flex items-center gap-1"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Aktualisieren
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    onClick={exportToCSV}
+                    className="flex items-center gap-1"
+                    disabled={ergebnisse.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Exportieren
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <TabsContent value="rangliste">
+              {isLoading ? (
+                <div className="text-center py-8">Lade Daten...</div>
+              ) : sortedErgebnisse.length === 0 ? (
+                <div className="text-center py-8">Keine Ergebnisse gefunden. Bitte Filter anpassen.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('rang')}
+                        >
+                          Rang <SortIndicator column="rang" />
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('kind.vorname')}
+                        >
+                          Vorname <SortIndicator column="kind.vorname" />
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('kind.nachname')}
+                        >
+                          Nachname <SortIndicator column="kind.nachname" />
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('spielgruppe.name')}
+                        >
+                          Gruppe <SortIndicator column="spielgruppe.name" />
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('wert_numeric')}
+                        >
+                          Wert <SortIndicator column="wert_numeric" />
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer"
+                          onClick={() => requestSort('punkte')}
+                        >
+                          Punkte <SortIndicator column="punkte" />
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedErgebnisse.map((ergebnis) => (
+                        <TableRow key={ergebnis.id}>
+                          <TableCell>{ergebnis.rang}</TableCell>
+                          <TableCell>{ergebnis.kind?.vorname}</TableCell>
+                          <TableCell>{ergebnis.kind?.nachname}</TableCell>
+                          <TableCell>{ergebnis.spielgruppe?.name}</TableCell>
+                          <TableCell>
+                            {ergebnis.wert_numeric} {ergebnis.spiel?.einheit}
+                          </TableCell>
+                          <TableCell>{ergebnis.punkte}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="gruppe">
+              <div className="text-center py-8">
+                Gruppenansicht wird in zukünftigen Versionen verfügbar sein.
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="spiel">
+              <div className="text-center py-8">
+                Spielansicht wird in zukünftigen Versionen verfügbar sein.
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}

@@ -1,0 +1,561 @@
+import React, { useState, useEffect } from 'react'; 
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { PlusCircle, Trash2 } from 'lucide-react';
+import { 
+  DndContext, 
+  closestCenter, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors, 
+  DragEndEvent, 
+  useDraggable, 
+  useDroppable 
+} from '@dnd-kit/core';
+import { Spielgruppe, Kind, KindZuordnung } from '@/lib/types';
+
+interface DndItemsState {
+  [spielgruppeId: string]: Kind[]; 
+}
+
+interface GruppenVerwaltungProps {
+  spielgruppen: Spielgruppe[];
+  kinder: Kind[];
+  kinderZuordnungen: KindZuordnung[];
+  selectedKlasseName: string | null;
+  activeEventId: string;
+  onGruppenChange: () => void;
+  isLoading: boolean;
+}
+
+export default function GruppenVerwaltung({
+  spielgruppen: initialSpielgruppen,
+  kinder: alleKinderDieserKlasse,
+  kinderZuordnungen,
+  selectedKlasseName,
+  activeEventId,
+  onGruppenChange,
+  isLoading
+}: GruppenVerwaltungProps) {
+  if (!selectedKlasseName) {
+    return <p className="text-center text-gray-500">Bitte wählen Sie zuerst eine Klasse aus.</p>;
+  }
+
+  const supabase = createClient();
+  const [spielgruppen, setSpielgruppen] = useState<Spielgruppe[]>(initialSpielgruppen || []);
+  const [localKinderZuordnungen, setLocalKinderZuordnungen] = useState<KindZuordnung[]>(kinderZuordnungen);
+  const [dndItems, setDndItems] = useState<DndItemsState>({});
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(true);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor)
+  );
+
+  useEffect(() => {
+    if (activeEventId) {
+      loadGruppenDaten();
+    }
+  }, [activeEventId]);
+
+  useEffect(() => {
+    updateDndState();
+  }, [alleKinderDieserKlasse, spielgruppen, kinderZuordnungen]);
+
+  const loadGruppenDaten = async () => {
+    setIsDataLoading(true);
+    
+    try {
+      // Lade nur Spielgruppen neu - Kinder und Zuordnungen kommen aus den Props
+      const { data: gruppenData, error: gruppenError } = await supabase
+        .from('spielgruppen')
+        .select('*')
+        .eq('event_id', activeEventId)
+        .eq('klasse', selectedKlasseName)
+        .order('name');
+      if (gruppenError) throw gruppenError;
+      
+      const currentGruppen = gruppenData || [];
+      setSpielgruppen(currentGruppen);
+      
+    } catch (error: any) {
+      console.error('Fehler beim Laden der Gruppendaten:', error);
+      toast.error("Fehler beim Laden der Daten: Die Gruppendaten konnten nicht geladen werden.");
+    } finally {
+      setIsDataLoading(false);
+      updateDndState(); // Aktualisiere DnD-State mit den neuen Daten
+    }
+  };
+
+  // Aktualisiere useEffect, um auf Änderungen in localKinderZuordnungen zu reagieren
+  useEffect(() => {
+    updateDndState();
+  }, [localKinderZuordnungen, spielgruppen, alleKinderDieserKlasse]);
+
+  // Aktualisiere useEffect, um localKinderZuordnungen zu initialisieren
+  useEffect(() => {
+    setLocalKinderZuordnungen(kinderZuordnungen);
+  }, [kinderZuordnungen]);
+  
+  // State zum Verfolgen, ob die automatische Zuweisung bereits durchgeführt wurde
+  const [autoAssignmentInProgress, setAutoAssignmentInProgress] = useState<boolean>(false);
+
+  // Automatische Zuweisung von Kindern zur ersten Gruppe, wenn keine Zuordnung existiert
+  useEffect(() => {
+    // Nur ausführen, wenn es mindestens eine Spielgruppe gibt, Kinder vorhanden sind und keine Zuweisung läuft
+    if (spielgruppen.length > 0 && alleKinderDieserKlasse.length > 0 && !autoAssignmentInProgress && !isDataLoading) {
+      const ersteGruppe = spielgruppen[0];
+      
+      // Prüfe, welche Kinder noch keine Zuordnung haben
+      const kinderOhneZuordnung = alleKinderDieserKlasse.filter(kind => 
+        !localKinderZuordnungen.some(z => z.kind_id === kind.id)
+      );
+      
+      if (kinderOhneZuordnung.length > 0) {
+        console.log(`${kinderOhneZuordnung.length} Kinder ohne Zuordnung gefunden, ordne sie der ersten Gruppe zu`);
+        
+        // Markiere, dass eine Zuweisung läuft, um mehrfache Aufrufe zu verhindern
+        setAutoAssignmentInProgress(true);
+        
+        // Speichere die Zuordnungen in der Datenbank
+        const speichereZuordnungen = async () => {
+          try {
+            // Prüfe zuerst, ob die Zuordnungen bereits existieren
+            const { data: existingZuordnungen, error: checkError } = await supabase
+              .from('kind_spielgruppe_zuordnung')
+              .select('kind_id')
+              .in('kind_id', kinderOhneZuordnung.map(k => k.id))
+              .eq('event_id', activeEventId);
+              
+            if (checkError) throw checkError;
+            
+            // Filtere Kinder, die bereits zugeordnet sind
+            const existingKindIds = (existingZuordnungen || []).map(z => z.kind_id);
+            const neueKinder = kinderOhneZuordnung.filter(kind => 
+              !existingKindIds.includes(kind.id)
+            );
+            
+            if (neueKinder.length > 0) {
+              // Erstelle neue Zuordnungen nur für Kinder, die noch keine haben
+              const neueZuordnungen = neueKinder.map(kind => ({
+                kind_id: kind.id,
+                spielgruppe_id: ersteGruppe.id,
+                event_id: activeEventId
+              }));
+              
+              const { error } = await supabase
+                .from('kind_spielgruppe_zuordnung')
+                .insert(neueZuordnungen);
+              
+              if (error) throw error;
+              console.log(`${neueZuordnungen.length} Kinder wurden automatisch der ersten Gruppe zugeordnet`);
+              
+              // Aktualisiere die Daten
+              onGruppenChange();
+            } else {
+              console.log('Keine neuen Zuordnungen erforderlich, alle Kinder sind bereits zugeordnet');
+            }
+          } catch (error: any) {
+            console.error('Fehler beim automatischen Zuordnen der Kinder:', error);
+            toast.error(`Fehler beim automatischen Zuordnen: ${error.message}`);
+          } finally {
+            // Markiere, dass die Zuweisung abgeschlossen ist
+            setAutoAssignmentInProgress(false);
+          }
+        };
+        
+        speichereZuordnungen();
+      }
+    }
+  }, [spielgruppen, alleKinderDieserKlasse, localKinderZuordnungen, activeEventId, isDataLoading, autoAssignmentInProgress, supabase, onGruppenChange]);
+
+  const updateDndState = () => {
+    const newItems: DndItemsState = {};
+    spielgruppen.forEach(g => newItems[g.id] = []); 
+
+    alleKinderDieserKlasse.forEach(kind => {
+      const gruppeId = localKinderZuordnungen.find(z => z.kind_id === kind.id)?.spielgruppe_id;
+      if (gruppeId && newItems[gruppeId]) {
+        newItems[gruppeId].push(kind);
+      }
+      // Kinder ohne Zuordnung werden nicht angezeigt, da sie automatisch der ersten Gruppe zugeordnet werden
+    });
+
+    Object.keys(newItems).forEach(containerId => {
+      newItems[containerId].sort((a, b) => a.nachname.localeCompare(b.nachname) || a.vorname.localeCompare(b.vorname));
+    });
+
+    setDndItems(newItems);
+  };
+
+  const addSpielgruppe = async () => {
+    const nextGroupNumber = spielgruppen.length + 1;
+    const autoGeneratedName = `${selectedKlasseName} - ${nextGroupNumber}`;
+    // Generiere leiter_zugangscode nach dem Schema "leiter-Gruppenname"
+    // Entferne Leerzeichen und ersetze sie durch Bindestriche
+    const leiterCode = `leiter-${autoGeneratedName.replace(/\s+/g, '-')}`;
+
+    if (!activeEventId || !selectedKlasseName) {
+        toast.error("Kein Event oder keine Klasse ausgewählt.");
+        return;
+    }
+
+    setIsDataLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('spielgruppen')
+        .insert({
+          name: autoGeneratedName,
+          event_id: activeEventId,
+          klasse: selectedKlasseName,
+          leiter_zugangscode: leiterCode
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      toast.success(`Gruppe "${autoGeneratedName}" erfolgreich erstellt.`);
+      onGruppenChange(); // Aktualisiere die Daten
+    } catch (error: any) {
+      console.error("Fehler beim Erstellen der Gruppe:", error);
+      toast.error(`Fehler beim Erstellen der Gruppe: ${error.message}`);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  const deleteSpielgruppe = async (gruppeId: string, gruppeName: string) => {
+    if (!activeEventId) {
+      toast.error("Kein aktives Event ausgewählt.");
+      return;
+    }
+
+    if (!window.confirm(`Möchten Sie die Gruppe "${gruppeName}" wirklich löschen? Alle Zuordnungen werden ebenfalls gelöscht.`)) {
+      return;
+    }
+
+    setIsDataLoading(true);
+    try {
+      // Lösche zuerst alle Zuordnungen zu dieser Gruppe
+      const { error: zuordnungError } = await supabase
+        .from('kind_spielgruppe_zuordnung')
+        .delete()
+        .eq('spielgruppe_id', gruppeId)
+        .eq('event_id', activeEventId);
+
+      if (zuordnungError) throw zuordnungError;
+
+      // Lösche dann die Gruppe selbst
+      const { error: gruppeError } = await supabase
+        .from('spielgruppen')
+        .delete()
+        .eq('id', gruppeId)
+        .eq('event_id', activeEventId);
+
+      if (gruppeError) throw gruppeError;
+
+      toast.success(`Gruppe "${gruppeName}" erfolgreich gelöscht.`);
+      onGruppenChange(); // Aktualisiere die Daten
+    } catch (error: any) {
+      console.error("Fehler beim Löschen der Gruppe:", error);
+      toast.error(`Fehler beim Löschen der Gruppe: ${error.message}`);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+
+    if (!over || !active.id) return;
+
+    const activeId = active.id.toString();
+    const overContainerId = over.id.toString();
+
+    // Wenn das Kind in den gleichen Container gezogen wird, nichts tun
+    const currentAssignment = localKinderZuordnungen.find(z => z.kind_id === activeId);
+    if (currentAssignment?.spielgruppe_id === overContainerId) {
+      return;
+    }
+
+    console.log(`Moving kind ${activeId} to container ${overContainerId}`);
+    
+    setIsDataLoading(true);
+    try {
+      // Aktualisiere die Datenbank
+      if (currentAssignment) {
+        // Wenn das Kind bereits einer Gruppe zugeordnet ist, aktualisiere die Zuordnung
+        const { error } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .update({ spielgruppe_id: overContainerId })
+          .eq('kind_id', activeId)
+          .eq('event_id', activeEventId);
+
+        if (error) throw error;
+        toast.success("Kind erfolgreich verschoben.");
+      } else {
+        // Wenn das Kind noch keiner Gruppe zugeordnet ist, erstelle eine neue Zuordnung
+        const { error } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .insert({
+            kind_id: activeId,
+            spielgruppe_id: overContainerId,
+            event_id: activeEventId
+          });
+
+        if (error) throw error;
+        toast.success("Kind erfolgreich zugeordnet.");
+      }
+
+      // Aktualisiere die lokalen Daten
+      // Aktualisiere die lokale Zuordnung, damit die UI sofort reagiert
+      if (currentAssignment) {
+        if (overContainerId) {
+          // Ändere die bestehende Zuordnung
+          const updatedZuordnungen = localKinderZuordnungen.map(z => 
+            z.kind_id === activeId ? { ...z, spielgruppe_id: overContainerId } : z
+          );
+          // Aktualisiere den State
+          setLocalKinderZuordnungen(updatedZuordnungen);
+        }
+      } else if (overContainerId) {
+        // Füge eine neue Zuordnung hinzu
+        const newZuordnung: KindZuordnung = {
+          id: `temp-${Date.now()}`, // Temporäre ID
+          kind_id: activeId,
+          spielgruppe_id: overContainerId,
+          event_id: activeEventId,
+          created_at: new Date().toISOString()
+        };
+        setLocalKinderZuordnungen([...localKinderZuordnungen, newZuordnung]);
+      }
+      
+      // Aktualisiere den DnD-State, um die UI sofort zu aktualisieren
+      updateDndState();
+      
+      // Lade die Daten neu, um sicherzustellen, dass alles synchron ist
+      onGruppenChange();
+    } catch (error: any) {
+      console.error("Fehler beim Aktualisieren der Zuordnung:", error);
+      toast.error(`Fehler beim Aktualisieren: ${error.message}`);
+    } finally {
+      setIsDataLoading(false);
+    }
+  }
+
+  const handleAutoDistribute = async () => {
+    if (spielgruppen.length < 2) {
+      toast.warning("Bitte erstellen Sie mindestens zwei Spielgruppen, um die Kinder zu verteilen.");
+      return;
+    }
+    if (alleKinderDieserKlasse.length === 0) {
+      toast.info("Keine Kinder in dieser Klassenstufe zum Verteilen vorhanden.");
+      return;
+    }
+
+    if (!window.confirm("Möchten Sie alle Kinder automatisch auf die Gruppen verteilen? Bestehende Zuordnungen werden überschrieben.")) {
+      return;
+    }
+
+    setIsDataLoading(true);
+    toast.info("Starte automatische Verteilung...");
+    console.log("Auto-Distribute triggered for", alleKinderDieserKlasse.length, "children into", spielgruppen.length, "groups.");
+
+    try {
+      // Kinder nach Geschlecht trennen und mischen
+      const maedchen = alleKinderDieserKlasse.filter(kind => kind.geschlecht === "Mädchen");
+      const jungen = alleKinderDieserKlasse.filter(kind => kind.geschlecht === "Junge");
+      
+      const shuffledMaedchen = [...maedchen].sort(() => Math.random() - 0.5);
+      const shuffledJungen = [...jungen].sort(() => Math.random() - 0.5);
+
+      console.log(`Verteile ${shuffledMaedchen.length} Mädchen und ${shuffledJungen.length} Jungen auf ${spielgruppen.length} Gruppen`);
+
+      // Neue Zuordnungen erstellen
+      const neueZuordnungen: { kind_id: string; spielgruppe_id: string; event_id: string }[] = [];
+      const numGruppen = spielgruppen.length;
+
+      // Mädchen verteilen
+      shuffledMaedchen.forEach((kind, index) => {
+        const gruppenIndex = index % numGruppen;
+        neueZuordnungen.push({
+          kind_id: kind.id,
+          spielgruppe_id: spielgruppen[gruppenIndex].id,
+          event_id: activeEventId
+        });
+      });
+      
+      // Jungen verteilen
+      shuffledJungen.forEach((kind, index) => {
+        const gruppenIndex = index % numGruppen;
+        neueZuordnungen.push({
+          kind_id: kind.id,
+          spielgruppe_id: spielgruppen[gruppenIndex].id,
+          event_id: activeEventId
+        });
+      });
+      
+      console.log(`Verteilung geplant: ${neueZuordnungen.length} Zuordnungen`);
+
+      // Alte Zuordnungen löschen
+      const { error: deleteError } = await supabase
+        .from('kind_spielgruppe_zuordnung')
+        .delete()
+        .eq('event_id', activeEventId)
+        .in('spielgruppe_id', spielgruppen.map(g => g.id));
+      
+      if (deleteError) {
+        console.error("Fehler beim Löschen alter Zuordnungen:", deleteError);
+        throw new Error(`Fehler beim Löschen alter Zuordnungen: ${deleteError.message}`);
+      }
+      console.log("Alte Zuordnungen gelöscht.");
+      
+      // Neue Zuordnungen einfügen
+      if (neueZuordnungen.length > 0) {
+        const { error: insertError } = await supabase
+          .from('kind_spielgruppe_zuordnung')
+          .insert(neueZuordnungen);
+        
+        if (insertError) {
+          console.error("Fehler beim Einfügen neuer Zuordnungen:", insertError);
+          throw new Error(`Fehler beim Einfügen neuer Zuordnungen: ${insertError.message}`);
+        }
+        console.log("Neue Zuordnungen eingefügt.");
+      }
+      
+      toast.success(`${neueZuordnungen.length} Kinder wurden erfolgreich auf die Gruppen verteilt.`);
+      
+      // Aktualisiere die lokalen Daten
+      onGruppenChange();
+      
+      // Aktualisiere die lokalen Zuordnungen
+      const { data: updatedZuordnungen } = await supabase
+        .from('kind_spielgruppe_zuordnung')
+        .select('*')
+        .in('spielgruppe_id', spielgruppen.map(g => g.id));
+        
+      if (updatedZuordnungen) {
+        setLocalKinderZuordnungen(updatedZuordnungen);
+      }
+    } catch (error: any) {
+      console.error('Fehler bei der automatischen Verteilung:', error);
+      toast.error(`Fehler: ${error.message}`);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  function DraggableKindItem({ kind }: { kind: Kind }) {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+      id: kind.id,
+    });
+    const style = transform ? {
+      transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      zIndex: isDragging ? 100 : 'auto',
+      cursor: isDragging ? 'grabbing' : 'grab',
+    } : undefined;
+
+    return (
+      <div 
+        ref={setNodeRef} 
+        style={style} 
+        {...listeners} 
+        {...attributes}
+        className={`p-2 mb-2 bg-white rounded-md shadow-sm border ${isDragging ? 'opacity-50 shadow-lg' : 'hover:bg-gray-50'} cursor-grab`}
+      >
+        {kind.vorname} {kind.nachname} ({kind.geschlecht === 'Junge' ? '♂️' : '♀️'}) 
+      </div>
+    );
+  }
+
+  function DroppableContainer({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+    const { setNodeRef, isOver } = useDroppable({
+      id: id,
+    });
+
+    const childCount = React.Children.count(children);
+
+    return (
+      <Card ref={setNodeRef} className={`h-full ${isOver ? 'bg-primary/10' : ''}`}>
+        <CardHeader className="bg-muted p-4">
+          <CardTitle className="text-base flex justify-between items-center">
+            <span className="truncate pr-2">{title} ({childCount})</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => {
+                  const gruppe = spielgruppen.find(g => g.id === id);
+                  if(gruppe) deleteSpielgruppe(gruppe.id, gruppe.name);
+              }}
+              title="Gruppe löschen"
+              className="h-6 w-6"
+            >
+              <Trash2 className="h-4 w-4 text-destructive"/>
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 min-h-[200px]">
+          {children}
+          {React.Children.count(children) === 0 && <p className="text-xs text-muted-foreground italic">Leer</p>}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isLoading || isDataLoading && spielgruppen.length === 0 && alleKinderDieserKlasse.length === 0) {
+    return <p>Lade Gruppendaten...</p>;
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Spielgruppen für {selectedKlasseName}</h3>
+          <div className="flex space-x-2">
+            {spielgruppen.length >= 2 && (
+              <Button 
+                onClick={handleAutoDistribute} 
+                disabled={alleKinderDieserKlasse.length === 0}
+                variant="outline"
+              >
+                Kinder automatisch verteilen
+              </Button>
+            )}
+            <Button onClick={addSpielgruppe} variant="outline">
+              <PlusCircle className="mr-2 h-4 w-4" /> Neue Gruppe
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Spielgruppen Container */}
+          {spielgruppen.map(gruppe => (
+            <DroppableContainer 
+              key={gruppe.id} 
+              id={gruppe.id} 
+              title={gruppe.name}
+            >
+              {dndItems[gruppe.id]?.map(kind => (
+                <DraggableKindItem key={kind.id} kind={kind} />
+              ))}
+            </DroppableContainer>
+          ))}
+        </div>
+
+        {spielgruppen.length === 0 && ( 
+          <p className="text-muted-foreground mt-4">Noch keine Gruppen erstellt. Fügen Sie eine Gruppe hinzu, um Kinder zuzuordnen.</p>
+        )}
+      </div>
+    </DndContext>
+  );
+}
