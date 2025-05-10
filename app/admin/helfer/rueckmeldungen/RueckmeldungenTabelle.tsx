@@ -259,7 +259,7 @@ export function RueckmeldungenTabelle({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteRueckmeldung} className="bg-red-500 hover:bg-red-600">
+            <AlertDialogAction onClick={handleDeleteRueckmeldung} className="bg-black hover:bg-gray-800">
               Löschen
             </AlertDialogAction>
           </AlertDialogFooter>

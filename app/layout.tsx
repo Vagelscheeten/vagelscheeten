@@ -54,7 +54,7 @@ export default function RootLayout({
       >
         <MainNavigation />
         <AdminSidebarWrapper />
-        <div className={`${isAdmin ? 'md:ml-56' : ''} flex flex-col flex-grow`}>
+        <div className="flex flex-col flex-grow transition-all duration-300">
           <main className="container-main py-6 flex-grow">
             {children}
           </main>

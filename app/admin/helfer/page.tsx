@@ -96,7 +96,7 @@ export default function HelferVerwaltung() {
       <div className="mb-8">
         <HeadingSection /> 
         <div className="flex flex-wrap gap-2 mt-4">
-          <Button onClick={() => setIsFormOpen(true)} size="sm">
+          <Button onClick={() => setIsFormOpen(true)} size="sm" variant="secondary">
             <PlusCircle className="mr-2 h-4 w-4" /> Neue Rückmeldung
           </Button>
           <Button 

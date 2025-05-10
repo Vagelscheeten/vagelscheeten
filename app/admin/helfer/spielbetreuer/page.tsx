@@ -473,7 +473,7 @@ export default function SpielbetreuerPage() {
                 </div>
                 
                 <Button
-                  variant={showOnlyUnassigned ? "default" : "outline"}
+                  variant={showOnlyUnassigned ? "secondary" : "outline"}
                   size="sm"
                   onClick={() => setShowOnlyUnassigned(!showOnlyUnassigned)}
                   className="whitespace-nowrap"

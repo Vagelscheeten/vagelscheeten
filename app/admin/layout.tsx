@@ -6,7 +6,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="pt-16">
+    <div className="pt-16 lg:pl-56 transition-all duration-300">
       {children}
     </div>
   );

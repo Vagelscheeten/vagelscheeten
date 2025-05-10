@@ -181,7 +181,7 @@ export function ManuelleZuteilungModal({
               <SelectTrigger id="klasse" className="w-full">
                 <SelectValue placeholder="Klasse auswählen" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-white">
                 <SelectItem value="all">Alle Klassen</SelectItem>
                 {isLoading ? (
                   <SelectItem value="loading" disabled>
@@ -212,7 +212,7 @@ export function ManuelleZuteilungModal({
               <SelectTrigger id="kind" className="w-full">
                 <SelectValue placeholder="Kind auswählen" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-white">
                 {isLoading ? (
                   <SelectItem value="loading" disabled>
                     Kinder werden geladen...

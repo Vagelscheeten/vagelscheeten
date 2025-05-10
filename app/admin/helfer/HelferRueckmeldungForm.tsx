@@ -403,7 +403,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[625px]">
+      <DialogContent className="sm:max-w-[625px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Neue Helfer-Rückmeldung erfassen</DialogTitle>
         </DialogHeader>
@@ -419,7 +419,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Klasse auswählen" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white">
                   {klassen.map((klasse) => (
                     <SelectItem key={klasse.name} value={klasse.name}>
                       {klasse.name}
@@ -439,7 +439,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={!ausgewaehlteKlasse ? "Zuerst Klasse auswählen" : kindernachKlasse.length === 0 ? "Keine Kinder in dieser Klasse" : "Kind auswählen"} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white">
                   {kindernachKlasse.map((kind) => (
                     <SelectItem 
                       key={kind.id} 
@@ -483,7 +483,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Zeitfenster auswählen" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-white">
                       <SelectItem value="vormittag">Vormittag</SelectItem>
                       <SelectItem value="nachmittag">Nachmittag</SelectItem>
                       <SelectItem value="beides">Ganztägig (beides)</SelectItem>
@@ -536,7 +536,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                         <SelectTrigger className="flex-1">
                           <SelectValue placeholder="Aufgabe auswählen" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                           {verfuegbareAufgaben.map((aufgabe) => (
                             <SelectItem key={aufgabe.id} value={aufgabe.id}>
                               {aufgabe.titel}
@@ -552,7 +552,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                         <SelectTrigger className="w-[100px]">
                           <SelectValue placeholder="Priorität" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                           <SelectItem value="1">Priorität 1</SelectItem>
                           <SelectItem value="2">Priorität 2</SelectItem>
                           <SelectItem value="3">Priorität 3</SelectItem>
@@ -620,7 +620,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                           <SelectTrigger>
                             <SelectValue placeholder="Spendenart auswählen" />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="bg-white">
                             {spendenBedarfe.map((bedarf) => (
                               <SelectItem 
                                 key={bedarf.id} 
@@ -680,7 +680,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Abbrechen
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} variant="secondary">
               {isSubmitting ? 'Wird gespeichert...' : 'Speichern'}
             </Button>
             <Button 
