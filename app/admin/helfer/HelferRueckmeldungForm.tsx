@@ -455,7 +455,7 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={!ausgewaehlteKlasse ? "Zuerst Klasse auswählen" : kindernachKlasse.length === 0 ? "Keine Kinder in dieser Klasse" : "Kind auswählen"} />
                 </SelectTrigger>
-                <SelectContent className="bg-white">
+                <SelectContent className="bg-white max-h-[250px] overflow-y-auto">
                   {kindernachKlasse.map((kind) => (
                     <SelectItem 
                       key={kind.id} 
