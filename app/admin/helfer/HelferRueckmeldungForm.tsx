@@ -280,8 +280,9 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
       return false;
     }
     
-    if (!istSpringer && ausgewaehlteAufgaben.length === 0) {
-      toast.error('Bitte wähle mindestens eine Aufgabe aus oder wähle die Springer-Option.');
+    // Prüfen ob entweder Aufgaben, Springer-Option ODER Essensspenden ausgewählt wurden
+    if (!istSpringer && ausgewaehlteAufgaben.length === 0 && ausgewaehlteSpenden.length === 0) {
+      toast.error('Bitte wähle mindestens eine Aufgabe, die Springer-Option oder eine Essensspende aus.');
       return false;
     }
     
@@ -302,36 +303,42 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
     let success = true;
     
     try {
-      if (istSpringer) {
-        // Springer-Rückmeldung erstellen
-        const { error } = await supabase
-          .from('helfer_rueckmeldungen')
-          .insert({
+      // Helfer-Rückmeldung erstellen, wenn Springer oder Aufgaben ausgewählt sind
+      if (istSpringer || ausgewaehlteAufgaben.length > 0) {
+        if (istSpringer) {
+          // Springer-Rückmeldung erstellen
+          const { error } = await supabase
+            .from('helfer_rueckmeldungen')
+            .insert({
+              kind_id: ausgewaehltesKindId,
+              aufgabe_id: null,  // Keine spezifische Aufgabe bei Springern
+              prioritaet: 1,     // Standard-Priorität für Tracking
+              ist_springer: true,
+              zeitfenster: springerZeitfenster,
+              freitext: freitext.trim() || null
+            });
+            
+          if (error) throw error;
+        } else if (ausgewaehlteAufgaben.length > 0) {
+          // Für jede ausgewählte Aufgabe einen Eintrag erstellen
+          const inserts = ausgewaehlteAufgaben.map(aufgabe => ({
             kind_id: ausgewaehltesKindId,
-            aufgabe_id: null,  // Keine spezifische Aufgabe bei Springern
-            prioritaet: 1,     // Standard-Priorität für Tracking
-            ist_springer: true,
-            zeitfenster: springerZeitfenster,
+            aufgabe_id: aufgabe.aufgabeId,
+            prioritaet: aufgabe.prioritaet,
+            ist_springer: false,
+            zeitfenster: null, // Kein Zeitfenster für reguläre Rückmeldungen
             freitext: freitext.trim() || null
-          });
-          
-        if (error) throw error;
-      } else {
-        // Für jede ausgewählte Aufgabe einen Eintrag erstellen
-        const inserts = ausgewaehlteAufgaben.map(aufgabe => ({
-          kind_id: ausgewaehltesKindId,
-          aufgabe_id: aufgabe.aufgabeId,
-          prioritaet: aufgabe.prioritaet,
-          ist_springer: false,
-          zeitfenster: null, // Kein Zeitfenster für reguläre Rückmeldungen
-          freitext: freitext.trim() || null
-        }));
+          }));
 
-        const { error } = await supabase
-          .from('helfer_rueckmeldungen')
-          .insert(inserts);
-        
-        if (error) throw error; 
+          const { error } = await supabase
+            .from('helfer_rueckmeldungen')
+            .insert(inserts);
+          
+          if (error) throw error; 
+        }
+      } else {
+        // Keine Helferaufgaben ausgewählt - bei reinen Essensspenden ist das jetzt erlaubt
+        // Wir müssen nichts in die helfer_rueckmeldungen Tabelle schreiben
       }
 
       // Essensspenden speichern, falls vorhanden
@@ -363,7 +370,16 @@ export function HelferRueckmeldungForm({ aufgaben, onClose, onSuccess }: HelferR
         }
       }
       
-      toast.success(success ? 'Rückmeldung erfolgreich gespeichert!' : 'Rückmeldung teilweise gespeichert.');
+      // Passende Erfolgsmeldung je nach Art der Rückmeldung
+      if (!success) {
+        toast.success('Rückmeldung teilweise gespeichert.');
+      } else if (ausgewaehlteSpenden.length > 0 && !istSpringer && ausgewaehlteAufgaben.length === 0) {
+        toast.success('Essensspende erfolgreich gespeichert!');
+      } else if (ausgewaehlteSpenden.length > 0 && (istSpringer || ausgewaehlteAufgaben.length > 0)) {
+        toast.success('Helfer-Rückmeldung und Essensspende erfolgreich gespeichert!');
+      } else {
+        toast.success('Helfer-Rückmeldung erfolgreich gespeichert!');
+      }
       onSuccess(); // Parent Komponente benachrichtigen (z.B. zum Daten neu laden)
       return true; // Erfolg signalisieren
 
