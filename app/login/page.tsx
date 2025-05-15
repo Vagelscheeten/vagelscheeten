@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-export default function LoginPage() {
+// Komponent für den Inhalt der Login-Seite
+function LoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,5 +95,14 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+// Hauptkomponente mit Suspense-Boundary
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Wird geladen...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
