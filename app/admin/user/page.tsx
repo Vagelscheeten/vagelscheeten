@@ -8,6 +8,41 @@ import { DeleteUserDialog } from '@/components/ui/DeleteUserDialog';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
+// Vereinfachte Admin-Funktionen, die die Server-API nutzen
+const adminApi = {
+  // Benutzer aktualisieren (Passwort, Metadaten, E-Mail, etc.)
+  updateUser: async (userId: string, updates: any) => {
+    const res = await fetch('/api/admin/users-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', userId, updates })
+    });
+    
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || res.statusText);
+    }
+    
+    return res.json();
+  },
+  
+  // Benutzer löschen
+  deleteUser: async (userId: string) => {
+    const res = await fetch('/api/admin/users-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', userId })
+    });
+    
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || res.statusText);
+    }
+    
+    return res.json();
+  }
+};
+
 interface User {
   id: string;
   email: string;
@@ -120,18 +155,8 @@ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
       }
       
       if (Object.keys(updates).length > 0) {
-        const res = await fetch(`/api/admin/users/${editUser.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(updates)
-        });
-        
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || res.statusText);
-        }
+        // Nutzung der neuen Admin-API
+        await adminApi.updateUser(editUser.id, updates);
       }
 
       toast.success('User aktualisiert!');
@@ -226,23 +251,15 @@ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     if (!editUser) return;
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${editUser.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          password: DEFAULT_PASSWORD,
-          user_metadata: {
-            ...editUser.user_metadata,
-            force_password_change: true
-          }
-        })
+      // Nutzung der neuen Admin-API
+      await adminApi.updateUser(editUser.id, {
+        password: DEFAULT_PASSWORD,
+        user_metadata: {
+          ...editUser.user_metadata,
+          force_password_change: true
+        }
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || res.statusText);
-      }
+      
       toast.success('Passwort wurde auf Standard zurückgesetzt!');
       setEditUser(null);
       fetchUsers();
@@ -262,13 +279,9 @@ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     if (!editUser) return;
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/admin/users/${editUser.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || res.statusText);
-      }
+      // Nutzung der neuen Admin-API
+      await adminApi.deleteUser(editUser.id);
+      
       toast.success('Nutzer wurde gelöscht!');
       setEditUser(null);
       fetchUsers();
