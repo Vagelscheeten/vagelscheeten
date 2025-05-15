@@ -45,8 +45,19 @@ export default function ChangePasswordPage() {
       return;
     }
     
+    // Erweiterte Passwort-Validierung
     if (password.length < 8) {
       toast.error('Passwort muss mindestens 8 Zeichen lang sein');
+      return;
+    }
+    
+    // Supabase erfordert mindestens einen Großbuchstaben, einen Kleinbuchstaben und eine Zahl
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    
+    if (!hasUppercase || !hasLowercase || !hasNumber) {
+      toast.error('Passwort muss mindestens einen Großbuchstaben, einen Kleinbuchstaben und eine Zahl enthalten');
       return;
     }
     
@@ -61,22 +72,26 @@ export default function ChangePasswordPage() {
       
       if (updateError) throw updateError;
       
-      // force_password_change Flag zurücksetzen
-      const { error: metadataError } = await fetch(`/api/admin/users/${user.id}`, {
-        method: 'PATCH',
+      // force_password_change Flag mit der neuen API zurücksetzen
+      const metadataResponse = await fetch('/api/admin/users-action', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          user_metadata: {
-            ...user.user_metadata,
-            force_password_change: false
+          action: 'update',
+          userId: user.id,
+          updates: {
+            user_metadata: {
+              ...user.user_metadata,
+              force_password_change: false
+            }
           }
         })
-      }).then(res => {
-        if (!res.ok) return res.json();
-        return { error: null };
       });
+      
+      const metadataResult = await metadataResponse.json();
+      const metadataError = !metadataResponse.ok ? metadataResult : null;
       
       if (metadataError) throw metadataError;
       
