@@ -158,6 +158,15 @@ export default function HelferVerwaltung() {
             size="sm" 
             asChild
           >
+            <Link href="/admin/helfer/teamleiter">
+              <Users className="mr-2 h-4 w-4" /> Teamleiter
+            </Link>
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            asChild
+          >
             <Link href="/admin/helfer/pdf">
               <FileDown className="mr-2 h-4 w-4" /> PDF-Ausgabe
             </Link>

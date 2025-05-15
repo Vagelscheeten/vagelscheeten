@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Loader2, UserPlus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ZuteilungManuellModal } from './ZuteilungManuellModal';
@@ -30,6 +31,12 @@ type Zuteilung = {
     nachname: string;
     klasse: string;
   } | null;
+  // Zusätzliche Felder für die Bearbeitung
+  kind_id: string;
+  kind_name: string;
+  aufgabe_titel: string;
+  // Weitere Felder, die in der Zuteilung vorhanden sein könnten
+  [key: string]: any;
 };
 
 // Type for raw data coming from Supabase select with join
@@ -53,16 +60,25 @@ export function AufgabenZuteilungView() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedKind, setSelectedKind] = useState<{id: string, name: string} | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedZuteilung, setSelectedZuteilung] = useState<{
-    id: string;
-    kind_id: string;
-    kind_identifier: string;
-    kind_name: string;
-    aufgabe_id: string;
-    aufgabe_titel: string;
-    via_springer: boolean;
-  } | null>(null);
+  
+  const openModal = (kindId?: string, kindName?: string) => {
+    if (kindId && kindName) {
+      setSelectedKind({ id: kindId, name: kindName });
+    } else {
+      setSelectedKind(null);
+    }
+    setIsModalOpen(true);
+  };
+  
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedKind(null);
+  };
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<{id: string, kindName: string, aufgabeTitel: string} | null>(null);
+  const [selectedZuteilung, setSelectedZuteilung] = useState<Zuteilung | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -99,7 +115,10 @@ export function AufgabenZuteilungView() {
       // Explicitly type 'z' and the return type of map
       const validZuteilungen = (zuteilungenData || []).map((z: SupabaseZuteilung): Zuteilung => ({
            ...z,
-           kinder: z.kinder // Kann null sein, wenn kein Kind gefunden wird
+           kinder: z.kinder, // Kann null sein, wenn kein Kind gefunden wird
+           kind_id: z.kinder?.id || '',
+           kind_name: z.kinder ? `${z.kinder.vorname} ${z.kinder.nachname}` : 'Unbekannt',
+           aufgabe_titel: '' // Wird später in der UI gesetzt
        }));
       setZuteilungen(validZuteilungen);
     }
@@ -111,28 +130,23 @@ export function AufgabenZuteilungView() {
     loadData();
   }, [loadData]);
 
-  const openModal = () => {
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-  };
+  // openModal und closeModal sind weiter oben definiert
 
   const openEditModal = (zuteilung: Zuteilung, aufgabeTitel: string) => {
     if (!zuteilung.kinder) {
-      toast.error('Kind-Informationen fehlen.');
+      toast.error('Fehler: Keine Kindinformationen verfügbar');
       return;
     }
-    setSelectedZuteilung({
-      id: zuteilung.id,
+    
+    // Erstelle eine neue Zuteilung mit den aktualisierten Werten
+    const updatedZuteilung: Zuteilung = {
+      ...zuteilung,
       kind_id: zuteilung.kinder.id,
-      kind_identifier: zuteilung.kind_identifier,
       kind_name: `${zuteilung.kinder.vorname} ${zuteilung.kinder.nachname}`,
-      aufgabe_id: zuteilung.aufgabe_id,
-      aufgabe_titel: aufgabeTitel,
-      via_springer: zuteilung.via_springer
-    });
+      aufgabe_titel: aufgabeTitel
+    };
+    
+    setSelectedZuteilung(updatedZuteilung);
     setIsEditModalOpen(true);
   };
 
@@ -147,29 +161,39 @@ export function AufgabenZuteilungView() {
   };
 
   const handleRemoveAssignment = async (assignmentId: string, kindName: string, aufgabeTitel: string) => {
-    if (window.confirm(`Möchtest du die Zuteilung von ${kindName} zur Aufgabe "${aufgabeTitel}" wirklich entfernen?`)) {
-      toast.loading('Entferne Zuteilung...');
-      const supabase = createClient();
-      try {
-        const { error: deleteError } = await supabase
-          .from('helfer_zuteilungen')
-          .delete()
-          .eq('id', assignmentId);
-
-        if (deleteError) {
-          throw deleteError;
-        }
-
-        toast.dismiss();
-        toast.success('Zuteilung erfolgreich entfernt!');
-        loadData(); // Daten neu laden, um die Änderung anzuzeigen
-      } catch (error: any) {
-        console.error("Fehler beim Entfernen der Zuteilung:", error);
-        toast.dismiss();
-        toast.error('Fehler beim Entfernen der Zuteilung.');
-      }
-    }
+    setPendingDeletion({ id: assignmentId, kindName, aufgabeTitel });
+    setIsDeleteDialogOpen(true);
   };
+
+  const confirmRemoveAssignment = async () => {
+    if (!pendingDeletion) return;
+    
+    const { id: assignmentId, kindName, aufgabeTitel } = pendingDeletion;
+    
+    toast.loading('Entferne Zuteilung...');
+    const supabase = createClient();
+    try {
+      const { error: deleteError } = await supabase
+        .from('helfer_zuteilungen')
+        .delete()
+        .eq('id', assignmentId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      toast.dismiss();
+      toast.success('Zuteilung erfolgreich entfernt!');
+      loadData(); // Daten neu laden, um die Änderung anzuzeigen
+    } catch (error: any) {
+      console.error("Fehler beim Entfernen der Zuteilung:", error);
+      toast.dismiss();
+      toast.error('Fehler beim Entfernen der Zuteilung.');
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setPendingDeletion(null);
+    }
+  }
 
   const getZuteilungenFuerAufgabe = (aufgabeId: string): Zuteilung[] => {
     return zuteilungen.filter(z => z.aufgabe_id === aufgabeId);
@@ -245,6 +269,8 @@ export function AufgabenZuteilungView() {
         isOpen={isModalOpen}
         onClose={closeModal}
         onSuccess={handleSuccess}
+        kindId={selectedKind?.id}
+        kindName={selectedKind?.name}
       />
       <ZuteilungBearbeitenModal
         isOpen={isEditModalOpen}
@@ -252,6 +278,26 @@ export function AufgabenZuteilungView() {
         onSuccess={handleSuccess}
         zuteilung={selectedZuteilung}
       />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Zuteilung wirklich entfernen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Möchtest du die Zuteilung von {pendingDeletion?.kindName} zur Aufgabe "{pendingDeletion?.aufgabeTitel}" wirklich entfernen?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmRemoveAssignment}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Entfernen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

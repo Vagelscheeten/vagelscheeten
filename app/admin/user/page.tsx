@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { ResetPasswordDialog } from '@/components/ui/ResetPasswordDialog';
+import { DeleteUserDialog } from '@/components/ui/DeleteUserDialog';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
@@ -21,12 +23,14 @@ export default function UserManagementPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editPw, setEditPw] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+const [showResetPwDialog, setShowResetPwDialog] = useState(false);
+const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
   // Neuer Benutzer
   const [showNewUser, setShowNewUser] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const DEFAULT_PASSWORD = 'Start1234';
   const [createLoading, setCreateLoading] = useState(false);
 
   useEffect(() => {
@@ -60,24 +64,23 @@ export default function UserManagementPage() {
   }
   
   async function handleCreateUser() {
-    if (!newEmail || !newPassword) {
-      toast.error('E-Mail und Passwort sind erforderlich');
-      return;
-    }
-    
-    setCreateLoading(true);
-    try {
-      const res = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: newEmail,
-          password: newPassword,
-          name: newName
-        })
-      });
+  if (!newEmail) {
+    toast.error('E-Mail ist erforderlich');
+    return;
+  }
+  setCreateLoading(true);
+  try {
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: newEmail,
+        password: DEFAULT_PASSWORD,
+        name: newName
+      })
+    });
       
       if (!res.ok) {
         const err = await res.json();
@@ -88,7 +91,6 @@ export default function UserManagementPage() {
       setShowNewUser(false);
       setNewName('');
       setNewEmail('');
-      setNewPassword('');
       fetchUsers();
     } catch (e: any) {
       toast.error('Fehler beim Erstellen des Benutzers: ' + (e.message || e.toString()));
@@ -132,31 +134,8 @@ export default function UserManagementPage() {
         }
       }
 
-      // Passwort ändern
-      if (editPw) {
-        const res = await fetch(`/api/admin/users/${editUser.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ 
-            password: editPw, 
-            user_metadata: {
-              ...editUser.user_metadata,
-              force_password_change: true 
-            }
-          })
-        });
-        
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || res.statusText);
-        }
-      }
-
       toast.success('User aktualisiert!');
       setEditUser(null);
-      setEditPw('');
       fetchUsers();
     } catch (e: any) {
       toast.error('Fehler beim Speichern: ' + (e.message || e.toString()));
@@ -174,35 +153,27 @@ export default function UserManagementPage() {
       
       {/* Formular für neuen Benutzer */}
       {showNewUser && (
-        <div className="border rounded p-4 bg-gray-50 mb-8">
-          <h2 className="font-semibold mb-2">Neuen Benutzer anlegen</h2>
-          <div className="mb-2">
-            <label className="block text-sm">Name (optional)</label>
-            <Input value={newName} onChange={e => setNewName(e.target.value)} disabled={createLoading} />
-          </div>
-          <div className="mb-2">
-            <label className="block text-sm">E-Mail *</label>
-            <Input value={newEmail} onChange={e => setNewEmail(e.target.value)} disabled={createLoading} required />
-          </div>
-          <div className="mb-2">
-            <label className="block text-sm">Passwort *</label>
-            <Input 
-              value={newPassword} 
-              onChange={e => setNewPassword(e.target.value)} 
-              type="password" 
-              disabled={createLoading} 
-              required 
-            />
-            <span className="text-xs text-gray-500">Der Benutzer muss das Passwort beim ersten Login ändern.</span>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <Button onClick={handleCreateUser} disabled={createLoading}>
-              {createLoading ? 'Wird erstellt...' : 'Benutzer erstellen'}
-            </Button>
-            <Button variant="outline" onClick={() => setShowNewUser(false)} disabled={createLoading}>Abbrechen</Button>
-          </div>
-        </div>
-      )}
+  <div className="border rounded p-4 bg-gray-50 mb-8">
+    <h2 className="font-semibold mb-2">Neuen Benutzer anlegen</h2>
+    <div className="mb-2">
+      <label className="block text-sm">Name (optional)</label>
+      <Input value={newName} onChange={e => setNewName(e.target.value)} disabled={createLoading} />
+    </div>
+    <div className="mb-2">
+      <label className="block text-sm">E-Mail *</label>
+      <Input value={newEmail} onChange={e => setNewEmail(e.target.value)} disabled={createLoading} required />
+    </div>
+    <div className="mb-2">
+      <span className="text-xs text-gray-500">Das Standardpasswort <span className="font-mono">{DEFAULT_PASSWORD}</span> wird gesetzt. Der Benutzer muss es beim ersten Login ändern.</span>
+    </div>
+    <div className="flex gap-2 mt-4">
+      <Button onClick={handleCreateUser} disabled={createLoading}>
+        {createLoading ? 'Wird erstellt...' : 'Benutzer erstellen'}
+      </Button>
+      <Button variant="outline" onClick={() => setShowNewUser(false)} disabled={createLoading}>Abbrechen</Button>
+    </div>
+  </div>
+)}
       
       {loading ? (
         <div>Lade Benutzer...</div>
@@ -241,15 +212,74 @@ export default function UserManagementPage() {
             <label className="block text-sm">E-Mail</label>
             <Input value={editEmail} onChange={e => setEditEmail(e.target.value)} disabled={editLoading} />
           </div>
-          <div className="mb-2">
-            <label className="block text-sm">Neues Passwort (optional)</label>
-            <Input value={editPw} onChange={e => setEditPw(e.target.value)} type="password" disabled={editLoading} />
-            <span className="text-xs text-gray-500">Wird das Passwort geändert, muss der User es beim nächsten Login neu setzen.</span>
-          </div>
           <div className="flex gap-2 mt-4">
-            <Button onClick={handleSave} disabled={editLoading}>Speichern</Button>
-            <Button variant="outline" onClick={() => setEditUser(null)} disabled={editLoading}>Abbrechen</Button>
-          </div>
+  <Button onClick={handleSave} disabled={editLoading}>Speichern</Button>
+  <Button variant="outline" onClick={() => setEditUser(null)} disabled={editLoading}>Abbrechen</Button>
+  <Button variant="destructive" onClick={() => setShowResetPwDialog(true)} disabled={editLoading}>Passwort zurücksetzen</Button>
+  <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} disabled={editLoading}>Nutzer löschen</Button>
+</div>
+<ResetPasswordDialog
+  open={showResetPwDialog}
+  onCancel={() => setShowResetPwDialog(false)}
+  onConfirm={async () => {
+    setShowResetPwDialog(false);
+    if (!editUser) return;
+    setEditLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          password: DEFAULT_PASSWORD,
+          user_metadata: {
+            ...editUser.user_metadata,
+            force_password_change: true
+          }
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || res.statusText);
+      }
+      toast.success('Passwort wurde auf Standard zurückgesetzt!');
+      setEditUser(null);
+      fetchUsers();
+    } catch (e: any) {
+      toast.error('Fehler beim Zurücksetzen des Passworts: ' + (e.message || e.toString()));
+    } finally {
+      setEditLoading(false);
+    }
+  }}
+  defaultPassword={DEFAULT_PASSWORD}
+/>
+<DeleteUserDialog
+  open={showDeleteDialog}
+  onCancel={() => setShowDeleteDialog(false)}
+  onConfirm={async () => {
+    setShowDeleteDialog(false);
+    if (!editUser) return;
+    setEditLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editUser.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || res.statusText);
+      }
+      toast.success('Nutzer wurde gelöscht!');
+      setEditUser(null);
+      fetchUsers();
+    } catch (e: any) {
+      toast.error('Fehler beim Löschen des Nutzers: ' + (e.message || e.toString()));
+    } finally {
+      setEditLoading(false);
+    }
+  }}
+  userEmail={editUser?.email}
+/>
         </div>
       )}
     </div>

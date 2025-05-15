@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CalendarDays, UserCheck, DollarSign, BarChart3, FileText, Phone, FileDown, Image } from 'lucide-react';
+import { Users, CalendarDays, UserCheck, DollarSign, BarChart3, FileText, Phone, FileDown, Image, Download } from 'lucide-react';
 
 export default function AdminHome() {
   return (
@@ -159,6 +159,26 @@ export default function AdminHome() {
               <li>
                 <Link href="/admin/galerie" className="text-blue-600 hover:underline">
                   Bilder verwalten
+                </Link>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+        
+        {/* Download-Verwaltung */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Download className="mr-2 h-5 w-5" />
+              Download-Verwaltung
+            </CardTitle>
+            <CardDescription>Dokumente hochladen und verwalten</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/admin/downloads" className="text-blue-600 hover:underline">
+                  Dokumente verwalten
                 </Link>
               </li>
             </ul>

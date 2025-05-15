@@ -213,7 +213,7 @@ export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-lg p-6">
         <DialogHeader>
           <DialogTitle>Helfer-Zuteilung bearbeiten</DialogTitle>
           <DialogDescription>
@@ -224,46 +224,39 @@ export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung
           <div className="flex justify-center items-center p-10"><Loader2 className="mr-2 h-8 w-8 animate-spin" /> Lade Auswahl...</div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <div className="col-span-4 text-sm">
-                  <p><strong>Kind:</strong> {zuteilung?.kind_name}</p>
-                  <p><strong>ID:</strong> {zuteilung?.kind_identifier}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="aufgabe" className="text-right">
-                  Aufgabe
-                </label>
-                <Select
-                  value={selectedAufgabeId}
-                  onValueChange={setSelectedAufgabeId}
-                  required
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Aufgabe auswählen..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {aufgaben.map((aufgabe) => (
-                      <SelectItem key={aufgabe.id} value={aufgabe.id}>
-                        {aufgabe.titel} ({aufgabe.zeitfenster})
-                      </SelectItem>
-                    ))}
-                    {aufgaben.length === 0 && <p className='p-4 text-sm text-muted-foreground'>Keine Aufgaben geladen.</p>}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2 justify-end col-span-4">
-                <Checkbox
-                  id="viaSpringer"
-                  checked={viaSpringer}
-                  onCheckedChange={(checked) => setViaSpringer(!!checked)} // Konvertiert CheckedState zu boolean
-                />
-                <label htmlFor="viaSpringer" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  Als Springer zugewiesen?
-                </label>
-              </div>
-            </div>
+            <div className="flex flex-col gap-6 py-2">
+  <div className="bg-muted rounded-md p-3 mb-2">
+    <div className="text-base font-semibold mb-1">Kind:</div>
+    <div className="text-sm mb-1">{zuteilung?.kind_name}</div>
+    <div className="text-xs text-muted-foreground break-all"><strong>ID:</strong> {zuteilung?.kind_identifier}</div>
+  </div>
+  <div className="flex flex-col gap-2">
+    <label htmlFor="aufgabe" className="text-sm font-medium mb-1">Aufgabe</label>
+    <Select value={selectedAufgabeId} onValueChange={setSelectedAufgabeId} required>
+      <SelectTrigger className="w-full bg-white border rounded-md shadow-sm">
+        <SelectValue placeholder="Aufgabe auswählen..." />
+      </SelectTrigger>
+      <SelectContent>
+        {aufgaben.map((aufgabe) => (
+          <SelectItem key={aufgabe.id} value={aufgabe.id}>
+            {aufgabe.titel} ({aufgabe.zeitfenster})
+          </SelectItem>
+        ))}
+        {aufgaben.length === 0 && <p className='p-4 text-sm text-muted-foreground'>Keine Aufgaben geladen.</p>}
+      </SelectContent>
+    </Select>
+  </div>
+  <div className="flex items-center gap-3 mt-2">
+    <Checkbox
+      id="viaSpringer"
+      checked={viaSpringer}
+      onCheckedChange={(checked) => setViaSpringer(!!checked)}
+    />
+    <label htmlFor="viaSpringer" className="text-sm font-medium leading-none">
+      Als Springer zugewiesen?
+    </label>
+  </div>
+</div>
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline" onClick={onClose}>

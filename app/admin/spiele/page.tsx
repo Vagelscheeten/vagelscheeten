@@ -517,9 +517,10 @@ export default function SpieleVerwaltung() {
     onEdit?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
     onDelete?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
     onRemoveAssignment?: () => void; // Optional: Used in 'assign' mode
+    assignmentCount?: number; // Optional: Number of classes this game is assigned to
   }
 
-  function DraggableSpielItem({ spiel, mode, onEdit, onDelete, onRemoveAssignment }: DraggableSpielItemProps) {
+  function DraggableSpielItem({ spiel, mode, onEdit, onDelete, onRemoveAssignment, assignmentCount }: DraggableSpielItemProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isOver } = useSortable({ id: spiel.id });
 
     const style = {
@@ -541,7 +542,12 @@ export default function SpieleVerwaltung() {
           <button {...listeners} {...attributes} className="cursor-grab p-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-primary rounded">
             <GripVertical size={16} />
           </button>
-          <span className="font-medium truncate" title={spiel.name}>{spiel.name}</span>
+          <span className="font-medium truncate" title={spiel.name}>
+            {spiel.name}
+            {assignmentCount !== undefined && mode === 'assign' && (
+              <span className="ml-1 text-xs text-muted-foreground">({assignmentCount})</span>
+            )}
+          </span>
         </div>
         <div className="flex-shrink-0 flex items-center space-x-1">
           {mode === 'manage' && onEdit && onDelete && (
@@ -592,9 +598,9 @@ export default function SpieleVerwaltung() {
     return (
       <div
         ref={setNodeRef}
-        className={`min-w-[280px] max-w-[350px] p-3 rounded-lg flex flex-col flex-shrink-0 ${isMasterList ? 'bg-background border' : 'bg-muted'} ${isOver ? 'ring-2 ring-primary outline-none shadow-lg transition-all duration-200' : 'transition-all duration-200'}`}
+        className={`w-full p-3 rounded-lg flex flex-col flex-shrink-0 border shadow-sm ${isMasterList ? 'bg-background border-gray-200' : 'bg-white border-gray-200'} ${isOver ? 'ring-2 ring-primary border-primary outline-none shadow-lg transition-all duration-200' : 'hover:border-primary/50 hover:shadow-md transition-all duration-200'}`}
       >
-        <h3 className={`font-semibold mb-3 px-1 sticky top-0 z-10 py-1 ${isMasterList ? 'bg-background' : 'bg-muted'}`}>{title}</h3>
+        <h3 className={`font-semibold mb-4 px-1 sticky top-0 z-10 py-1 ${isMasterList ? 'bg-background' : 'bg-white'} border-b pb-2`}>{title}</h3>
         
         {/* Unterschiedliche Darstellung je nach Container-Typ */}
         {isMasterList ? (
@@ -620,17 +626,17 @@ export default function SpieleVerwaltung() {
           </SortableContext>
         ) : (
           // Für Klassen-Container eine kompakte Liste mit Text-Einträgen
-          <div className="space-y-1 overflow-y-auto flex-grow min-h-[150px]">
+          <div className="space-y-2 overflow-y-auto flex-grow min-h-[150px]">
             {items.length > 0 ? (
-              <ul className="divide-y divide-muted-foreground/20">
+              <ul className="divide-y divide-gray-100">
                 {items.map(spiel => (
-                  <li key={spiel.id} className="py-1.5 px-1 flex justify-between items-center group hover:bg-accent/30 rounded-sm">
+                  <li key={spiel.id} className="py-2 px-2 flex justify-between items-center group hover:bg-gray-50 rounded transition-colors duration-150">
                     <span className="text-sm font-medium truncate">{spiel.name}</span>
                     {onRemoveAssignment && (
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" 
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-500" 
                         onClick={() => onRemoveAssignment(spiel.id, id)}
                         title="Zuweisung entfernen"
                       >
@@ -792,15 +798,21 @@ export default function SpieleVerwaltung() {
                       <h3 className="text-lg font-semibold mb-4">Verfügbare Spiele ({spiele.length})</h3>
                       <div className="bg-background border rounded-lg p-4">
                         <div className="flex flex-wrap gap-2 items-center">
-                          {spiele.map(spiel => (
-                            <DraggableSpielItem
-                              key={spiel.id}
-                              spiel={spiel}
-                              mode="assign"
-                              onEdit={() => openEditDialog(spiel)}
-                              onDelete={() => openDeleteDialog(spiel)}
-                            />
-                          ))}
+                          {spiele.map(spiel => {
+                            // Zählen, wie oft das Spiel zugewiesen wurde
+                            const assignmentCount = spielZuordnungen.filter(z => z.spiel_id === spiel.id).length;
+                            
+                            return (
+                              <DraggableSpielItem
+                                key={spiel.id}
+                                spiel={spiel}
+                                mode="assign"
+                                onEdit={() => openEditDialog(spiel)}
+                                onDelete={() => openDeleteDialog(spiel)}
+                                assignmentCount={assignmentCount}
+                              />
+                            );
+                          })}
                           {spiele.length === 0 && (
                             <div className="text-sm text-muted-foreground p-2">Keine Spiele gefunden.</div>
                           )}
@@ -809,9 +821,9 @@ export default function SpieleVerwaltung() {
                     </div>
 
                     {/* Klassen darunter in einem Grid */}
-                    <div className="mt-8">
-                      <h3 className="text-lg font-semibold mb-4">Klassen ({klassen.length})</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div className="mt-10">
+                      <h3 className="text-lg font-semibold mb-6">Klassen ({klassen.length})</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {klassen.map((klasse) => {
                           const assignedSpielIds = spielZuordnungen
                             .filter(z => z.klasse_id === klasse.id)

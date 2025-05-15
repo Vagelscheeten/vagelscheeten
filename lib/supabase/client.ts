@@ -15,11 +15,6 @@ export function createClient() {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-      },
-      global: {
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        }
       }
     }
   );

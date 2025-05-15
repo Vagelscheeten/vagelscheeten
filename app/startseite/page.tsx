@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { RouteMap, RouteButton } from "@/components/route/RouteComponents";
+import { RouteMap } from "@/components/route/RouteComponents";
 import Image from 'next/image';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -13,6 +13,7 @@ type Game = {
   id: string;
   name: string;
   beschreibung: string;
+  icon?: string | null;
 };
 
 type GalleryImage = {
@@ -30,10 +31,14 @@ type DownloadFile = {
 // UI-Komponenten
 const CountdownItem = ({ value, label }: { value: number; label: string }) => {
   return (
-    <div className="relative group flex flex-col items-center justify-center px-6 py-4">
-      <div className="absolute inset-0 bg-white/10 rounded-2xl backdrop-blur-sm group-hover:bg-white/20 transition-all duration-300 border border-white/20"></div>
-      <span className="relative text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-white/90">{value}</span>
-      <span className="relative text-sm font-medium text-white/90 mt-1">{label}</span>
+    <div className="relative group flex flex-col items-center justify-center px-2 py-1 xs:px-3 sm:px-4 lg:px-6 max-w-[60px] xs:max-w-[70px] sm:max-w-[90px] lg:max-w-[120px]">
+      <div className="absolute inset-0 bg-white/10 rounded-lg backdrop-blur-sm group-hover:bg-white/20 transition-all duration-300 border border-white/20"></div>
+      <span className="relative text-lg xs:text-xl sm:text-3xl lg:text-5xl font-bold text-white">
+        {value}
+      </span>
+      <span className="relative text-[10px] xs:text-xs sm:text-sm lg:text-base font-medium text-white/80">
+        {label}
+      </span>
     </div>
   );
 };
@@ -60,43 +65,44 @@ const EventCountdown = ({ targetDate }: { targetDate: Date }) => {
   }, [targetDate]);
 
   return (
-    <div className="relative flex justify-center items-center space-x-6 p-6">
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-3xl backdrop-blur-md"></div>
+    <div className="flex justify-center items-center space-x-2 xs:space-x-3 sm:space-x-4 lg:space-x-6">
       <CountdownItem value={timeLeft.days} label="Tage" />
-      <div className="w-2 h-2 bg-white/40 rounded-full"></div>
-      <CountdownItem value={timeLeft.hours} label="Stunden" />
-      <div className="w-2 h-2 bg-white/40 rounded-full"></div>
-      <CountdownItem value={timeLeft.minutes} label="Minuten" />
-      <div className="w-2 h-2 bg-white/40 rounded-full"></div>
-      <CountdownItem value={timeLeft.seconds} label="Sekunden" />
+      <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
+      <CountdownItem value={timeLeft.hours} label="Std" />
+      <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
+      <CountdownItem value={timeLeft.minutes} label="Min" />
+      <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
+      <CountdownItem value={timeLeft.seconds} label="Sek" />
     </div>
   );
 };
 
-// Icon-Mapping für die Spiele
-const gameIcons: {[key: string]: string} = {
-  'Eierlauf': '🥚',
-  'Dosenwerfen': '🎯',
-  'Sackhüpfen': '🦘',
-  'Wassertransport': '💧',
-  'Seilziehen': '🔄',
-  'Zielwerfen': '🎯',
-  'Hindernislauf': '🏃‍♂️',
-  'Nageln': '🔨',
-  'Vogel abschießen': '🐦',
-  'Luftballons': '🎈',
-  'Staffellauf': '🏃‍♀️',
-  'Schubkarre': '🛠️',
-};
+// Funktion zur Bestimmung des Icons für ein Spiel basierend auf der Logik aus der Spieleverwaltung
 
-const getGameIcon = (name: string) => {
-  // Suche nach partiellen Übereinstimmungen im Spielnamen
-  const key = Object.keys(gameIcons).find(k => name.toLowerCase().includes(k.toLowerCase()));
-  return key ? gameIcons[key] : '🎮';
+const getGameIcon = (game: Game): string => {
+  // Wenn ein Icon in der Datenbank gespeichert ist, dieses verwenden
+  if (game.icon) return game.icon;
+  
+  // Ansonsten ein passendes Icon basierend auf dem Namen auswählen
+  const name = (game.name || '').toLowerCase();
+  
+  if (name.includes('schießen') || name.includes('armbrust')) return '🏹';
+  if (name.includes('ball') || name.includes('werfen')) return '🎯';
+  if (name.includes('fisch')) return '🐟';
+  if (name.includes('glücksrad')) return '🎡';
+  if (name.includes('stiefel') || name.includes('gummistiefel')) return '👢';
+  if (name.includes('schatz')) return '💰';
+  if (name.includes('rennen') || name.includes('roller')) return '🛴';
+  if (name.includes('draht')) return '⚡';
+  if (name.includes('schwamm')) return '🧽';
+  if (name.includes('wäsche')) return '👕';
+  
+  // Standardicon, falls keine Übereinstimmung gefunden wurde
+  return '🎮';
 };
 
 const GameCard = ({ game, onClick }: { game: Game; onClick: (game: Game) => void }) => {
-  const icon = getGameIcon(game.name || '');
+  const icon = getGameIcon(game);
   
   return (
     <div 
@@ -175,6 +181,7 @@ const ContactForm = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<null | 'success' | 'error'>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -185,25 +192,33 @@ const ContactForm = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitStatus(null);
+    setErrorMessage('');
     
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('kontaktanfragen')
-        .insert([{
-          name: formData.name,
-          email: formData.email || null,
-          nachricht: formData.message,
-          created_at: new Date().toISOString()
-        }]);
+      // Senden der Daten an unsere neue API-Route
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
       
-      if (error) throw error;
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Ein Fehler ist aufgetreten');
+      }
+      
+      // Die Speicherung erfolgt jetzt nur noch in der API-Route
+      console.log('Kontaktanfrage erfolgreich gesendet:', result);
       
       setSubmitStatus('success');
       setFormData({ name: '', email: '', message: '' });
-    } catch (error) {
-      console.error('Error submitting form:', error);
+    } catch (error: any) {
+      console.error('Fehler beim Senden des Formulars:', error);
       setSubmitStatus('error');
+      setErrorMessage(error.message || 'Ein unbekannter Fehler ist aufgetreten');
     } finally {
       setIsSubmitting(false);
     }
@@ -276,13 +291,106 @@ const ContactForm = () => {
       </div>
       
       {submitStatus === 'success' && (
-        <p className="text-green-600 font-medium">Vielen Dank für Ihre Nachricht!</p>
+        <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-green-700">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <p className="font-medium">Vielen Dank für deine Nachricht! Wir werden uns so schnell wie möglich bei dir melden.</p>
+          </div>
+        </div>
       )}
       
       {submitStatus === 'error' && (
-        <p className="text-red-600 font-medium">Es ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.</p>
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <p className="font-medium">Es ist ein Fehler aufgetreten: {errorMessage || 'Bitte versuche es später erneut.'}</p>
+          </div>
+        </div>
       )}
     </form>
+  );
+};
+
+// Bildvorschau-Komponente
+const ImagePreview = ({ 
+  image, 
+  onClose, 
+  onNext, 
+  onPrevious, 
+  hasNext, 
+  hasPrevious 
+}: { 
+  image: GalleryImage, 
+  onClose: () => void, 
+  onNext: () => void, 
+  onPrevious: () => void, 
+  hasNext: boolean, 
+  hasPrevious: boolean 
+}) => {
+  // Schließen bei Escape-Taste
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight' && hasNext) onNext();
+      if (e.key === 'ArrowLeft' && hasPrevious) onPrevious();
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, onNext, onPrevious, hasNext, hasPrevious]);
+  
+  return (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-90 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center" onClick={e => e.stopPropagation()}>
+        {/* Schließen-Button */}
+        <button 
+          className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors"
+          onClick={onClose}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        
+        {/* Bild */}
+        <div className="relative w-full h-full flex items-center justify-center">
+          <Image
+            src={image.url}
+            alt="Vogelschießen Foto"
+            width={1200}
+            height={800}
+            className="object-contain max-h-[85vh] rounded-lg"
+          />
+        </div>
+        
+        {/* Navigation */}
+        {hasPrevious && (
+          <button 
+            className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition-all"
+            onClick={(e) => { e.stopPropagation(); onPrevious(); }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+        
+        {hasNext && (
+          <button 
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition-all"
+            onClick={(e) => { e.stopPropagation(); onNext(); }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -308,9 +416,11 @@ export default function Startseite() {
     downloads: true
   });
   
-  // State für Modal
+  // State für Modal und Galerie
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const imagesPerPage = 8; // Anzahl der Bilder pro Seite
   
   // State für Fehlermeldungen
   const [error, setError] = useState<string | null>(null);
@@ -375,35 +485,60 @@ export default function Startseite() {
   useEffect(() => {
     const fetchGalleryImages = async () => {
       try {
+        console.log('Starte Laden der Galerie-Bilder...');
         const supabase = createClient();
+        
+        // Debug: Überprüfen der Supabase-Verbindung
+        console.log('Supabase Client für Galerie erstellt');
+        
         const { data, error } = await supabase
           .storage
           .from('galerie')
           .list('');
           
-        if (error) throw error;
+        if (error) {
+          console.error('Fehler beim Auflisten der Galerie-Dateien:', error);
+          return;
+        }
+        
+        console.log('Galerie-Dateien geladen:', data);
+        
+        if (!data || data.length === 0) {
+          console.log('Keine Bilder im Galerie-Bucket gefunden');
+          setGalleryImages([]);
+          return;
+        }
         
         // Konvertieren der Dateien in das GalleryImage-Format
-        const images: GalleryImage[] = await Promise.all(
-          (data || []).filter(file => 
-            file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
-          ).map(async (file, index) => {
+        const imageFiles = data.filter(file => 
+          file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
+        );
+        
+        console.log('Gefilterte Bilddateien:', imageFiles);
+        
+        const images: GalleryImage[] = [];
+        
+        for (const file of imageFiles) {
+          try {
             const { data: { publicUrl } } = supabase
               .storage
               .from('galerie')
               .getPublicUrl(file.name);
               
-            return {
-              id: index + 1,
+            images.push({
+              id: images.length + 1,
               name: file.name,
               url: publicUrl
-            };
-          })
-        );
+            });
+          } catch (urlError) {
+            console.error(`Fehler beim Abrufen der URL für ${file.name}:`, urlError);
+          }
+        }
         
+        console.log('Verarbeitete Galerie-Bilder:', images);
         setGalleryImages(images);
       } catch (error) {
-        console.error('Error fetching gallery images:', error);
+        console.error('Fehler beim Laden der Galerie-Bilder:', error);
       } finally {
         setLoading(prev => ({ ...prev, gallery: false }));
       }
@@ -459,86 +594,48 @@ export default function Startseite() {
   };
   
   return (
-    <div className="w-full">
-      {/* Hero-Sektion mit Hintergrundbild */}
-      <section className="relative min-h-screen w-full flex items-center justify-center overflow-hidden">
-        {/* Hintergrundbild mit Overlay */}
-        <div className="absolute inset-0 z-0">
-          <Image 
-            src="/hero.jpeg" 
-            alt="Melsdörper Vagelscheeten Hintergrund" 
-            fill
-            style={{ objectFit: 'cover', objectPosition: 'center' }}
-            quality={90}
-            priority
-            className="transform scale-105 animate-ken-burns"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/40 to-black/70"></div>
-        </div>
-        
-        <div className="w-full z-10">
-          <div className="flex flex-col items-center justify-center text-center space-y-16 max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="relative group transform hover:scale-105 transition-all duration-500">
-              <div className="absolute -inset-8 rounded-full bg-gradient-to-br from-white/40 to-white/10 blur-2xl group-hover:blur-3xl transition-all duration-500 animate-pulse"></div>
-              <Image 
-                src="/2025_Logo_transparent.png" 
-                alt="Melsdörper Vagelscheeten" 
-                width={280} 
-                height={280} 
-                className="relative drop-shadow-2xl transform group-hover:rotate-3 transition-all duration-500"
-                priority
-              />
-            </div>
-            
-            <div className="space-y-12">
-              <h1 className="text-7xl md:text-9xl font-bold" style={{ fontFamily: 'var(--font-poppins)' }}>
-                <div className="relative inline-block">
-                  <span className="absolute -inset-8 bg-gradient-to-r from-primary/30 via-accent/30 to-primary/30 blur-3xl rounded-3xl"></span>
-                  <span className="relative bg-clip-text text-transparent bg-gradient-to-r from-white via-white/95 to-white/90 drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)]">
-                    Melsdörper<br />Vagelscheeten<br />2025
-                  </span>
-                </div>
-              </h1>
-              
-              <div className="inline-flex items-center px-8 py-4 bg-white/20 backdrop-blur-md rounded-full shadow-xl border border-white/40 hover:bg-white/30 transition-all duration-300">
-                <svg className="w-8 h-8 mr-4 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span className="text-2xl font-bold text-white">Samstag, 14. Juni 2025</span>
-              </div>
-            </div>
-            
-            <div className="mt-16 mb-20">
-              <EventCountdown targetDate={eventDate} />
-            </div>
-            
-            <div className="mt-12">
-              <a 
-                href="#spenden"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollToSection(spendenRef);
-                }}
-                className="group relative inline-flex items-center px-10 py-5 text-2xl font-bold text-white overflow-hidden rounded-full transition-all duration-500 transform hover:scale-105"
-              >
-                <div className="absolute inset-0 w-full h-full transition-all duration-500">
-                  <div className="absolute inset-0 bg-gradient-to-r from-accent via-primary to-accent bg-[length:200%] animate-gradient-x shadow-lg"></div>
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity duration-500 bg-white"></div>
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-t from-black/20 to-transparent"></div>
-                </div>
-                <span className="relative flex items-center">
-                  <span className="mr-4 text-3xl filter drop-shadow-glow animate-bounce">💰</span>
-                  Jetzt mit einer Spende unterstützen
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 ml-3 transform group-hover:translate-x-2 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
+    <div className="w-full bg-white">
+      {/* Hero-Sektion */}
+      <div className="w-full relative bg-gray-900 min-h-[320px] sm:min-h-[420px] md:min-h-[540px] lg:min-h-[640px] xl:min-h-[720px] flex items-center">
+        {/* Hintergrundbild */}
+        <Image 
+          src="/hero.jpg" 
+          alt="Melsdörper Vagelscheeten Hintergrund" 
+          fill
+          className="absolute inset-0 w-full h-full object-cover object-center z-0"
+          quality={90}
+          priority
+        />
+        <div className="absolute inset-0 bg-black/60 z-10"></div>
+        {/* Inhalt */}
+        <div className="relative z-20 flex flex-col items-center w-full px-4 py-6 sm:py-10 text-center max-w-4xl mx-auto">
+  <h1 className="text-xl xs:text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-2 xs:mb-3 sm:mb-4 lg:mb-6 leading-[1.15] sm:leading-[1.2] lg:leading-[1.3]" style={{ fontFamily: 'var(--font-poppins)' }}>
+    Melsdörper Vagelscheeten 2025
+  </h1>
+  <div className="text-sm xs:text-base sm:text-lg lg:text-2xl text-white/90 font-light mb-4 xs:mb-6 sm:mb-8 lg:mb-10">
+    Samstag, 14. Juni · Regenbogenschule Melsdorf
+  </div>
+  <div className="flex justify-center items-center space-x-2 xs:space-x-3 sm:space-x-4 mb-2 xs:mb-3 sm:mb-4">
+    <EventCountdown targetDate={eventDate} />
+  </div>
+  <p className="text-white text-xs xs:text-sm sm:text-base lg:text-xl mb-1 xs:mb-2 sm:mb-4 lg:mb-6 max-w-full">
+    Mach den Tag möglich – mit Deiner Spende.
+  </p>
+  <a 
+    href="#spenden"
+    onClick={(e) => {
+      e.preventDefault();
+      scrollToSection(spendenRef);
+    }}
+    className="bg-yellow-400 hover:bg-yellow-500 text-black rounded-full w-[90%] max-w-xs lg:max-w-md px-2 py-2 xs:px-4 xs:py-3 lg:px-8 lg:py-4 text-sm xs:text-base lg:text-xl font-bold shadow-lg inline-block mb-1 sm:mb-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2"
+  >
+    Jetzt mit einer Spende helfen
+  </a>
+</div>
+</div>
       
-      {/* Ablaufplan */}
-      <section id="ablauf" className="py-20 bg-pastel-blue" ref={ablaufRef}>
+      {/* Ablaufplan mit ausreichend Abstand */}
+      <div id="ablauf" className="py-20 bg-pastel-blue mt-8" ref={ablaufRef}>
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-secondary font-medium text-sm mb-3 shadow-sm">Programm 2025</span>
@@ -557,8 +654,8 @@ export default function Startseite() {
                   <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
-                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
+                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 md:ml-auto transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-secondary">
                     <div className="text-xl font-bold text-secondary mb-1">8.00 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Treffen für alle Helfer und Betreuer</h4>
@@ -572,12 +669,12 @@ export default function Startseite() {
             <div className="mb-20 relative">
               <div className="absolute left-1/2 transform -translate-x-1/2 -top-2 z-10">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-secondary to-secondary-light border-4 border-white shadow-lg flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5 5 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
                 <div className="md:w-1/2 md:pr-12"></div>
-                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0">
+                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-secondary text-red-600">
                     <div className="text-xl font-bold text-secondary mb-1">8.50 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Treffen für alle teilnehmenden Kinder</h4>
@@ -596,11 +693,11 @@ export default function Startseite() {
             <div className="mb-20 relative">
               <div className="absolute left-1/2 transform -translate-x-1/2 -top-2 z-10">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-tertiary to-tertiary-light border-4 border-white shadow-lg flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 010-7.072m12.728 0l3.536-3.536M5.586 8.464L2.05 5"></path></svg>
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
-                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
+                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 md:ml-auto transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-tertiary">
                     <div className="text-xl font-bold text-tertiary mb-1">9.00 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Eröffnung der Wettspiele mit dem traditionellen Bändertanz</h4>
@@ -617,9 +714,9 @@ export default function Startseite() {
                   <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
                 <div className="md:w-1/2 md:pr-12"></div>
-                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0">
+                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-tertiary">
                     <div className="text-xl font-bold text-tertiary mb-1">ca. 11.30 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Gemeinsamer Abschluss</h4>
@@ -635,8 +732,8 @@ export default function Startseite() {
                   <svg className="w-7 h-7 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
-                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
+                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-gradient-to-r from-accent-light to-accent rounded-2xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border border-white/50">
                     <h4 className="text-2xl font-bold text-gray-800 flex items-center">
                       <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6a2 2 0 002-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -655,9 +752,9 @@ export default function Startseite() {
                   <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7l3 2 4-5 4 5 3-2-1 5c-1 1-2 1-3 1H8c-1 0-2 0-3-1L4 7z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16v1m4-1v1m-2-1v1"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
                 <div className="md:w-1/2 md:pr-12"></div>
-                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0">
+                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-primary">
                     <div className="text-xl font-bold text-primary mb-1">14.00 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Bändertanz, Aufführung der Schulkinder, Proklamation der Königspaare, Übergabe der Klassengeschenke</h4>
@@ -670,11 +767,11 @@ export default function Startseite() {
             <div className="mb-20 relative">
               <div className="absolute left-1/2 transform -translate-x-1/2 -top-2 z-10">
                 <div className="w-14 h-14 rounded-full bg-green-600 border-4 border-white shadow-lg flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a2 2 0 104 0 2 2 0 00-4 0zm0 0H9m4 0h7m-4-6h2m-2 0a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
-                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
+                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 md:ml-auto transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-green-600">
                     <div className="text-xl font-bold text-green-600 mb-1">14.45 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Festumzug durch das geschmückte Dorf</h4>
@@ -689,12 +786,12 @@ export default function Startseite() {
             <div className="mb-20 relative">
               <div className="absolute left-1/2 transform -translate-x-1/2 -top-2 z-10">
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent to-accent-light border-4 border-white shadow-lg flex items-center justify-center">
-                  <svg className="w-7 h-7 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                  <svg className="w-7 h-7 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 100-4h14a2 2 0 100 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 6l2 4 4-4 2 4"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
                 <div className="md:w-1/2 md:pr-12"></div>
-                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0">
+                <div className="md:w-1/2 md:pl-12 md:text-left mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-accent">
                     <div className="text-xl font-bold text-accent-dark mb-1">ca. 15.30 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Picknick mit Kaffee und Kuchen auf dem Schulgelände</h4>
@@ -718,8 +815,8 @@ export default function Startseite() {
                   <svg className="w-7 h-7 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
                 </div>
               </div>
-              <div className="flex flex-col md:flex-row items-center">
-                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0">
+              <div className="flex flex-col md:flex-row items-center mt-8 md:mt-0">
+                <div className="md:w-1/2 md:pr-12 md:text-right mb-8 md:mb-0 pt-8 md:pt-0">
                   <div className="bg-white rounded-2xl shadow-md p-6 md:ml-auto transition-all duration-300 hover:shadow-lg hover:-translate-y-2 border-b-4 border-accent">
                     <div className="text-xl font-bold text-accent-dark mb-1">ca. 17.00 Uhr</div>
                     <h4 className="text-xl font-semibold text-gray-800 mb-3">Aufräumen und Ende</h4>
@@ -732,57 +829,49 @@ export default function Startseite() {
 
           </div>
         </div>
-      </section>
+      </div>
       
-      {/* Willkommenstext */}
-      <section className="py-20 bg-gradient-to-b from-white to-pastel-blue/30">
-        <div className="container max-w-4xl mx-auto px-4">
-          <div className="bg-white rounded-3xl shadow-lg p-10 text-center transform hover:-translate-y-1 transition-transform duration-300 border border-secondary/10">
-            <div className="mb-6 flex justify-center">
-              <div className="w-16 h-16 bg-pastel-yellow rounded-full flex items-center justify-center shadow-md">
-                <svg className="w-8 h-8 text-accent-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+      {/* Einladung */}
+      <div className="py-24 bg-white">
+        <div className="container max-w-7xl mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'var(--font-poppins)' }}>Schön, wenn ihr dabei seid!</h2>
+            <p className="text-gray-700 max-w-2xl mx-auto mb-4">Wir laden alle Melsdorfer*innen und Freund*innen der Regenbogenschule herzlich ein, mit uns einen fröhlichen Nachmittag auf der Schulwiese zu verbringen.</p>
+            <p className="text-gray-700 max-w-2xl mx-auto">Gemeinsam genießen wir ein Picknick mit Kaffee und Kuchen unter freiem Himmel.</p>
+          </div>
+          
+          <div className="max-w-4xl mx-auto">
+            <div className="card card-tertiary p-8 md:p-10">
+              <div className="card-body mb-8">
+                <h3 className="text-xl font-semibold text-gray-800 mb-4">Bitte mitbringen:</h3>
+                <ul className="space-y-3 text-gray-700 pl-5">
+                  <li className="flex items-start">
+                    <span className="text-gray-400 mr-2">•</span>
+                    <span>Eigene Kaltgetränke (Kaffee gibt's vor Ort)</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-gray-400 mr-2">•</span>
+                    <span>Kaffeebecher, Geschirr, Besteck</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-gray-400 mr-2">•</span>
+                    <span>Picknickdecke oder Sitzgelegenheit</span>
+                  </li>
+                </ul>
+              </div>
+              
+              <div className="bg-gray-100 p-4 rounded-lg">
+                <p className="text-center text-gray-700 italic">
+                  Für Kaffee und Kuchen ist gesorgt – wir freuen uns auf euch!
+                </p>
               </div>
             </div>
-            
-            <h2 className="text-3xl sm:text-4xl font-bold mb-6 bg-gradient-to-r from-secondary to-primary bg-clip-text text-transparent" style={{ fontFamily: 'var(--font-poppins)' }}>Alle Melsdorfer*innen und Freunde<br />der Regenbogenschule<br />sind herzlich willkommen!</h2>
-            
-            <p className="text-lg text-gray-700 mb-8 leading-relaxed">
-              Bitte bringe für das Fest bzw. Picknick am Nachmittag auf der Schulwiese eigene Kaltgetränke / Kaffeebecher / Geschirr / Picknickdecke oder andere Sitzgelegenheit mit.
-            </p>
-            
-            <div className="bg-red-50 rounded-2xl p-6 border-2 border-red-200 mb-8">
-              <h3 className="text-xl font-bold text-red-600 mb-3">Bitte mitbringen:</h3>
-              <ul className="space-y-2 text-gray-700">
-                <li className="flex items-center">
-                  <svg className="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                  Eigene Kaltgetränke (Für Kaffee ist gesorgt!)
-                </li>
-                <li className="flex items-center">
-                  <svg className="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                  Kaffeebecher / Geschirr / Besteck
-                </li>
-                <li className="flex items-center">
-                  <svg className="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                  Picknickdecke / Sitzgelegenheit, etc.
-                </li>
-              </ul>
-            </div>
-            
-            <div className="inline-block bg-accent/20 px-6 py-3 rounded-full mb-6">
-              <p className="text-xl font-semibold text-accent-dark">
-                Für Kaffee und Kuchen ist gesorgt! ☕️🍰
-              </p>
-            </div>
-            
-            <p className="text-xl font-semibold text-secondary animate-pulse">
-              Wir freuen uns auf deinen Besuch! 😊
-            </p>
           </div>
         </div>
-      </section>
+      </div>
       
       {/* Umzugsroute */}
-      <section id="route" className="py-20 bg-gradient-to-b from-pastel-green/10 to-pastel-blue/20">
+      <div id="route" className="py-20 bg-gradient-to-b from-pastel-green/10 to-pastel-blue/20">
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-primary font-medium text-sm mb-3 shadow-sm">🚜 Festumzug</span>
@@ -803,22 +892,20 @@ export default function Startseite() {
                   <div>
                     <h3 className="text-xl font-semibold text-gray-800 mb-2">Festumzug durch Melsdorf</h3>
                     <p className="text-gray-700">
-                      Der Festumzug startet an der Regenbogenschule und führt durch das Dorf Melsdorf.
-                      Bitte schmücke dein Haus entlang der Route festlich!
+                      Der Umzug startet an der Regenbogenschule und führt über die Köhlerkoppel, die Dorfstraße, Kieler Weg, am Dom, Rothenberg, Schlichtingstraße und Rotenhofer Weg zurück zu der Regenbogenschule.
+                      Alle freuen sich über jedes geschmückte Haus entlang der Route!
                     </p>
                   </div>
                 </div>
-                <div className="mt-6 flex justify-center">
-                  <RouteButton />
-                </div>
+                {/* Button wurde entfernt, da jetzt die interaktive Karte verwendet wird */}
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
       
       {/* Spiele-Sektion */}
-      <section id="spiele" className="py-24 bg-pastel-green/30" ref={spieleRef}>
+      <div id="spiele" className="py-24 bg-pastel-green/30" ref={spieleRef}>
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-tertiary font-medium text-sm mb-3 shadow-sm">🎮 Spaß für alle</span>
@@ -841,14 +928,15 @@ export default function Startseite() {
             ) : error ? (
               <div className="col-span-full text-center bg-red-50 rounded-xl p-8 shadow-sm border border-red-100">
                 <div className="text-red-500 mb-3 flex justify-center">
-                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </div>
                 <p className="text-red-600 font-medium">{error}</p>
               </div>
             ) : games.length === 0 ? (
               <div className="col-span-full bg-white rounded-2xl shadow-md p-12 text-center">
                 <div className="flex flex-col items-center">
-                  <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                   <p className="text-gray-500">Keine Spiele gefunden.</p>
                 </div>
               </div>
@@ -872,14 +960,15 @@ export default function Startseite() {
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold text-gray-800 mb-2">Hinweis zu den Spielen</h3>
-                  <p className="text-gray-600">Alle Kinder erhalten unabhängig von ihrer Platzierung bei den Spielen eine kleine Aufmerksamkeit für die Teilnahme. Die Königspaare werden am Nachmittag bekannt gegeben.</p>
+                  <p className="text-gray-600">In jedem Spiel erhalten die besten zehn Kinder Punkte – von 10 bis 1. Am Ende werden pro Klasse die Punkte addiert: Das Mädchen und der Junge mit den meisten Punkten werden Königin und König ihrer Klasse.
+                  Alle Klassen erhalten für ihre Teilnahme ein gemeinsames Geschenk – einen individuellen Klassenausflug. Die "Schulis" aus dem Kindergarten bekommen eine kleine Aufmerksamkeit.</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
           
-      </section>
+      </div>
 
       {/* Modal für Spieldetails */}
       <Modal isOpen={selectedGame !== null} onClose={() => setSelectedGame(null)}>
@@ -896,56 +985,58 @@ export default function Startseite() {
       </Modal>
       
       {/* Spenden-Sektion */}
-      <section id="spenden" className="py-20 bg-pastel-yellow/30" ref={spendenRef}>
+      <div id="spenden" className="py-20 bg-white" ref={spendenRef}>
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <span className="inline-block px-4 py-1 bg-white rounded-full text-accent-dark font-medium text-sm mb-3 shadow-sm">💸 Unterstützen</span>
+            <span className="inline-block px-4 py-1 bg-yellow-100 rounded-full text-yellow-800 font-medium text-sm mb-3 shadow-sm">💰 Unterstützen</span>
             <h2 className="text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'var(--font-poppins)' }}>Spenden</h2>
-            <p className="text-gray-700 max-w-2xl mx-auto">Helfen Sie mit, den Kindern unvergessliche Erlebnisse zu ermöglichen</p>
+            <h3 className="text-2xl font-semibold text-primary mb-6">🎁 Hilf mit, den Kindern einen unvergesslichen Tag zu schenken!</h3>
           </div>
           
           <div className="max-w-4xl mx-auto">
             <div className="bg-white rounded-3xl shadow-lg p-8 md:p-10 border border-accent/10">
-              <div className="flex flex-col md:flex-row gap-8 items-start">
+              <div className="flex flex-col md:flex-row gap-10 items-start">
                 <div className="md:w-1/2">
-                  <div className="mb-8 flex items-center">
-                    <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center mr-4">
-                      <svg className="w-6 h-6 text-accent-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    </div>
-                    <h3 className="text-2xl font-semibold text-gray-800">Warum wir Spenden sammeln</h3>
-                  </div>
-                  
-                  <p className="text-gray-700 mb-6 leading-relaxed">
-                    Das Vogelschießen wird durch Spenden finanziert. Mit Ihren Spenden ermöglichen wir den Kindern einen schönen Tag und die Finanzierung der Klassenausflüge.
+                  <p className="text-gray-700 text-lg mb-6 leading-relaxed">
+                    Das Vogelschießen wird ausschließlich durch Spenden finanziert.
                   </p>
                   
-                  <p className="text-gray-700 mb-6 leading-relaxed">
-                    Alternativ können Sie auch direkt vor Ort am Vogelschießen-Tag spenden. Sprechen Sie uns gerne an!
+                  <p className="text-gray-700 text-lg mb-6 leading-relaxed">
+                    Mit deiner Unterstützung ermöglichst du den Kindern einen tollen Tag voller Spiel, Gemeinschaft und Freude – und hilfst bei der Finanzierung der Klassenausflüge.
+                  </p>
+                  
+                  <p className="text-gray-700 text-lg mb-6 leading-relaxed">
+                    Unsere Helfer*innen sind im Ort unterwegs und sammeln Spenden persönlich ein.
+                  </p>
+                  
+                  <p className="text-gray-700 text-lg font-medium">
+                    Alternativ kannst du ganz bequem per Überweisung spenden.
                   </p>
                 </div>
                 
                 <div className="md:w-1/2">
-                  <div className="bg-gradient-to-br from-accent/5 to-accent/20 rounded-2xl p-8 shadow-sm border border-accent/20 transform hover:scale-[1.02] transition-all duration-300">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
-                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 5h18M3 15h18"></path></svg>
-                      Bankverbindung
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:justify-between border-b border-accent/10 pb-2">
-                        <span className="font-medium text-gray-700">Kontoinhaber:</span>
-                        <span className="text-gray-800">Förderverein der Regenbogenschule Melsdorf</span>
+                  <div className="bg-yellow-50 rounded-xl p-6 shadow-sm border border-yellow-100">
+                    <h3 className="text-xl font-semibold text-gray-800 mb-6">💳 So kannst du spenden</h3>
+                    
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-sm text-gray-600">Kontoinhaber:</span>
+                        <span className="font-semibold text-base text-gray-800">Förderverein der Regenbogenschule Melsdorf</span>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:justify-between border-b border-accent/10 pb-2">
-                        <span className="font-medium text-gray-700">IBAN:</span>
-                        <span className="font-mono text-gray-800">DE12 3456 7890 1234 5678 90</span>
+                      
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-sm text-gray-600">IBAN:</span>
+                        <span className="font-semibold text-base font-mono text-gray-800">DE12 3456 7890 1234 5678 90</span>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:justify-between border-b border-accent/10 pb-2">
-                        <span className="font-medium text-gray-700">BIC:</span>
-                        <span className="font-mono text-gray-800">ABCDEFGHIJK</span>
+                      
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-sm text-gray-600">BIC:</span>
+                        <span className="font-semibold text-base font-mono text-gray-800">ABCDEFGHIJK</span>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:justify-between">
-                        <span className="font-medium text-gray-700">Verwendungszweck:</span>
-                        <span className="text-gray-800">Spende Vogelschießen 2025</span>
+                      
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium text-sm text-gray-600">Verwendungszweck:</span>
+                        <span className="font-semibold text-base text-gray-800">Spende Vogelschießen 2025</span>
                       </div>
                     </div>
                   </div>
@@ -954,25 +1045,15 @@ export default function Startseite() {
             </div>
           </div>
         </div>
-      </section>
+      </div>
       
       {/* Galerie-Sektion */}
-      <section id="galerie" className="py-24 bg-gradient-to-b from-white to-gray-50" ref={galerieRef}>
+      <div id="galerie" className="py-24 bg-gradient-to-b from-white to-gray-50" ref={galerieRef}>
         <div className="container max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center space-y-4 mb-16">
-            <h2 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
-              Impressionen
-            </h2>
-            <p className="text-xl text-gray-600">Erinnerungen an unvergessliche Momente</p>
-          </div>
-          <div className="text-center space-y-4 mb-16">
+          <div className="text-center mb-16">
+            <span className="inline-block px-4 py-1 bg-primary/10 rounded-full text-primary font-medium text-sm mb-3 shadow-sm">📸 Fotogalerie</span>
             <h2 className="text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'var(--font-poppins)' }}>Impressionen</h2>
             <p className="text-gray-700 max-w-2xl mx-auto">Schöne Momente des Vagelscheetens festgehalten</p>
-          </div>
-          {/* Upload-Komponente */}
-          <div className="max-w-3xl mx-auto mb-12 bg-white rounded-2xl p-6 shadow-lg border border-primary/10">
-            <h3 className="text-xl font-semibold text-primary mb-4 text-center">Teile deine Fotos mit uns!</h3>
-            <ImageUpload />
           </div>
 
           {loading.gallery ? (
@@ -988,62 +1069,120 @@ export default function Startseite() {
                 <div className="absolute -inset-4 bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5 rounded-[2rem] blur-2xl"></div>
                 <div className="relative space-y-6">
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100">
-                    <span className="text-3xl opacity-50">📸</span>
+                    <span className="text-3xl opacity-50">📷</span>
                   </div>
                   <p className="text-2xl text-gray-400 font-light">Noch keine Bilder vorhanden</p>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
-              {galleryImages.map(image => (
-                <div key={image.id} className="polaroid group">
-                  <div className="polaroid-image">
-                    <Image 
-                      src={image.url} 
-                      alt={image.name}
-                      width={300}
-                      height={300}
-                      className="object-cover aspect-square w-full h-full"
-                    />
-                  </div>
-                  <p className="polaroid-caption truncate group-hover:text-primary transition-colors">{image.name.replace(/\.[^/.]+$/, "")}</p>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+                {galleryImages
+                  .slice((currentPage - 1) * imagesPerPage, currentPage * imagesPerPage)
+                  .map(image => (
+                    <div 
+                      key={image.id} 
+                      className="group relative overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer"
+                      onClick={() => setSelectedImage(image)}
+                    >
+                      <div className="aspect-square overflow-hidden">
+                        <Image 
+                          src={image.url} 
+                          alt="Vogelschießen Foto"
+                          width={300}
+                          height={300}
+                          className="object-cover w-full h-full transform transition-transform duration-500 group-hover:scale-110"
+                        />
+                      </div>
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 flex items-center justify-center transition-all duration-300">
+                        <div className="text-white opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+              
+              {/* Paginierung */}
+              {galleryImages.length > imagesPerPage && (
+                <div className="flex justify-center mt-12 space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className={`px-4 py-2 rounded-md ${currentPage === 1 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors`}
+                  >
+                    ← Zurück
+                  </button>
+                  
+                  {Array.from({ length: Math.ceil(galleryImages.length / imagesPerPage) }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-10 h-10 rounded-md ${currentPage === page ? 'bg-primary text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(galleryImages.length / imagesPerPage)))}
+                    disabled={currentPage === Math.ceil(galleryImages.length / imagesPerPage)}
+                    className={`px-4 py-2 rounded-md ${currentPage === Math.ceil(galleryImages.length / imagesPerPage) ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} transition-colors`}
+                  >
+                    Weiter →
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+              
+              {/* Bildvorschau-Modal */}
+              {selectedImage && (
+                <ImagePreview 
+                  image={selectedImage}
+                  onClose={() => setSelectedImage(null)}
+                  onNext={() => {
+                    const currentIndex = galleryImages.findIndex(img => img.id === selectedImage.id);
+                    if (currentIndex < galleryImages.length - 1) {
+                      setSelectedImage(galleryImages[currentIndex + 1]);
+                    }
+                  }}
+                  onPrevious={() => {
+                    const currentIndex = galleryImages.findIndex(img => img.id === selectedImage.id);
+                    if (currentIndex > 0) {
+                      setSelectedImage(galleryImages[currentIndex - 1]);
+                    }
+                  }}
+                  hasNext={galleryImages.findIndex(img => img.id === selectedImage.id) < galleryImages.length - 1}
+                  hasPrevious={galleryImages.findIndex(img => img.id === selectedImage.id) > 0}
+                />
+              )}
+            </>
           )}
           
-          <div className="text-center mt-12">
-            <Link 
-              href="/galerie" 
-              className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors shadow-md hover:shadow-lg"
-            >
-              Zur vollständigen Galerie
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </Link>
-          </div>
+
         </div>
-      </section>
+      </div>
       
       {/* Kontakt-Sektion */}
-      <section id="kontakt" className="py-16 bg-gray-50" ref={kontaktRef}>
+      <div id="kontakt" className="py-16 bg-gray-50" ref={kontaktRef}>
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-green-700 mb-8 text-center">Kontakt</h2>
           
           <div className="max-w-3xl mx-auto bg-white/80 backdrop-blur-sm rounded-2xl shadow-md p-8">
             <p className="text-gray-700 mb-6">
-              Haben Sie Fragen zum Vogelschießen? Kontaktieren Sie uns gerne!
+              Hast du Fragen zum Vogelschießen? Kontaktiere uns gerne!
             </p>
             
             <ContactForm />
           </div>
         </div>
-      </section>
+      </div>
       
       {/* Downloads-Sektion */}
-      <section id="downloads" className="py-20 bg-gradient-to-b from-pastel-blue/10 to-white" ref={downloadsRef}>
+      <div id="downloads" className="py-20 bg-gradient-to-b from-pastel-blue/10 to-white" ref={downloadsRef}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-primary font-medium text-sm mb-3 shadow-sm">📥 Materialien</span>
@@ -1068,8 +1207,8 @@ export default function Startseite() {
               </div>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto">
-              <div className="grid gap-4 md:grid-cols-2">
+            <div className="max-w-5xl mx-auto">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {downloadFiles.map(file => (
                   <a 
                     key={file.id}
@@ -1096,17 +1235,8 @@ export default function Startseite() {
               </div>
             </div>
           )}
-          
-          <div className="text-center mt-12">
-            <Link href="/downloads" className="inline-flex items-center px-6 py-3 bg-primary text-white rounded-full hover:bg-primary-dark transition-colors shadow-md hover:shadow-lg">
-              Alle Downloads anzeigen
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </Link>
-          </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

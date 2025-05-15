@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { ImageUpload } from '@/components/ImageUpload';
-import { Image as ImageIcon, Trash2, ArrowLeft } from 'lucide-react';
+import { Image as ImageIcon, Trash2, ArrowLeft, CheckCircle, AlertCircle, X } from 'lucide-react';
 
 // Typ für ein Galeriebild
 type GalleryImage = {
@@ -22,6 +22,7 @@ export default function AdminGallery() {
   const [error, setError] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   // Laden der Bilder aus Supabase Storage
   useEffect(() => {
@@ -83,25 +84,108 @@ export default function AdminGallery() {
       
       // Prüfen, ob der Benutzer angemeldet ist
       const { data: sessionData } = await supabase.auth.getSession();
-      console.log('Sitzungsstatus:', sessionData?.session ? 'Angemeldet' : 'Nicht angemeldet');
-      
-      // Löschen versuchen
-      const { data, error } = await supabase
-        .storage
-        .from('galerie')
-        .remove([imageName]);
-        
-      if (error) {
-        console.error('Löschfehler:', error);
-        setError(`Fehler beim Löschen: ${error.message}. Stellen Sie sicher, dass der Bucket die richtigen Berechtigungen hat.`);
+      if (!sessionData?.session) {
+        console.error('Fehler: Benutzer ist nicht angemeldet');
+        setError('Sie müssen angemeldet sein, um Bilder zu löschen. Bitte melden Sie sich an und versuchen Sie es erneut.');
         return;
       }
       
-      console.log('Löschergebnis:', data);
+      console.log('Authentifizierungsstatus:', {
+        angemeldet: !!sessionData?.session,
+        userId: sessionData?.session?.user?.id,
+        role: sessionData?.session?.user?.role
+      });
       
-      // Aktualisieren der Bilderliste
-      setRefreshTrigger(prev => prev + 1);
-      alert('Bild erfolgreich gelöscht!');
+      // Zuerst prüfen, ob die Datei existiert
+      const { data: fileExists, error: fileCheckError } = await supabase
+        .storage
+        .from('galerie')
+        .list('', {
+          search: imageName
+        });
+        
+      if (fileCheckError) {
+        console.error('Fehler beim Überprüfen der Datei:', fileCheckError);
+        setError(`Fehler beim Überprüfen der Datei: ${fileCheckError.message}`);
+        return;
+      }
+      
+      if (!fileExists || fileExists.length === 0) {
+        console.error('Datei existiert nicht:', imageName);
+        setError(`Die Datei "${imageName}" existiert nicht im Storage.`);
+        return;
+      }
+      
+      console.log('Datei gefunden, versuche zu löschen mit API-Route:', fileExists);
+      
+      // Löschen über die API-Route mit Admin-Rechten
+      const response = await fetch('/api/galerie/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageName }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        console.error('API Löschfehler:', result.error);
+        setError(`Fehler beim Löschen: ${result.error}`);
+        return;
+      }
+      
+      console.log('API Löschergebnis:', result);
+      
+      // Lokale Bilderliste aktualisieren, um das gelöschte Bild sofort zu entfernen
+      setImages(prevImages => prevImages.filter(img => img.name !== imageName));
+      
+      // Kurze Verzögerung, dann Neuladung der Bilder vom Server
+      setTimeout(async () => {
+        try {
+          // Erneut Bilder vom Server laden, um sicherzustellen, dass die Liste aktuell ist
+          const { data: refreshData, error: refreshError } = await supabase
+            .storage
+            .from('galerie')
+            .list('');
+            
+          if (!refreshError && refreshData) {
+            // Konvertieren der Dateien in das GalleryImage-Format
+            const imageFiles = refreshData.filter(file => 
+              file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i)
+            );
+            
+            const galleryImages: GalleryImage[] = await Promise.all(
+              imageFiles.map(async (file, index) => {
+                const { data: { publicUrl } } = supabase
+                  .storage
+                  .from('galerie')
+                  .getPublicUrl(file.name);
+                  
+                return {
+                  id: index + 1,
+                  name: file.name,
+                  url: publicUrl,
+                  size: file.metadata?.size,
+                  created_at: file.created_at
+                };
+              })
+            );
+            
+            setImages(galleryImages);
+          }
+        } catch (refreshErr) {
+          console.error('Fehler beim Aktualisieren der Bilderliste:', refreshErr);
+        }
+      }, 1000);
+      
+      // Erfolgs-Benachrichtigung anzeigen
+      setNotification({ type: 'success', message: 'Bild erfolgreich gelöscht!' });
+      
+      // Automatisch nach 5 Sekunden ausblenden
+      setTimeout(() => {
+        setNotification(null);
+      }, 5000);
     } catch (error: any) {
       console.error('Fehler beim Löschen des Bildes:', error);
       setError(`Das Bild konnte nicht gelöscht werden: ${error?.message || 'Unbekannter Fehler'}`);
@@ -133,8 +217,36 @@ export default function AdminGallery() {
     });
   };
 
+  // Schließen der Benachrichtigung
+  const closeNotification = () => {
+    setNotification(null);
+  };
+  
   return (
-    <div className="p-8">
+    <div className="p-8 relative">
+      {/* Benachrichtigungs-Modal */}
+      {notification && (
+        <div className={`fixed top-6 right-6 z-50 flex items-center p-4 mb-4 shadow-lg rounded-lg ${notification.type === 'success' ? 'bg-green-50 border-l-4 border-green-500' : 'bg-red-50 border-l-4 border-red-500'} transition-all duration-300 transform animate-fade-in-right`}>
+          <div className="flex items-center">
+            {notification.type === 'success' ? (
+              <CheckCircle className="w-6 h-6 text-green-500 mr-3" />
+            ) : (
+              <AlertCircle className="w-6 h-6 text-red-500 mr-3" />
+            )}
+            <div className="text-sm font-medium mr-6 text-gray-800">
+              {notification.message}
+            </div>
+            <button
+              type="button"
+              className="ml-auto -mx-1.5 -my-1.5 bg-white text-gray-400 hover:text-gray-900 rounded-lg p-1.5 inline-flex h-8 w-8 focus:ring-2 focus:ring-gray-300"
+              onClick={closeNotification}
+            >
+              <span className="sr-only">Schließen</span>
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mb-6 flex items-center">
         <Link href="/admin" className="text-gray-600 hover:text-gray-900 mr-4">
           <ArrowLeft className="h-5 w-5" />

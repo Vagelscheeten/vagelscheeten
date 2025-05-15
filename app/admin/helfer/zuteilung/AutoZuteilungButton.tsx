@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Loader2, Wand2 } from 'lucide-react';
+import { Loader2, Wand2, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 interface AutoZuteilungButtonProps {
   onComplete: () => void;
@@ -41,6 +42,7 @@ interface ZuteilungErgebnis {
 export function AutoZuteilungButton({ onComplete, rueckmeldungen }: AutoZuteilungButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [ergebnis, setErgebnis] = useState<ZuteilungErgebnis | null>(null);
 
   const handleAutoZuteilung = async () => {
@@ -96,24 +98,90 @@ export function AutoZuteilungButton({ onComplete, rueckmeldungen }: AutoZuteilun
 
   return (
     <>
-      <Button 
-        onClick={handleAutoZuteilung} 
-        disabled={isLoading}
-        className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Zuteilung läuft...
-          </>
-        ) : (
-          <>
-            <Wand2 className="mr-2 h-4 w-4" />
-            Automatische Erstverteilung starten
-          </>
-        )}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button 
+          onClick={handleAutoZuteilung} 
+          disabled={isLoading}
+          className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Zuteilung läuft...
+            </>
+          ) : (
+            <>
+              <Wand2 className="mr-2 h-4 w-4" />
+              Automatische Erstverteilung starten
+            </>
+          )}
+        </Button>
+        
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="rounded-full h-8 w-8" 
+          onClick={() => setShowInfoModal(true)}
+        >
+          <Info className="h-4 w-4" />
+        </Button>
+      </div>
 
+      {/* Informations-Modal */}
+      <Dialog open={showInfoModal} onOpenChange={setShowInfoModal}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Regeln der automatischen Zuteilung</DialogTitle>
+            <DialogDescription>
+              So funktioniert die automatische Erstverteilung der Helfer zu Aufgaben
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2 text-sm overflow-y-auto pr-1">
+            <div>
+              <h3 className="font-medium mb-1">Zuteilungsreihenfolge:</h3>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Zuerst erhalten alle Helfer ohne Aufgabe eine erste Zuweisung</li>
+                <li>Erst wenn alle Helfer mindestens eine Aufgabe haben, werden weitere Aufgaben verteilt</li>
+                <li>Dadurch wird eine gerechte Verteilung sichergestellt</li>
+              </ul>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-1">Prioritäten:</h3>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Innerhalb jeder Zuteilungsphase werden die Prioritäten berücksichtigt</li>
+                <li>Höhere Priorität (niedrigere Zahl) wird zuerst bearbeitet</li>
+                <li>Rückmeldungen ohne Priorität werden zufällig sortiert</li>
+              </ul>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-1">Zeitfenster:</h3>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Es wird geprüft, ob ein Helfer bereits im selben Zeitfenster eingeteilt ist</li>
+                <li>Ein Helfer kann vormittags und nachmittags je eine Aufgabe bekommen</li>
+                <li>Ganztägige Aufgaben blockieren beide Zeitfenster</li>
+              </ul>
+            </div>
+            
+            <div>
+              <h3 className="font-medium mb-1">Springer:</h3>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Springer werden erst nach regulären Helfern zugewiesen</li>
+                <li>Aufgaben mit den meisten offenen Plätzen werden bevorzugt mit Springern besetzt</li>
+                <li>Auch bei Springern gilt: Erst bekommt jeder eine Aufgabe, dann weitere</li>
+              </ul>
+            </div>
+          </div>
+          
+          <DialogFooter className="shrink-0 mt-2 pt-2 border-t">
+            <Button onClick={() => setShowInfoModal(false)}>Verstanden</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Ergebnis-Modal */}
       <Dialog open={showResults} onOpenChange={setShowResults}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="pb-2">

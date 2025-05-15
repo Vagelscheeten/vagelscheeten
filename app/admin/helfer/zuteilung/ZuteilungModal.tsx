@@ -187,15 +187,15 @@ export function ZuteilungModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="flex-shrink-0 p-6 pb-0">
           <DialogTitle>
             Helfer:innen für "{aufgabe?.titel}" zuweisen
           </DialogTitle>
         </DialogHeader>
         
-        <div className="mt-4">
-          <div className="flex justify-between items-center mb-4">
+        <div className="flex-1 overflow-hidden flex flex-col p-6 pt-4">
+          <div className="flex justify-between items-center mb-4 flex-shrink-0">
             <div>
               <span className="text-sm font-medium">Bedarf: {aufgabe?.bedarf} Helfer:innen</span>
             </div>
@@ -203,14 +203,20 @@ export function ZuteilungModal({
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => selectAllByPriority(1)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  selectAllByPriority(1);
+                }}
               >
                 Alle Prio 1 auswählen
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => selectAllByPriority(2)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  selectAllByPriority(2);
+                }}
               >
                 Alle Prio 2 auswählen
               </Button>
@@ -218,12 +224,12 @@ export function ZuteilungModal({
           </div>
           
           {filteredRueckmeldungen.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-8 text-muted-foreground flex-1 flex items-center justify-center">
               Keine verfügbaren Rückmeldungen für diese Aufgabe
             </div>
           ) : (
-            <ScrollArea className="h-[300px] border rounded-md p-4">
-              <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto border rounded-md">
+              <div className="p-4 space-y-3">
                 {filteredRueckmeldungen.map(rueckmeldung => (
                   <div 
                     key={rueckmeldung.id} 
@@ -257,26 +263,34 @@ export function ZuteilungModal({
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
         
-        <DialogFooter className="mt-6">
-          <div className="flex items-center mr-auto">
-            <span className="text-sm">
+        <DialogFooter className="flex-shrink-0 pt-4 border-t px-6 pb-6">
+          <div className="flex items-center justify-between w-full">
+            <span className="text-sm text-muted-foreground">
               {selectedRueckmeldungen.length} von {filteredRueckmeldungen.length} ausgewählt
             </span>
+            <div className="space-x-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={onClose} 
+                disabled={isSubmitting}
+              >
+                Abbrechen
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleSubmit} 
+                disabled={isSubmitting || selectedRueckmeldungen.length === 0}
+                className="bg-primary hover:bg-primary/90"
+              >
+                {isSubmitting ? 'Wird zugewiesen...' : 'Zuweisen'}
+              </Button>
+            </div>
           </div>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Abbrechen
-          </Button>
-          <Button 
-            type="button" 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || selectedRueckmeldungen.length === 0}
-          >
-            {isSubmitting ? 'Wird zugewiesen...' : 'Zuweisen'}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -83,9 +83,12 @@ export async function POST(req: NextRequest) {
       aufgabenBelegung[zuteilung.aufgabe_id]++;
     });
 
-    // 4. Kinder mit Zeitfenster-Zuteilungen tracken
+    // 4. Kinder mit Zeitfenster-Zuteilungen tracken und Anzahl der Aufgaben pro Kind
     const kinderZeitfenster: Record<string, Set<string>> = {};
+    const helferAufgabenAnzahl: Record<string, number> = {};
+    
     bestehendeZuteilungen?.forEach((zuteilung: Zuteilung) => {
+      // Zeitfenster tracken
       if (!kinderZeitfenster[zuteilung.kind_id]) {
         kinderZeitfenster[zuteilung.kind_id] = new Set();
       }
@@ -97,6 +100,12 @@ export async function POST(req: NextRequest) {
       } else {
         kinderZeitfenster[zuteilung.kind_id].add(zuteilung.zeitfenster);
       }
+      
+      // Anzahl der Aufgaben pro Kind tracken
+      if (!helferAufgabenAnzahl[zuteilung.kind_id]) {
+        helferAufgabenAnzahl[zuteilung.kind_id] = 0;
+      }
+      helferAufgabenAnzahl[zuteilung.kind_id]++;
     });
 
     // 5. Rückmeldungen nach Priorität sortieren (1, 2, 3, null)
@@ -122,8 +131,21 @@ export async function POST(req: NextRequest) {
     // 6. Neue Zuteilungen erstellen
     const neueZuteilungen: Zuteilung[] = [];
     const nichtZugewieseneRueckmeldungen: NichtZugewieseneRueckmeldung[] = [];
-
-    for (const rueckmeldung of sortiereRueckmeldungen) {
+    
+    // 6.1 Rückmeldungen in zwei Phasen aufteilen: Helfer ohne Aufgaben und Helfer mit Aufgaben
+    const erstePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r => 
+      !helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0
+    );
+    
+    const zweitePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r => 
+      helferAufgabenAnzahl[r.kind_id] && helferAufgabenAnzahl[r.kind_id] > 0
+    );
+    
+    console.log(`Erste Phase: ${erstePhaseRueckmeldungen.length} Rückmeldungen`);
+    console.log(`Zweite Phase: ${zweitePhaseRueckmeldungen.length} Rückmeldungen`);
+    
+    // Funktion zum Zuweisen einer Rückmeldung
+    const weiseRueckmeldungZu = (rueckmeldung: any): boolean => {
       // Sicherstellen, dass helferaufgaben ein Objekt ist
       const aufgabe = rueckmeldung.helferaufgaben as unknown as Aufgabe;
       const aufgabeId = aufgabe.id;
@@ -137,7 +159,7 @@ export async function POST(req: NextRequest) {
           id: rueckmeldung.id,
           grund: 'Aufgabe bereits voll belegt'
         });
-        continue;
+        return false;
       }
       
       // Prüfen, ob das Kind in diesem Zeitfenster bereits zugewiesen ist
@@ -158,7 +180,7 @@ export async function POST(req: NextRequest) {
           id: rueckmeldung.id,
           grund: 'Kind bereits im selben Zeitfenster zugewiesen'
         });
-        continue;
+        return false;
       }
       
       // Zuteilung erstellen
@@ -187,6 +209,35 @@ export async function POST(req: NextRequest) {
       } else {
         kinderZeitfenster[kindId].add(zeitfenster);
       }
+      
+      // Aufgabenanzahl des Helfers aktualisieren
+      if (!helferAufgabenAnzahl[kindId]) {
+        helferAufgabenAnzahl[kindId] = 0;
+      }
+      helferAufgabenAnzahl[kindId]++;
+      
+      return true;
+    };
+    
+    // 6.2 Erste Phase: Allen Helfern ohne Aufgabe mindestens eine Aufgabe zuweisen
+    for (const rueckmeldung of erstePhaseRueckmeldungen) {
+      weiseRueckmeldungZu(rueckmeldung);
+    }
+    
+    // 6.3 Zweite Phase: Weitere Aufgaben zuweisen, nachdem alle mindestens eine haben
+    // Prüfen, ob es noch Helfer gibt, die keine Aufgabe haben (und eine haben möchten)
+    const helferOhneAufgabe = erstePhaseRueckmeldungen.filter(r => 
+      !helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0
+    ).length;
+    
+    // Nur wenn alle Helfer der ersten Phase mindestens eine Aufgabe haben ODER alle verbleibenden Plätze gefüllt werden müssen
+    if (helferOhneAufgabe === 0) {
+      console.log('Zweite Phase wird gestartet - alle Helfer haben mindestens eine Aufgabe');
+      for (const rueckmeldung of zweitePhaseRueckmeldungen) {
+        weiseRueckmeldungZu(rueckmeldung);
+      }
+    } else {
+      console.log(`Zweite Phase wird übersprungen - ${helferOhneAufgabe} Helfer haben noch keine Aufgabe`);
     }
 
     // 7. Neue Zuteilungen in die Datenbank einfügen
@@ -308,6 +359,31 @@ export async function POST(req: NextRequest) {
     const springerZuteilungen: Zuteilung[] = [];
     const zugewieseneSpringer: Record<string, boolean> = {}; // Tracking für zugewiesene Springer
     
+    // 8.5.1 Springer in zwei Phasen aufteilen: Ohne und mit Aufgaben
+    const erstePhaseVormittagsSpringer = springerRueckmeldungen.vormittag.filter(springer => 
+      !helferAufgabenAnzahl[springer.kind_id] || helferAufgabenAnzahl[springer.kind_id] === 0
+    );
+    
+    const erstePhaseNachmittagsSpringer = springerRueckmeldungen.nachmittag.filter(springer => 
+      !helferAufgabenAnzahl[springer.kind_id] || helferAufgabenAnzahl[springer.kind_id] === 0
+    );
+    
+    const erstePhaseGanztagsSpringer = springerRueckmeldungen.beides.filter(springer => 
+      !helferAufgabenAnzahl[springer.kind_id] || helferAufgabenAnzahl[springer.kind_id] === 0
+    );
+    
+    const zweitePhaseVormittagsSpringer = springerRueckmeldungen.vormittag.filter(springer => 
+      helferAufgabenAnzahl[springer.kind_id] && helferAufgabenAnzahl[springer.kind_id] > 0
+    );
+    
+    const zweitePhaseNachmittagsSpringer = springerRueckmeldungen.nachmittag.filter(springer => 
+      helferAufgabenAnzahl[springer.kind_id] && helferAufgabenAnzahl[springer.kind_id] > 0
+    );
+    
+    const zweitePhaseGanztagsSpringer = springerRueckmeldungen.beides.filter(springer => 
+      helferAufgabenAnzahl[springer.kind_id] && helferAufgabenAnzahl[springer.kind_id] > 0
+    );
+    
     // Funktion zum Zuweisen eines Springers zu einer Aufgabe
     const weiseSpringerZu = (springer: any, zeitfenster: string, aufgabenListe: any[]) => {
       // Wenn keine offenen Aufgaben mehr vorhanden sind, abbrechen
@@ -341,27 +417,68 @@ export async function POST(req: NextRequest) {
         aufgabenListe.sort((a, b) => b.offenePlaetze - a.offenePlaetze);
       }
       
+      // Aufgabenanzahl des Helfers aktualisieren
+      if (!helferAufgabenAnzahl[springer.kind_id]) {
+        helferAufgabenAnzahl[springer.kind_id] = 0;
+      }
+      helferAufgabenAnzahl[springer.kind_id]++;
+      
       return true;
     };
     
-    // Vormittags-Springer zuweisen
-    springerRueckmeldungen.vormittag.forEach(springer => {
+    // Erste Phase: Zuerst allen Springern ohne Aufgabe eine Aufgabe zuweisen
+    console.log(`Springer erste Phase: ${erstePhaseVormittagsSpringer.length + erstePhaseNachmittagsSpringer.length + erstePhaseGanztagsSpringer.length} Springer ohne Aufgabe`);
+    
+    // Vormittags-Springer zuweisen (erste Phase)
+    erstePhaseVormittagsSpringer.forEach(springer => {
       weiseSpringerZu(springer, 'vormittag', offeneAufgaben.vormittag);
     });
     
-    // Nachmittags-Springer zuweisen
-    springerRueckmeldungen.nachmittag.forEach(springer => {
+    // Nachmittags-Springer zuweisen (erste Phase)
+    erstePhaseNachmittagsSpringer.forEach(springer => {
       weiseSpringerZu(springer, 'nachmittag', offeneAufgaben.nachmittag);
     });
     
-    // Ganztägige Springer zuweisen - zuerst versuchen, sie vormittags einzusetzen
-    springerRueckmeldungen.beides.forEach(springer => {
+    // Ganztägige Springer zuweisen (erste Phase)
+    erstePhaseGanztagsSpringer.forEach(springer => {
       // Zuerst versuchen, vormittags zuzuweisen
       if (!weiseSpringerZu(springer, 'vormittag', offeneAufgaben.vormittag)) {
         // Falls nicht möglich, nachmittags versuchen
         weiseSpringerZu(springer, 'nachmittag', offeneAufgaben.nachmittag);
       }
     });
+    
+    // Zweite Phase: Weiteren Springern zusätzliche Aufgaben zuweisen
+    console.log(`Springer zweite Phase: ${zweitePhaseVormittagsSpringer.length + zweitePhaseNachmittagsSpringer.length + zweitePhaseGanztagsSpringer.length} Springer mit Aufgabe`);
+    
+    // Prüfen, ob alle Springer der ersten Phase eine Aufgabe erhalten haben
+    const springerOhneAufgabe = [...erstePhaseVormittagsSpringer, ...erstePhaseNachmittagsSpringer, ...erstePhaseGanztagsSpringer]
+      .filter(springer => !zugewieseneSpringer[springer.id]).length;
+      
+    if (springerOhneAufgabe === 0) {
+      console.log('Springer zweite Phase wird gestartet - alle Springer haben mindestens eine Aufgabe');
+      
+      // Vormittags-Springer zuweisen (zweite Phase)
+      zweitePhaseVormittagsSpringer.forEach(springer => {
+        weiseSpringerZu(springer, 'vormittag', offeneAufgaben.vormittag);
+      });
+      
+      // Nachmittags-Springer zuweisen (zweite Phase)
+      zweitePhaseNachmittagsSpringer.forEach(springer => {
+        weiseSpringerZu(springer, 'nachmittag', offeneAufgaben.nachmittag);
+      });
+      
+      // Ganztägige Springer zuweisen (zweite Phase)
+      zweitePhaseGanztagsSpringer.forEach(springer => {
+        // Zuerst versuchen, vormittags zuzuweisen
+        if (!weiseSpringerZu(springer, 'vormittag', offeneAufgaben.vormittag)) {
+          // Falls nicht möglich, nachmittags versuchen
+          weiseSpringerZu(springer, 'nachmittag', offeneAufgaben.nachmittag);
+        }
+      });
+    } else {
+      console.log(`Springer zweite Phase wird übersprungen - ${springerOhneAufgabe} Springer haben noch keine Aufgabe`);
+    }
     
     // 8.6 Springer-Zuteilungen in die Datenbank einfügen
     let anzahlSpringerZugewiesen = 0;

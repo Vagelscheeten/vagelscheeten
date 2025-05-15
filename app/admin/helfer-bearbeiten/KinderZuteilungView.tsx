@@ -3,13 +3,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
+import { Button } from "@/components/ui/button";
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ZuteilungManuellModal } from './ZuteilungManuellModal';
 import { ZuteilungBearbeitenModal } from './ZuteilungBearbeitenModal';
-import { toast } from 'react-hot-toast';
+import { toast } from "sonner";
+import { useToast } from "@/components/ui/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Typen (ggf. anpassen/erweitern oder aus zentraler Datei importieren)
 type Klasse = {
@@ -65,6 +84,8 @@ export function KinderZuteilungView() {
   const [prefilledKindId, setPrefilledKindId] = useState<string | undefined>(undefined);
   const [prefilledKindName, setPrefilledKindName] = useState<string | undefined>(undefined);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [selectedZuteilung, setSelectedZuteilung] = useState<{
     id: string;
     kind_id: string;
@@ -73,6 +94,13 @@ export function KinderZuteilungView() {
     aufgabe_id: string;
     aufgabe_titel: string;
     via_springer: boolean;
+  } | null>(null);
+  // Modal für Entfernen einer Zuteilung
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [pendingDeleteAssignment, setPendingDeleteAssignment] = useState<{
+    id: string;
+    kindName: string;
+    aufgabeTitel: string;
   } | null>(null);
 
   const loadData = useCallback(async () => {
@@ -176,28 +204,118 @@ export function KinderZuteilungView() {
     loadData(); // Reload data
   };
 
-  const handleRemoveAssignment = async (assignmentId: string, kindName: string, aufgabeTitel: string) => {
-    if (window.confirm(`Möchtest du die Zuteilung von ${kindName} zur Aufgabe "${aufgabeTitel}" wirklich entfernen?`)) {
-      toast.loading('Entferne Zuteilung...');
-      const supabase = createClient();
-      try {
-        const { error: deleteError } = await supabase
-          .from('helfer_zuteilungen')
-          .delete()
-          .eq('id', assignmentId);
+  const handleRemoveAssignment = (assignmentId: string, kindName: string, aufgabeTitel: string) => {
+    setPendingDeleteAssignment({ id: assignmentId, kindName, aufgabeTitel });
+    setIsDeleteModalOpen(true);
+  };
 
-        if (deleteError) {
-          throw deleteError;
-        }
-
-        toast.dismiss();
-        toast.success('Zuteilung erfolgreich entfernt!');
-        loadData(); // Daten neu laden, um die Änderung anzuzeigen
-      } catch (error: any) {
-        console.error("Fehler beim Entfernen der Zuteilung:", error);
-        toast.dismiss();
-        toast.error('Fehler beim Entfernen der Zuteilung.');
+  // Wird nach Bestätigung im Modal ausgeführt
+  const confirmRemoveAssignment = async () => {
+    if (!pendingDeleteAssignment) return;
+    toast.loading('Entferne Zuteilung...');
+    const supabase = createClient();
+    try {
+      const { error: deleteError } = await supabase
+        .from('helfer_zuteilungen')
+        .delete()
+        .eq('id', pendingDeleteAssignment.id);
+      if (deleteError) {
+        throw deleteError;
       }
+      toast.dismiss();
+      toast.success('Zuteilung erfolgreich entfernt!');
+      loadData();
+    } catch (error: any) {
+      console.error("Fehler beim Entfernen der Zuteilung:", error);
+      toast.dismiss();
+      toast.error('Fehler beim Entfernen der Zuteilung.');
+    } finally {
+      setIsDeleteModalOpen(false);
+      setPendingDeleteAssignment(null);
+    }
+  };
+
+  const cancelRemoveAssignment = () => {
+    setIsDeleteModalOpen(false);
+    setPendingDeleteAssignment(null);
+  };
+  
+  // Funktion zum Öffnen des Reset-Modals
+  const openResetModal = () => {
+    setIsResetModalOpen(true);
+  };
+  
+  // Funktion zum Schließen des Reset-Modals
+  const closeResetModal = () => {
+    setIsResetModalOpen(false);
+  };
+  
+  // Funktion zum Löschen aller Zuteilungen (ohne Rückmeldungen zu beeinträchtigen)
+  const handleResetAllAssignments = async () => {
+    setIsResetting(true);
+    const supabase = createClient();
+    
+    try {
+      console.log('Starte Zurücksetzen aller Zuteilungen...');
+      
+      // 1. Zuerst die Anzahl der zu löschenden Zuteilungen abrufen
+      const { count, error: countError } = await supabase
+        .from('helfer_zuteilungen')
+        .select('*', { count: 'exact', head: true });
+        
+      if (countError) throw countError;
+      
+      if (count === 0) {
+        closeResetModal();
+        toast('Keine Zuteilungen gefunden', {
+          description: 'Es gibt keine Zuteilungen zum Zurücksetzen.',
+        });
+        return;
+      }
+      
+      console.log(`Es werden ${count} Zuteilungen gelöscht.`);
+      
+      // 2. Zuerst alle IDs abrufen, dann löschen
+      const { data: zuLoeschendeZuteilungen, error: selectError } = await supabase
+        .from('helfer_zuteilungen')
+        .select('id');
+        
+      if (selectError) throw selectError;
+      
+      // 3. Alle Einträge mit den abgerufenen IDs löschen
+      const { error: deleteError } = await supabase
+        .from('helfer_zuteilungen')
+        .delete()
+        .in('id', zuLoeschendeZuteilungen.map(z => z.id));
+      
+      if (deleteError) {
+        console.error('Fehler beim Löschen der Zuteilungen:', deleteError);
+        throw deleteError;
+      }
+      
+      console.log(`Erfolgreich ${zuLoeschendeZuteilungen.length} Zuteilungen gelöscht.`);
+      
+      // 4. Bestätigen, dass die Rückmeldungen noch vorhanden sind
+      const { count: countAfterDelete } = await supabase
+        .from('helfer_rueckmeldungen')
+        .select('*', { count: 'exact', head: true });
+      
+      console.log(`Verbleibende Rückmeldungen: ${countAfterDelete}`);
+      
+      closeResetModal();
+      toast.success(`Erfolgreich zurückgesetzt`, {
+        description: `Es wurden ${count} Zuteilungen gelöscht.`,
+      });
+      
+      // 4. Daten neu laden
+      loadData();
+    } catch (error: any) {
+      console.error("Fehler beim Zurücksetzen aller Zuteilungen:", error);
+      toast.error('Fehler beim Zurücksetzen', {
+        description: error.message || 'Ein unerwarteter Fehler ist aufgetreten.',
+      });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -231,6 +349,19 @@ export function KinderZuteilungView() {
       {error && (
         <div className="text-red-600 p-4">Fehler: {error}</div>
       )}
+      
+      <div className="mb-6 flex justify-between items-center">
+        <h3 className="text-lg font-medium">Helfer-Zuteilungen</h3>
+        <Button
+  variant="destructive"
+  onClick={openResetModal}
+  className="flex items-center gap-2 font-semibold text-white bg-red-600 hover:bg-red-700 focus:ring-2 focus:ring-red-400 focus:outline-none shadow-md"
+>
+  <Trash2 className="h-4 w-4" />
+  Alle Zuteilungen zurücksetzen
+</Button>
+      </div>
+      
       <Accordion type="multiple" className="w-full space-y-4">
         {klassen.map((klasse) => (
           <AccordionItem value={klasse.id} key={klasse.id}>
@@ -269,31 +400,41 @@ export function KinderZuteilungView() {
                           <div>
                             <h4 className="font-semibold text-sm mb-1">Aktuelle Zuteilung:</h4>
                             {kindZuteilung ? (
-                              <div className="text-sm flex items-center justify-between">
-                                  <span>
-                                      {kindZuteilung.helferaufgaben?.titel ?? 'Unbekannte Aufgabe'}
-                                      {kindZuteilung.via_springer && <Badge variant="outline" className="ml-2">Springer</Badge>}
+                              <div className="flex flex-col gap-1">
+                                <div className="text-sm font-medium break-words mb-2 flex items-center">
+                                  <span className="flex-1 min-w-0">
+                                    {kindZuteilung.helferaufgaben?.titel ?? 'Unbekannte Aufgabe'}
+                                    {kindZuteilung.via_springer && (
+                                      <Badge variant="outline" className="ml-2">Springer</Badge>
+                                    )}
                                   </span>
-                                  <div className="space-x-1">
-                                      <Button 
-                                      variant="outline" 
-                                      size="sm"
-                                      onClick={() => openEditModal(
-                                        kindZuteilung, 
-                                        `${kind.vorname} ${kind.nachname}`, 
-                                        kind.id
-                                      )}
-                                    >Ändern</Button>
-                                    <Button 
-                                      variant="destructive" 
-                                      size="sm"
-                                      onClick={() => handleRemoveAssignment(
-                                        kindZuteilung.id,
-                                        `${kind.vorname} ${kind.nachname}`,
-                                        kindZuteilung.helferaufgaben?.titel ?? 'Unbekannte Aufgabe'
-                                      )}
-                                    >Entfernen</Button>
-                                  </div>
+                                </div>
+                                <div className="flex flex-row justify-end gap-2 mt-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="font-semibold"
+                                    onClick={() => openEditModal(
+                                      kindZuteilung,
+                                      `${kind.vorname} ${kind.nachname}`,
+                                      kind.id
+                                    )}
+                                  >
+                                    Ändern
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="font-semibold text-white bg-red-600 hover:bg-red-700 focus:ring-2 focus:ring-red-400 focus:outline-none shadow-md"
+                                    onClick={() => handleRemoveAssignment(
+                                      kindZuteilung.id,
+                                      `${kind.vorname} ${kind.nachname}`,
+                                      kindZuteilung.helferaufgaben?.titel ?? 'Unbekannte Aufgabe'
+                                    )}
+                                  >
+                                    Entfernen
+                                  </Button>
+                                </div>
                               </div>
                             ) : (
                                <div className="text-sm text-muted-foreground flex items-center justify-between">
@@ -344,6 +485,77 @@ export function KinderZuteilungView() {
         onSuccess={handleSuccess}
         zuteilung={selectedZuteilung}
       />
+      
+      {/* Modal für Entfernen einer einzelnen Zuteilung */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" /> Zuteilung entfernen
+            </DialogTitle>
+            <DialogDescription>
+              {pendingDeleteAssignment && (
+                <>
+                  Möchtest du die Zuteilung von <b>{pendingDeleteAssignment.kindName}</b> zur Aufgabe <b>"{pendingDeleteAssignment.aufgabeTitel}"</b> wirklich entfernen?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={cancelRemoveAssignment}>
+              Abbrechen
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmRemoveAssignment}
+              className="!bg-red-600 !text-white !hover:bg-red-700 !shadow-md"
+            >
+              Entfernen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Reset-Bestätigungsmodal */}
+      <AlertDialog open={isResetModalOpen} onOpenChange={setIsResetModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bist du sicher?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div>Möchtest du wirklich <span className="font-bold">alle Zuteilungen</span> zurücksetzen?</div>
+                <div className="text-destructive">
+                  Achtung: Diese Aktion kann nicht rückgängig gemacht werden!
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Die Rückmeldungen der Eltern bleiben dabei unberührt.
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResetting}>
+              Abbrechen
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={(e) => {
+                e.preventDefault();
+                handleResetAllAssignments();
+              }}
+              disabled={isResetting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Wird zurückgesetzt...
+                </>
+              ) : (
+                'Ja, alle Zuteilungen zurücksetzen'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

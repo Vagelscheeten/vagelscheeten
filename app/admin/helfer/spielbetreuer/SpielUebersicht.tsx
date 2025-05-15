@@ -30,15 +30,25 @@ export const SpielUebersicht: React.FC<SpielUebersichtProps> = ({ spiele }) => {
           return (
             <div key={spiel.id} className="border rounded-lg p-3">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="font-semibold">{spiel.name}</h3>
-                <span className={`text-xs px-2 py-1 rounded-full ${isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {helferCount}/{maxHelfer} Helfer
-                </span>
+                <div className="w-full">
+                  <span
+                    className="font-semibold text-lg truncate max-w-full block"
+                    title={spiel.name}
+                  >
+                    {spiel.name}
+                  </span>
+                  <span
+                    className={`mt-1 inline-block text-xs rounded-full px-2 py-0.5 min-w-[54px] text-center font-medium shadow-sm ${isComplete ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}
+                    style={{lineHeight:'1.6'}}
+                  >
+                    {helferCount}/{maxHelfer} Helfer
+                  </span>
+                </div>
               </div>
               
               <div className="flex flex-wrap gap-1">
                 {spiel.helfer.length === 0 ? (
-                  <span className="text-sm text-gray-400 italic">Keine Helfer zugewiesen</span>
+                  <span className="text-sm text-gray-400 italic mb-2">Keine Helfer zugewiesen</span>
                 ) : (
                   spiel.helfer.map(helfer => (
                     <span 

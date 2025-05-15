@@ -8,15 +8,21 @@ const DEFAULT_ROUTE_URL = "https://www.google.com/maps/dir/Regenbogenschule+Mels
 
 export function RouteMap() {
   return (
-    <div className="relative w-full h-full">
-      <img 
-        src="/images/route-map.png" 
-        alt="Umzugsroute durch Melsdorf" 
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-      <div className="absolute bottom-2 right-2 bg-white/80 text-xs text-gray-600 px-1 py-0.5 rounded">
-        © Google Maps
-      </div>
+    <div className="relative w-full h-full overflow-hidden rounded-lg shadow-md">
+      <iframe 
+        src="https://www.google.com/maps/d/u/0/embed?mid=142LpzZqqrTI5voy0SbiMMUBDecoDZTs&ehbc=2E312F&noprof=1" 
+        width="100%" 
+        height="100%" 
+        style={{ 
+          border: 0, 
+          minHeight: '280px', /* Kleinere Grundhöhe für sehr kleine Geräte */
+        }} 
+        allowFullScreen={true} 
+        loading="lazy" 
+        referrerPolicy="no-referrer-when-downgrade"
+        title="Umzugsroute durch Melsdorf"
+        className="absolute inset-0 sm:min-h-[350px] md:min-h-[450px] lg:min-h-[550px] xl:min-h-[650px] aspect-[16/12]"
+      ></iframe>
     </div>
   );
 }
