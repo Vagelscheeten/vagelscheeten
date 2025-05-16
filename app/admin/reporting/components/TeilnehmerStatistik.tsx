@@ -66,7 +66,7 @@ export function TeilnehmerStatistik({
         const durchschnitt = kinderMitPunkten > 0 ? Math.round(gesamtPunkte / kinderMitPunkten) : 0;
         
         return {
-          label: `Klasse ${klasse}`,
+          label: klasse, // Ohne 'Klasse' Präfix
           value: durchschnitt
         };
       });
@@ -169,7 +169,7 @@ export function TeilnehmerStatistik({
   return (
     <div className="space-y-6">
       {/* Erste Reihe: Verteilung nach Klassen und Geschlechterverteilung */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Verteilung nach Klassen */}
         <ReportCard
           title="Verteilung nach Klassen"
@@ -196,10 +196,10 @@ export function TeilnehmerStatistik({
           }}
         >
           <div className="mt-4">
-            <div className="h-72">
+            <div className="h-80">
               <SimpleBarChart 
                 data={kinderProKlasse}
-                height={240}
+                height={300}
                 showValues 
                 showLabels
               />
@@ -233,7 +233,7 @@ export function TeilnehmerStatistik({
           }}
         >
           <div className="mt-4">
-            <div className="h-64">
+            <div className="h-80">
               <div className="flex flex-col justify-center items-center h-full">
                 <div className="w-full max-w-md">
                   {/* Überschriften */}
@@ -292,7 +292,7 @@ export function TeilnehmerStatistik({
       </div>
       
       {/* Zweite Reihe: Punktestatistiken nebeneinander */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         {/* Punkte pro Geschlecht */}
         <ReportCard
           title="Punkte pro Geschlecht"
@@ -315,7 +315,7 @@ export function TeilnehmerStatistik({
           }}
         >
           <div className="mt-4">
-            <div className="h-64">
+            <div className="h-80">
               <div className="flex flex-col justify-center items-center h-full">
                 <div className="w-full max-w-md">
                   <div className="text-center">
@@ -359,10 +359,10 @@ export function TeilnehmerStatistik({
           }}
         >
           <div className="mt-4">
-            <div className="h-72">
+            <div className="h-80">
               <SimpleBarChart 
                 data={punkteDurchschnittProKlasse}
-                height={240}
+                height={300}
                 showValues 
                 showLabels
               />

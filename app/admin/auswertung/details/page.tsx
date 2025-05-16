@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, Download, RefreshCw } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Link from 'next/link';
+import { berechnePunkteFuerRang, erklaerePunkteberechnung } from '@/lib/points';
 
 // Datenmodelle/Interfaces
 interface Kind {
@@ -215,23 +216,17 @@ export default function AuswertungDetailsPage() {
   };
   
   // Berechne Punkte für ein Ergebnis
+  // Verwendet die zentrale Punkteberechnungsfunktion für konsistente Ergebnisse
   const berechnePunkteFuerErgebnis = (ergebnis: Ergebnis, spiel: Spiel | undefined): { punkte: number, methode: string } => {
     if (!spiel) return { punkte: 0, methode: 'FEHLER: Spiel nicht gefunden' };
     
-    if (!ergebnis.rang) {
-      return { punkte: 0, methode: 'FEHLER: Kein Rang vorhanden! Rangberechnung fehlgeschlagen.' };
-    }
+    // Berechne Punkte mit der zentralen Funktion
+    const punkte = berechnePunkteFuerRang(ergebnis.rang);
     
-    // Wenn Rang 11 oder schlechter, dann 0 Punkte
-    if (ergebnis.rang >= 11) {
-      return { punkte: 0, methode: `Rang ${ergebnis.rang} → 0 Punkte (Rang 11 oder schlechter)` };
-    }
+    // Erhalte eine Erklärung für die Berechnung
+    const methode = erklaerePunkteberechnung(ergebnis.rang);
     
-    const punkte = 11 - ergebnis.rang;
-    return { 
-      punkte, 
-      methode: `Rang ${ergebnis.rang} → 11 - ${ergebnis.rang} = ${punkte} Punkte` 
-    };
+    return { punkte, methode };
   };
   
   // Berechne Ergebnisdetails für die aktuelle Auswahl

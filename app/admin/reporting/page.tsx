@@ -12,6 +12,7 @@ import { FilterBar } from './components/FilterBar';
 import { KlassenTable } from './components/KlassenTable';
 import { FortschrittTable } from './components/FortschrittTable';
 import { Users, Trophy, Activity, Gamepad2, Clock, BarChart3, Loader2 } from 'lucide-react';
+import { SpielStatistik } from './components/SpielStatistik';
 import { TeilnehmerStatistik } from './components/TeilnehmerStatistik';
 
 export default function Reporting() {
@@ -80,7 +81,7 @@ export default function Reporting() {
       const kinderProKlasseData = Array.from(newKlassenMap.entries())
         .filter(([klasse]) => klasse) // Filtere leere Klassen
         .map(([klasse, anzahl]) => ({
-          label: `Klasse ${klasse}`,
+          label: klasse,
           value: anzahl as number
         }));
       
@@ -128,7 +129,7 @@ export default function Reporting() {
           const prozent = maxErgebnisse > 0 ? Math.round((abgeschlosseneSpiele / maxErgebnisse) * 100) : 0;
           
           return {
-            label: `Klasse ${klasse}`,
+            label: klasse,
             value: prozent,
             maxValue: maxErgebnisse
           };
@@ -231,7 +232,7 @@ export default function Reporting() {
       console.log('Verfügbare Klassen:', klassen);
       setKlassenOptions(klassen.map(klasse => ({
         value: klasse,
-        label: `Klasse ${klasse}`
+        label: klasse
       })));
       
       if (klassen.length > 0) {
@@ -398,8 +399,7 @@ export default function Reporting() {
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="teilnehmer">Teilnehmerstatistik</TabsTrigger>
           <TabsTrigger value="spiele">Spielstatistik</TabsTrigger>
-          <TabsTrigger value="fortschritt">Fortschrittsmonitor</TabsTrigger>
-          <TabsTrigger value="vergleich">Ergebnisvergleich</TabsTrigger>
+
         </TabsList>
         
         {isLoading ? (
@@ -477,7 +477,7 @@ export default function Reporting() {
                 />
               </div>
               
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
                 <ReportCard
                   title="Teilnahme nach Klassen"
                   description="Anzahl der Kinder pro Klasse"
@@ -487,7 +487,7 @@ export default function Reporting() {
                       'Klasse,Anzahl Kinder',
                       ...Array.from(klassenMap.entries())
                         .filter(([klasse]) => klasse)
-                        .map(([klasse, anzahl]) => `Klasse ${klasse},${anzahl}`)
+                        .map(([klasse, anzahl]) => `${klasse},${anzahl}`)
                     ].join('\n');
                     
                     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -717,7 +717,7 @@ export default function Reporting() {
                           const durchschnitt = kinderMitPunkten > 0 ? Math.round(gesamtPunkte / kinderMitPunkten) : 0;
                           
                           return {
-                            label: `Klasse ${klasse}`,
+                            label: klasse,
                             value: durchschnitt
                           };
                         })} 
@@ -730,10 +730,8 @@ export default function Reporting() {
               </ReportCard>
             </TabsContent>
             
-            <TabsContent value="spiele">
-              <p className="text-center py-8 text-gray-500">
-                Spielstatistiken werden in Kürze implementiert.
-              </p>
+            <TabsContent value="spiele" className="space-y-6">
+              <SpielStatistik spiele={spiele} ergebnisse={ergebnisse} kinder={kinder} />
             </TabsContent>
             
             <TabsContent value="fortschritt">

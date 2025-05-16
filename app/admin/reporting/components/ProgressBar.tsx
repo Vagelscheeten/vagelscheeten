@@ -49,11 +49,7 @@ export function ProgressBar({
           style={{ width: `${percentage}%` }}
         />
       </div>
-      {!label && showPercentage && (
-        <div className="text-right mt-1">
-          <span className="text-xs font-medium">{value} / {max}</span>
-        </div>
-      )}
+      {/* Wir zeigen hier keine 'value / max' Anzeige mehr, nur noch die Prozentanzeige im Label */}
     </div>
   );
 }
