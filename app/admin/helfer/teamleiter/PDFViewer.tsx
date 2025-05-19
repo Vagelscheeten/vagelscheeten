@@ -9,9 +9,11 @@ interface PDFViewerProps {
     name: string;
     leiter_zugangscode: string;
     teamleiter?: {
-      vorname: string;
-      nachname: string;
+      vorname?: string;
+      nachname?: string;
       klasse?: string;
+      name?: string; // für externe Helfer
+      isExtern?: boolean;
     } | null;
   }>;
   onClose: () => void;

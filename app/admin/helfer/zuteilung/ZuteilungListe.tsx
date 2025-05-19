@@ -56,6 +56,7 @@ interface Rueckmeldung {
 interface Zuteilung {
   id: string;
   kind_id: string;
+  externer_helfer_id?: string;
   aufgabe_id: string;
   zugewiesen_am: string;
   via_springer?: boolean;
@@ -64,7 +65,11 @@ interface Zuteilung {
     vorname: string;
     nachname: string;
     klasse?: string;
-  };
+  } | null;
+  externer_helfer?: {
+    id: string;
+    name: string;
+  } | null;
   rueckmeldung?: {
     id: string;
     prioritaet: number;
@@ -77,13 +82,15 @@ interface ZuteilungListeProps {
   rueckmeldungen: Rueckmeldung[];
   zuteilungen: Zuteilung[];
   onRefresh: () => void;
+  onExternerHelferHinzufuegen: (name: string, aufgabeId: string) => Promise<void>;
 }
 
 export function ZuteilungListe({ 
   aufgaben, 
   rueckmeldungen,
   zuteilungen,
-  onRefresh
+  onRefresh,
+  onExternerHelferHinzufuegen
 }: ZuteilungListeProps) {
   const [expandedAufgaben, setExpandedAufgaben] = useState<Record<string, boolean>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -349,7 +356,11 @@ export function ZuteilungListe({
                                     >
                                       <div>
                                         <div className="font-medium flex items-center">
-                                          {zuteilung.kind.nachname}, {zuteilung.kind.vorname}
+                                          {zuteilung.kind ? (
+                                            <>{zuteilung.kind.nachname}, {zuteilung.kind.vorname}</>
+                                          ) : (
+                                            <>{zuteilung.externer_helfer?.name || "Unbekannter Helfer"} (Extern)</>
+                                          )}
                                           
                                           {/* Springer-Badge anzeigen */}
                                           {zuteilung.via_springer && (
@@ -357,7 +368,7 @@ export function ZuteilungListe({
                                               Springer
                                             </Badge>
                                           )}
-                                          {zuteilung.kind.klasse && (
+                                          {zuteilung.kind && zuteilung.kind.klasse && (
                                             <span className="text-muted-foreground ml-1">
                                               ({zuteilung.kind.klasse})
                                             </span>
@@ -444,6 +455,7 @@ export function ZuteilungListe({
             onClose={() => setManuelleZuteilungModalOpen(false)}
             aufgabe={selectedAufgabe}
             onSave={onRefresh}
+            onExternerHelferHinzufuegen={onExternerHelferHinzufuegen}
           />
         </>
       )}

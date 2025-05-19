@@ -52,12 +52,17 @@ interface ExistingAssignmentQueryResult {
 // Die zu bearbeitende Zuteilung
 interface ZuteilungToEdit {
   id: string;
-  kind_id: string;
+  kind_id: string | null;
+  externer_helfer_id?: string | null;
   kind_identifier: string;
   kind_name: string;
   aufgabe_id: string;
   aufgabe_titel: string;
   via_springer: boolean;
+  externer_helfer?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface ZuteilungBearbeitenModalProps {
@@ -69,11 +74,13 @@ interface ZuteilungBearbeitenModalProps {
 
 export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung }: ZuteilungBearbeitenModalProps) {
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([]);
+  const [rueckmeldungen, setRueckmeldungen] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [selectedAufgabeId, setSelectedAufgabeId] = useState('');
   const [viaSpringer, setViaSpringer] = useState(false);
+  const [childrenKlasse, setChildrenKlasse] = useState<string | undefined>('');
 
   // Daten (Aufgaben) laden, wenn Modal geöffnet wird
   useEffect(() => {
@@ -89,6 +96,37 @@ export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung
             .order('titel');
           if (aufgabenError) throw aufgabenError;
           setAufgaben(aufgabenData || []);
+
+          // Rückmeldungen des Kindes laden, wenn kind_id verfügbar ist
+          if (zuteilung.kind_id) {
+            const { data: kindData, error: kindError } = await supabase
+              .from('kinder')
+              .select('klasse')
+              .eq('id', zuteilung.kind_id)
+              .single();
+              
+            if (!kindError && kindData) {
+              setChildrenKlasse(kindData.klasse);
+            }
+
+            const { data: rueckmeldungData, error: rueckmeldungError } = await supabase
+              .from('helfer_rueckmeldungen')
+              .select(`
+                id,
+                prioritaet,
+                freitext,
+                aufgabe_id,
+                helferaufgaben (id, titel, zeitfenster)
+              `)
+              .eq('kind_id', zuteilung.kind_id)
+              .order('prioritaet');
+
+            if (!rueckmeldungError) {
+              setRueckmeldungen(rueckmeldungData || []);
+            } else {
+              console.error('Fehler beim Laden der Rückmeldungen:', rueckmeldungError);
+            }
+          }
 
         } catch (error: any) {
           console.error("Fehler beim Laden der Modal-Daten:", error);
@@ -217,7 +255,7 @@ export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung
         <DialogHeader>
           <DialogTitle>Helfer-Zuteilung bearbeiten</DialogTitle>
           <DialogDescription>
-            {zuteilung && `Bearbeiten Sie die Zuteilung für ${zuteilung.kind_name} (${zuteilung.kind_identifier}).`}
+            {zuteilung && `Bearbeiten Sie die Zuteilung für ${zuteilung.kind_name}${childrenKlasse ? ` (${childrenKlasse})` : zuteilung.externer_helfer ? ' (Extern)' : ''}.`}
           </DialogDescription>
         </DialogHeader>
         {isLoadingData ? (
@@ -227,8 +265,30 @@ export function ZuteilungBearbeitenModal({ isOpen, onClose, onSuccess, zuteilung
             <div className="flex flex-col gap-6 py-2">
   <div className="bg-muted rounded-md p-3 mb-2">
     <div className="text-base font-semibold mb-1">Kind:</div>
-    <div className="text-sm mb-1">{zuteilung?.kind_name}</div>
-    <div className="text-xs text-muted-foreground break-all"><strong>ID:</strong> {zuteilung?.kind_identifier}</div>
+    <div className="text-sm mb-1">{zuteilung?.kind_name} {childrenKlasse ? `(${childrenKlasse})` : zuteilung?.externer_helfer ? '(Extern)' : ''}</div>
+    
+    {rueckmeldungen.length > 0 && (
+      <div className="mt-2">
+        <div className="text-xs font-medium text-muted-foreground mb-1">Ursprüngliche Rückmeldungen:</div>
+        <div className="space-y-1">
+          {rueckmeldungen.map((rueckmeldung) => (
+            <div key={rueckmeldung.id} className="text-xs bg-white rounded p-1 flex items-center">
+              <div className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                rueckmeldung.prioritaet === 1 ? 'bg-green-500' : 
+                rueckmeldung.prioritaet === 2 ? 'bg-yellow-500' : 
+                'bg-red-500'}`
+              } />
+              <span className="font-medium mr-1">{rueckmeldung.helferaufgaben?.titel}</span>
+              {rueckmeldung.helferaufgaben?.zeitfenster && (
+                <span className="text-gray-500 text-[10px]">{rueckmeldung.helferaufgaben.zeitfenster}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+    
+    <div className="text-xs text-muted-foreground break-all mt-2"><strong>ID:</strong> {zuteilung?.kind_identifier}</div>
   </div>
   <div className="flex flex-col gap-2">
     <label htmlFor="aufgabe" className="text-sm font-medium mb-1">Aufgabe</label>

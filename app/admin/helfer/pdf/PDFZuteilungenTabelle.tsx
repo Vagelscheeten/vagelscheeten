@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'react-hot-toast';
 
 // Typen aus der types.ts-Datei importieren
-import type { Zuteilung } from './types';
+import type { ZuteilungMitKindUndAufgabeDetails } from './types';
 
 // Wir importieren die Funktionen dynamisch, um Probleme mit zirkulären Abhängigkeiten zu vermeiden
 const generatePDF = async (kindId: string) => {
@@ -33,33 +33,13 @@ const generatePDF = async (kindId: string) => {
   }
 };
 
-// Typen für die Zuteilungen mit Kind- und Aufgabeninformationen
-interface ZuteilungMitDetails {
-  id: string;
-  kind_id: string;
-  aufgabe_id: string;
-  via_springer: boolean;
-  kind: {
-    id: string;
-    vorname: string;
-    nachname: string;
-    klasse?: string;
-  };
-  helferaufgaben: {
-    id: string;
-    titel: string;
-    beschreibung: string | null;
-    zeitfenster: string | null;
-    bereich: string | null;
-  };
-}
-
 interface PDFZuteilungenTabelleProps {
-  zuteilungen: ZuteilungMitDetails[];
+  zuteilungen: ZuteilungMitKindUndAufgabeDetails[];
   onVorschau: (kindId: string) => void;
+  isLoading: boolean;
 }
 
-export function PDFZuteilungenTabelle({ zuteilungen, onVorschau }: PDFZuteilungenTabelleProps) {
+export function PDFZuteilungenTabelle({ zuteilungen, onVorschau, isLoading }: PDFZuteilungenTabelleProps) {
   const handleGeneratePDF = async (kindId: string, kindName: string) => {
     try {
       console.log(`Starte PDF-Generierung für Kind-ID: ${kindId}`);
@@ -95,77 +75,107 @@ export function PDFZuteilungenTabelle({ zuteilungen, onVorschau }: PDFZuteilunge
 
   // Gruppiere Zuteilungen nach Kind
   const groupedByKind = zuteilungen.reduce((acc, zuteilung) => {
-    const kindId = zuteilung.kind_id;
+    // Stelle sicher, dass zuteilung.kind existiert, bevor auf dessen Eigenschaften zugegriffen wird.
+    if (!zuteilung.kind) {
+      // Überspringe diese Zuteilung oder handle sie entsprechend, falls 'kind' null sein kann.
+      // Für den Moment überspringen wir sie, um Laufzeitfehler zu vermeiden.
+      // Dies sollte idealerweise nicht passieren, wenn die Daten in page.tsx korrekt gefiltert werden.
+      console.warn('Zuteilung ohne Kind-Informationen gefunden, wird übersprungen:', zuteilung);
+      return acc;
+    }
+    const kindId = zuteilung.kind_id; // kind_id sollte immer vorhanden sein
     
     if (!acc[kindId]) {
       acc[kindId] = {
-        kind: zuteilung.kind,
-        zuteilungen: []
+        kindDetails: zuteilung.kind, // kind sollte hier definiert sein
+        aufgaben: [],
       };
     }
-    
-    acc[kindId].zuteilungen.push(zuteilung);
+    acc[kindId].aufgaben.push(zuteilung.helferaufgaben);
     return acc;
-  }, {} as Record<string, { kind: ZuteilungMitDetails['kind'], zuteilungen: ZuteilungMitDetails[] }>);
+  }, {} as Record<string, { kindDetails: NonNullable<ZuteilungMitKindUndAufgabeDetails['kind']>; aufgaben: ZuteilungMitKindUndAufgabeDetails['helferaufgaben'][] }>);
+
+  // Umwandlung in ein Array für die Iteration im JSX
+  const zuteilungenArray = Object.values(groupedByKind);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Helfer-Zuteilungen</CardTitle>
+        <CardTitle>Gefilterte Helferzuteilungen</CardTitle>
         <CardDescription>
-          {Object.keys(groupedByKind).length} Kinder mit insgesamt {zuteilungen.length} Zuteilungen
+          Zeigt die aktuell gefilterten Zuteilungen an. Nutzen Sie die Buttons für PDF-Export oder Vorschau.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {isLoading ? (
+          <div className="flex justify-center items-center h-32">
+            <p>Lade Zuteilungen...</p> 
+          </div>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead>Kind</TableHead>
               <TableHead>Klasse</TableHead>
-              <TableHead>Aufgaben</TableHead>
+              <TableHead>Zugewiesene Aufgaben</TableHead>
               <TableHead className="text-right">Aktionen</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Object.values(groupedByKind).map(({ kind, zuteilungen }) => (
-              <TableRow key={kind.id}>
-                <TableCell className="font-medium">
-                  {kind.vorname} {kind.nachname}
-                </TableCell>
-                <TableCell>{kind.klasse || '-'}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {zuteilungen.map((zuteilung) => (
-                      <Badge key={zuteilung.id} variant="outline" className="mr-1 mb-1">
-                        {zuteilung.helferaufgaben.titel}
-                        {zuteilung.via_springer && ' (Springer)'}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onVorschau(kind.id)}
-                    className="mr-1"
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    Vorschau
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => handleGeneratePDF(kind.id, `${kind.vorname} ${kind.nachname}`)}
-                  >
-                    <FileDown className="h-4 w-4 mr-1" />
-                    PDF
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {zuteilungenArray.map(({ kindDetails, aufgaben }) => {
+              // Überprüfe, ob kindDetails nicht null ist, bevor auf Eigenschaften zugegriffen wird.
+              if (!kindDetails) {
+                // Dies sollte nicht passieren, wenn die Logik oben korrekt ist.
+                // Handle den Fall, dass kindDetails null ist (z.B. durch Rückgabe von null oder einer Platzhalter-Zeile).
+                return null; 
+              }
+              return (
+                <TableRow key={kindDetails.id}>
+                  <TableCell>{kindDetails.vorname} {kindDetails.nachname}</TableCell>
+                  <TableCell>{kindDetails.klasse || 'N/A'}</TableCell>
+                  <TableCell>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {aufgaben.map((aufgabe, index) => (
+                        <li key={`${aufgabe.id}-${index}`}>
+                          {aufgabe.titel}
+                          {aufgabe.zeitfenster && (
+                            <Badge variant="outline" className="ml-2">
+                              {aufgabe.zeitfenster}
+                            </Badge>
+                          )}
+                          {aufgabe.bereich && (
+                            <Badge variant="secondary" className="ml-2">
+                              {aufgabe.bereich}
+                            </Badge>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => onVorschau(kindDetails.id)}
+                      title="Vorschau dieser Zuteilung"
+                    >
+                      <Eye className="h-4 w-4 mr-1" /> Vorschau
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleGeneratePDF(kindDetails.id, `${kindDetails.vorname} ${kindDetails.nachname}`)}
+                      title="PDF für dieses Kind generieren"
+                    >
+                      <FileDown className="h-4 w-4 mr-1" /> PDF
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
+        )}
       </CardContent>
     </Card>
   );

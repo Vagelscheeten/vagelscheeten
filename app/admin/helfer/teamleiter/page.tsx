@@ -19,14 +19,19 @@ interface Gruppe {
 
 interface Helfer {
   id: string;
-  kind_id: string;
+  kind_id: string | null;
+  externer_helfer_id: string | null; // Verwende den Namen, der von Supabase zurückgegeben wird
   aufgabe_id: string;
-  kind: {
+  kind?: {
     id: string;
     vorname: string;
     nachname: string;
     klasse?: string;
-  };
+  } | null;
+  externe_helfer?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export default function TeamleiterPage() {
@@ -79,8 +84,10 @@ export default function TeamleiterPage() {
           .select(`
             id,
             kind_id,
+            externer_helfer_id,
             aufgabe_id,
-            kind:kinder(id, vorname, nachname, klasse)
+            kind:kinder(id, vorname, nachname, klasse),
+            externe_helfer(id, name)
           `)
           .eq('aufgabe_id', teamleiterAufgabe.id);
         
@@ -88,11 +95,60 @@ export default function TeamleiterPage() {
           throw helferError;
         }
         
-        // Daten richtig transformieren - kind ist ein Array in der Supabase-Rückgabe, aber wir benötigen ein Objekt
-        const transformedHelfer = helferData?.map(helfer => ({
-          ...helfer,
-          kind: Array.isArray(helfer.kind) ? helfer.kind[0] : helfer.kind
-        })) || [];
+        // Daten richtig transformieren - kind und externe_helfer sind Arrays in der Supabase-Rückgabe, aber wir benötigen Objekte
+        const transformedHelfer: Helfer[] = (helferData || []).map(helfer => {
+          // Verarbeite kind-Daten richtig, um TypeScript-Fehler zu vermeiden
+          let kindObj = null;
+          if (Array.isArray(helfer.kind) && helfer.kind.length > 0) {
+            // Sicher auf das erste Array-Element zugreifen
+            const firstKind = helfer.kind[0];
+            if (firstKind && typeof firstKind === 'object') {
+              kindObj = { 
+                id: firstKind.id || '', 
+                vorname: firstKind.vorname || '', 
+                nachname: firstKind.nachname || '', 
+                klasse: firstKind.klasse 
+              };
+            }
+          } else if (helfer.kind && typeof helfer.kind === 'object') {
+            // Direkter Zugriff auf das kind-Objekt
+            kindObj = { 
+              id: helfer.kind.id || '', 
+              vorname: helfer.kind.vorname || '', 
+              nachname: helfer.kind.nachname || '', 
+              klasse: helfer.kind.klasse
+            };
+          }
+
+          // Verarbeite externe_helfer-Daten richtig
+          let externerHelferObj = null;
+          if (Array.isArray(helfer.externe_helfer) && helfer.externe_helfer.length > 0) {
+            // Sicher auf das erste Array-Element zugreifen
+            const firstExtern = helfer.externe_helfer[0];
+            if (firstExtern && typeof firstExtern === 'object') {
+              externerHelferObj = { 
+                id: firstExtern.id || '', 
+                name: firstExtern.name || ''
+              };
+            }
+          } else if (helfer.externe_helfer && typeof helfer.externe_helfer === 'object') {
+            // Direkter Zugriff auf das externe_helfer-Objekt
+            externerHelferObj = { 
+              id: helfer.externe_helfer.id || '', 
+              name: helfer.externe_helfer.name || ''
+            };
+          }
+
+          const processedHelfer: Helfer = {
+            id: helfer.id,
+            kind_id: helfer.kind_id,
+            externer_helfer_id: helfer.externer_helfer_id, // Verwende den Namen, der von Supabase zurückgegeben wird
+            aufgabe_id: helfer.aufgabe_id,
+            kind: kindObj,
+            externe_helfer: externerHelferObj
+          };
+          return processedHelfer;
+        });
         
         setHelfer(transformedHelfer);
         
@@ -130,7 +186,16 @@ export default function TeamleiterPage() {
   
   // Filterfunktionen für Helfer
   const filteredHelfer = helfer.filter(h => {
-    const nameMatches = `${h.kind.vorname} ${h.kind.nachname}`.toLowerCase().includes(filterText.toLowerCase());
+    // Sichere Überprüfung, um null-Werte zu vermeiden
+    let nameMatches = false;
+    
+    if (h.kind) {
+      // Reguläres Kind
+      nameMatches = `${h.kind.vorname} ${h.kind.nachname}`.toLowerCase().includes(filterText.toLowerCase());
+    } else if (h.externe_helfer) {
+      // Externer Helfer
+      nameMatches = h.externe_helfer.name.toLowerCase().includes(filterText.toLowerCase());
+    }
     
     // Wenn "Nur unzugeordnete anzeigen" aktiv ist, dann nur Helfer zeigen, die keiner Gruppe zugewiesen sind
     if (showOnlyUnassigned) {
@@ -344,10 +409,30 @@ export default function TeamleiterPage() {
       {/* PDF Viewer Modal */}
       {showPdfViewer && (
         <PDFViewer
-          gruppen={gruppen.map(gruppe => ({
-            ...gruppe,
-            teamleiter: helfer.find(h => h.id === zuteilungen[gruppe.id])?.kind
-          }))}
+          gruppen={gruppen.map(gruppe => {
+            const foundHelfer = helfer.find(h => h.id === zuteilungen[gruppe.id]);
+            let teamleiter = null;
+
+            if (foundHelfer) {
+              if (foundHelfer.kind) {
+                teamleiter = {
+                  vorname: foundHelfer.kind.vorname,
+                  nachname: foundHelfer.kind.nachname,
+                  klasse: foundHelfer.kind.klasse
+                };
+              } else if (foundHelfer.externe_helfer) {
+                teamleiter = {
+                  name: foundHelfer.externe_helfer.name,
+                  isExtern: true
+                };
+              }
+            }
+
+            return {
+              ...gruppe,
+              teamleiter
+            };
+          })}
           onClose={() => setShowPdfViewer(false)}
         />
       )}

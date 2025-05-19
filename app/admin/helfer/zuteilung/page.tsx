@@ -13,6 +13,7 @@ interface Aufgabe {
   titel: string;
   beschreibung: string | null;
   bedarf: number;
+  zeitfenster?: string;
 }
 
 interface Rueckmeldung {
@@ -78,12 +79,13 @@ export default function ZuteilungVerwaltung() {
         if (rueckmeldungenError) throw rueckmeldungenError;
         setRueckmeldungen(rueckmeldungenData || []);
         
-        // Zuteilungen mit Kind-Daten laden
+        // Zuteilungen mit Kind-Daten und externen Helfer-Daten laden
         const { data: zuteilungenData, error: zuteilungenError } = await supabase
           .from('helfer_zuteilungen')
           .select(`
             *,
-            kind:kinder(id, vorname, nachname, klasse)
+            kind:kinder(id, vorname, nachname, klasse),
+            externer_helfer:externe_helfer(id, name)
           `);
         
         if (zuteilungenError) throw zuteilungenError;
@@ -100,6 +102,50 @@ export default function ZuteilungVerwaltung() {
   
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
+  };
+
+  // Funktion zum Hinzufügen und Zuweisen eines externen Helfers
+  const handleExternenHelferHinzufuegenUndZuweisen = async (name: string, aufgabeId: string): Promise<void> => {
+    const supabase = createClient();
+    
+    try {
+      // 1. Externen Helfer in der Datenbank anlegen
+      const { data: helferData, error: helferError } = await supabase
+        .from('externe_helfer')
+        .insert({
+          name: name
+        })
+        .select('id')
+        .single();
+      
+      if (helferError) throw helferError;
+      
+      if (!helferData?.id) {
+        throw new Error('Externer Helfer konnte nicht erstellt werden.');
+      }
+      
+      // Die ausgewählte Aufgabe finden, um das Zeitfenster zu bekommen
+      const aufgabe = aufgaben.find(a => a.id === aufgabeId);
+      const zeitfenster = aufgabe?.zeitfenster || 'Nicht angegeben';
+      
+      // 2. Zuteilung für den externen Helfer erstellen
+      const { error: zuteilungError } = await supabase
+        .from('helfer_zuteilungen')
+        .insert({
+          externer_helfer_id: helferData.id,
+          aufgabe_id: aufgabeId,
+          zugewiesen_am: new Date().toISOString(),
+          zeitfenster: zeitfenster
+        });
+      
+      if (zuteilungError) throw zuteilungError;
+      
+      // Daten neu laden
+      handleRefresh();
+    } catch (error: any) {
+      console.error('Fehler beim Hinzufügen des externen Helfers:', error);
+      throw error;
+    }
   };
   
   return (
@@ -125,6 +171,7 @@ export default function ZuteilungVerwaltung() {
           rueckmeldungen={rueckmeldungen}
           zuteilungen={zuteilungen}
           onRefresh={handleRefresh}
+          onExternerHelferHinzufuegen={handleExternenHelferHinzufuegenUndZuweisen}
         />
       )}
     </main>

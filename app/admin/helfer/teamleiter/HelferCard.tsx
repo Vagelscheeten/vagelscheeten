@@ -5,11 +5,15 @@ import { ChevronDown, ChevronUp, UserPlus } from 'lucide-react';
 interface HelferCardProps {
   helfer: {
     id: string;
-    kind: {
+    kind?: {
       vorname: string;
       nachname: string;
       klasse?: string;
-    };
+    } | null;
+    externe_helfer?: {
+      id: string;
+      name: string;
+    } | null;
   };
   isAssigned: boolean;
   assignedGroupName?: string; // Name der zugewiesenen Gruppe
@@ -28,19 +32,29 @@ export function HelferCard({ helfer, isAssigned, assignedGroupName, gruppen, onA
       <div className="p-3 flex justify-between items-center">
         <div className="flex items-center">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-3 ${isAssigned ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-            {helfer.kind.vorname.charAt(0)}
-            {helfer.kind.nachname.charAt(0)}
+            {helfer.kind ? (
+              <>
+                {helfer.kind.vorname.charAt(0)}
+                {helfer.kind.nachname.charAt(0)}
+              </>
+            ) : helfer.externe_helfer ? (
+              helfer.externe_helfer.name.charAt(0)
+            ) : '?'}
           </div>
           <div>
             <p className="font-medium">
-              {helfer.kind.vorname} {helfer.kind.nachname}
+              {helfer.kind ? (
+                `${helfer.kind.vorname} ${helfer.kind.nachname}`
+              ) : helfer.externe_helfer ? (
+                `${helfer.externe_helfer.name} (Extern)`
+              ) : 'Unbekannter Helfer'}
               {isAssigned && assignedGroupName && (
                 <span className="ml-2 text-xs font-normal text-green-600">
                   (Gruppe: {assignedGroupName})
                 </span>
               )}
             </p>
-            {helfer.kind.klasse && (
+            {helfer.kind?.klasse && (
               <p className="text-xs text-gray-600">Klasse: {helfer.kind.klasse}</p>
             )}
           </div>

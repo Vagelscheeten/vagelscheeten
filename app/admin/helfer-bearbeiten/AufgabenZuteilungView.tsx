@@ -104,23 +104,42 @@ export function AufgabenZuteilungView() {
       .from('helfer_zuteilungen')
       .select(`
         *,
-        kinder ( id, vorname, nachname, klasse )
+        kinder ( id, vorname, nachname, klasse ),
+        externe_helfer ( id, name )
       `);
 
     if (zuteilungenError) {
       console.error('Fehler beim Laden der Zuteilungen:', zuteilungenError);
       setError('Zuteilungen konnten nicht geladen werden.');
     } else {
+      if (zuteilungenData) {
+        console.log('Erhaltene Zuteilungen:', zuteilungenData);
+      }
       // Wir müssen sicherstellen, dass kinder nicht null ist, falls der Join fehlschlägt
-      // Explicitly type 'z' and the return type of map
-      const validZuteilungen = (zuteilungenData || []).map((z: SupabaseZuteilung): Zuteilung => ({
-           ...z,
-           kinder: z.kinder, // Kann null sein, wenn kein Kind gefunden wird
-           kind_id: z.kinder?.id || '',
-           kind_name: z.kinder ? `${z.kinder.vorname} ${z.kinder.nachname}` : 'Unbekannt',
-           aufgabe_titel: '' // Wird später in der UI gesetzt
-       }));
-      setZuteilungen(validZuteilungen);
+      try {
+        // Explicitly type 'z' and the return type of map
+        const validZuteilungen = (zuteilungenData || []).map((z: any): Zuteilung => {
+          // Name ermitteln, entweder vom Kind oder externen Helfer
+          let helferName = 'Unbekannt';
+          if (z.kinder) {
+            helferName = `${z.kinder.vorname} ${z.kinder.nachname}`;
+          } else if (z.externer_helfer) {
+            helferName = `${z.externer_helfer.name} (Extern)`;
+          }
+
+          return {
+            ...z,
+            kinder: z.kinder, // Kann null sein, wenn kein Kind gefunden wird
+            kind_id: z.kinder?.id || '',
+            kind_name: helferName,
+            aufgabe_titel: '' // Wird später in der UI gesetzt
+          };
+        });
+        setZuteilungen(validZuteilungen);
+      } catch (err) {
+        console.error('Fehler beim Verarbeiten der Zuteilungen:', err);
+        setError('Zuteilungen konnten nicht verarbeitet werden.');
+      }
     }
 
     setIsLoading(false);
@@ -231,7 +250,13 @@ export function AufgabenZuteilungView() {
                   {aufgabenZuteilungen.map((zuteilung) => (
                     <li key={zuteilung.id} className="flex justify-between items-center">
                       <span>
-                        {zuteilung.kinder ? `${zuteilung.kinder.vorname} ${zuteilung.kinder.nachname} (${zuteilung.kinder.klasse})` : `Unbekanntes Kind (${zuteilung.kind_identifier})`}
+                        {zuteilung.kinder ? 
+                          `${zuteilung.kinder.vorname} ${zuteilung.kinder.nachname} (${zuteilung.kinder.klasse || '-'})` : 
+                          (zuteilung.externe_helfer ? 
+                            `${zuteilung.externe_helfer.name} (Extern)` : 
+                            `Unbekanntes Kind (${zuteilung.kind_identifier || 'undefined'}`
+                          )
+                        }
                         {zuteilung.via_springer && <Badge variant="outline" className="ml-2">Springer</Badge>}
                       </span>
                       <div className="space-x-2">
@@ -245,7 +270,11 @@ export function AufgabenZuteilungView() {
                           size="sm"
                           onClick={() => handleRemoveAssignment(
                             zuteilung.id,
-                            zuteilung.kinder ? `${zuteilung.kinder.vorname} ${zuteilung.kinder.nachname}` : 'Unbekanntes Kind',
+                            zuteilung.kinder ? 
+                              `${zuteilung.kinder.vorname} ${zuteilung.kinder.nachname}` : 
+                              zuteilung.externe_helfer ? 
+                                `${zuteilung.externe_helfer.name} (Extern)` : 
+                                'Unbekanntes Kind',
                             aufgabe.titel
                           )}
                         >Entfernen</Button>

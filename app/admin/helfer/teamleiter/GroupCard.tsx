@@ -10,11 +10,15 @@ interface GroupCardProps {
   };
   zugewiesenerHelfer?: {
     id: string;
-    kind: {
+    kind?: {
       vorname: string;
       nachname: string;
       klasse?: string;
-    };
+    } | null;
+    externe_helfer?: {
+      id: string;
+      name: string;
+    } | null;
   };
   onRemoveTeamleiter: () => void;
 }
@@ -46,14 +50,26 @@ export function GroupCard({ gruppe, zugewiesenerHelfer, onRemoveTeamleiter }: Gr
         <div className="p-4 bg-green-50">
           <div className="flex items-center">
             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-bold mr-3">
-              {zugewiesenerHelfer.kind.vorname.charAt(0)}
-              {zugewiesenerHelfer.kind.nachname.charAt(0)}
+              {zugewiesenerHelfer.kind ? (
+                <>
+                  {zugewiesenerHelfer.kind.vorname.charAt(0)}
+                  {zugewiesenerHelfer.kind.nachname.charAt(0)}
+                </>
+              ) : zugewiesenerHelfer.externe_helfer ? (
+                zugewiesenerHelfer.externe_helfer.name.charAt(0)
+              ) : '?'}
             </div>
             <div>
               <p className="font-medium text-green-800">
-                {zugewiesenerHelfer.kind.vorname} {zugewiesenerHelfer.kind.nachname}
+                {zugewiesenerHelfer.kind ? (
+                  `${zugewiesenerHelfer.kind.vorname} ${zugewiesenerHelfer.kind.nachname}`
+                ) : zugewiesenerHelfer.externe_helfer ? (
+                  `${zugewiesenerHelfer.externe_helfer.name} (Extern)`
+                ) : (
+                  'Unbekannter Helfer'
+                )}
               </p>
-              {zugewiesenerHelfer.kind.klasse && (
+              {zugewiesenerHelfer.kind?.klasse && (
                 <p className="text-xs text-green-600">Klasse: {zugewiesenerHelfer.kind.klasse}</p>
               )}
             </div>
