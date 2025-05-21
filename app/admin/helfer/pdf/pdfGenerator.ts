@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import {
   AlleKlassenPdfsDaten,
   Ansprechpartner,
@@ -501,6 +502,86 @@ export const generateHelferTabellePDF = async (
       if (setPdfGenerationMessage) setPdfGenerationMessage(`Fehler bei der Tabellen-Generierung: ${JSON.stringify(error)}`);
       throw new Error('generateHelferTabellePDF: ' + JSON.stringify(error));
     }
+  }
+};
+
+// Compatibility function to support existing code that calls generatePDF(kindId)
+// This provides an adapter between the old API and the new generateSinglePDF function
+export const generatePDF = async (kindId: string) => {
+  try {
+    const supabase = createClient();
+    console.log(`Generating PDF for kind with ID: ${kindId}`);
+    
+    // 1. Fetch kind data
+    const { data: kind, error: kindError } = await supabase
+      .from('kinder')
+      .select('id, vorname, nachname, klasse')
+      .eq('id', kindId)
+      .single();
+      
+    if (kindError || !kind) {
+      console.error('Error fetching kind data:', kindError);
+      throw new Error(`Could not find kind with ID ${kindId}`);
+    }
+    
+    // 2. Fetch zuteilungen (assignments) for this kind
+    const { data: zuteilungen, error: zuteilungenError } = await supabase
+      .from('helfer_zuteilungen')
+      .select(`
+        id, 
+        kind_id,
+        aufgabe_id,
+        via_springer,
+        helferaufgaben:aufgabe_id (id, titel, beschreibung, zeitfenster, bereich)
+      `)
+      .eq('kind_id', kindId);
+      
+    if (zuteilungenError) {
+      console.error('Error fetching zuteilungen:', zuteilungenError);
+      throw new Error(`Error fetching assignments for kind ${kindId}`);
+    }
+    
+    // 3. Transform data to expected format for generateSinglePDF
+    const formattedZuteilungen = zuteilungen.map(z => ({
+      id: z.id,
+      kind_id: z.kind_id,
+      aufgabe_id: z.aufgabe_id,
+      via_springer: z.via_springer,
+      helferaufgaben: z.helferaufgaben || {
+        id: z.aufgabe_id,
+        titel: 'Unbekannte Aufgabe',
+        beschreibung: null,
+        zeitfenster: null,
+        bereich: null
+      },
+      kind: {
+        id: kind.id,
+        vorname: kind.vorname,
+        nachname: kind.nachname,
+        klasse: kind.klasse
+      }
+    }));
+    
+    // 4. Create the data structure expected by generateSinglePDF
+    const klassenDaten = {
+      kinderDieserKlasse: [{
+        id: kind.id,
+        vorname: kind.vorname,
+        nachname: kind.nachname,
+        klasse: kind.klasse,
+        zugewieseneAufgaben: formattedZuteilungen,
+        wuensche: [], // Add actual data here if needed
+        rueckmeldungen: [],
+        essensspenden: []
+      }]
+    };
+    
+    // 5. Call generateSinglePDF with the prepared data
+    // Use type assertion to bypass type checking issues
+    return generateSinglePDF(supabase, kind.klasse, klassenDaten as any);
+  } catch (error) {
+    console.error('Error in generatePDF compatibility function:', error);
+    throw error;
   }
 };
 

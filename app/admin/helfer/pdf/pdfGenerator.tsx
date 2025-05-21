@@ -248,6 +248,9 @@ export async function generateHelferTabellePDF(
   if (setPdfGenerationMessage) setPdfGenerationMessage('Erzeuge Helfer-Tabelle PDF...');
   
   try {
+    // Erstelle ein neues PDF-Dokument
+    const doc = new jsPDF();
+    
     // 1. Kinderdaten laden
     if (setPdfGenerationMessage) setPdfGenerationMessage('Lade Kinder...');
     const { data: kinderData, error: kinderError } = await supabase
@@ -272,19 +275,7 @@ export async function generateHelferTabellePDF(
       throw new Error(`Fehler beim Laden der Aufgaben: ${aufgabenError.message}`);
     }
     
-    // 3. Externe Helfer laden
-    if (setPdfGenerationMessage) setPdfGenerationMessage('Lade externe Helfer...');
-    const { data: externeHelferData, error: externeHelferError } = await supabase
-      .from('externer_helfer')
-      .select('id, name')
-      .order('name');
-      
-    if (externeHelferError) {
-      console.error('Fehler beim Laden der externen Helfer:', externeHelferError);
-      throw new Error(`Fehler beim Laden der externen Helfer: ${externeHelferError.message}`);
-    }
-    
-    // 4. Zuteilungen laden
+    // 3. Zuteilungen laden
     if (setPdfGenerationMessage) setPdfGenerationMessage('Lade Zuteilungen...');
     const { data: zuteilungenData, error: zuteilungenError } = await supabase
       .from('helfer_zuteilungen')
@@ -296,17 +287,7 @@ export async function generateHelferTabellePDF(
       throw new Error(`Fehler beim Laden der Zuteilungen: ${zuteilungenError.message}`);
     }
     
-    // 5. Externe Zuteilungen laden
-    if (setPdfGenerationMessage) setPdfGenerationMessage('Lade externe Zuteilungen...');
-    const { data: externeZuteilungenData, error: externeZuteilungenError } = await supabase
-      .from('externer_helfer_zuteilungen')
-      .select('id, externer_helfer_id, aufgabe_id')
-      .order('externer_helfer_id, aufgabe_id');
-      
-    if (externeZuteilungenError) {
-      console.error('Fehler beim Laden der externen Zuteilungen:', externeZuteilungenError);
-      throw new Error(`Fehler beim Laden der externen Zuteilungen: ${externeZuteilungenError.message}`);
-    }
+    // Keine externen Helfer laden - diese werden nicht benötigt
     
     // 6. Aufgaben in Map umwandeln für schnellen Zugriff
     const aufgabenMap = aufgabenData?.reduce((acc, aufgabe) => {
@@ -342,26 +323,7 @@ export async function generateHelferTabellePDF(
       ]);
     });
     
-    // Externe Helfer aufbereiten
-    externeHelferData?.forEach(helfer => {
-      // Aufgaben für diesen externen Helfer finden
-      const helferZuteilungen = externeZuteilungenData
-        ?.filter(z => z.externer_helfer_id === helfer.id && z.externer_helfer_id != null) || [];
-        
-      const aufgabenDesHelfers = helferZuteilungen
-        ?.map(z => {
-          const aufgabenText = aufgabenMap[z.aufgabe_id] ? `${aufgabenMap[z.aufgabe_id].titel}${aufgabenMap[z.aufgabe_id].zeitfenster ? ` - ${aufgabenMap[z.aufgabe_id].zeitfenster}` : ''}` : 'Unbekannte Aufgabe';
-          return aufgabenText;
-        })
-        .join('\n') || 'Keine Aufgaben';
-      
-      tableData.push([
-        helfer.name,
-        'Extern',
-        'Externer Helfer',
-        aufgabenDesHelfers
-      ]);
-    });
+    // Keine externen Helfer verarbeiten - werden nicht benötigt
     
     // 8. Tabellen-Header definieren
     const headers = [['Name', 'Klasse/Status', 'Typ', 'Aufgaben']];

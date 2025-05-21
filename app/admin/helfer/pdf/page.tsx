@@ -9,7 +9,7 @@ import { toast } from 'react-hot-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { generatePDF, generateAllPDFs, generateHelferTabellePDF } from './pdfGenerator';
+import { generateSinglePDF, generateAllPDFs, generateHelferTabellePDF } from './pdfGenerator';
 import { generateKlassentabellenPDF } from './klassenTabellenPDF';
 import { PDFZuteilungenTabelle } from './PDFZuteilungenTabelle';
 import { PDFVorschauModal } from './PDFVorschauModal';
@@ -356,10 +356,32 @@ export default function PDFVerwaltung() {
     setPdfGenerationLoading(true);
     setPdfGenerationMessage('Starte Klassentabellen-Generierung...'); 
     try {
-      await generateKlassentabellenPDF(supabase, setPdfGenerationMessage);
+      // Wenn eine spezifische Klasse ausgewählt ist, übergebe diese
+      if (selectedKlasse !== 'alle') {
+        await generateKlassentabellenPDF(supabase, setPdfGenerationMessage, selectedKlasse);
+      } else {
+        await generateKlassentabellenPDF(supabase, setPdfGenerationMessage);
+      }
     } catch (error: any) {
       console.error("Fehler beim Generieren der Klassentabellen:", error);
       setPdfGenerationMessage(`Fehler: ${error.message || 'Unbekannter Fehler beim Generieren der Klassentabellen'}`);
+    }
+    setPdfGenerationLoading(false);
+  };
+  
+  // Handler für das Generieren einer PDF für die ausgewählte Klasse
+  const handleGenerateSelectedKlassePDF = async () => {
+    if (!supabase || selectedKlasse === 'alle') {
+      setPdfGenerationMessage('Bitte wählen Sie eine Klasse aus.');
+      return;
+    }
+    setPdfGenerationLoading(true);
+    setPdfGenerationMessage(`Erstelle PDF für Klasse ${selectedKlasse}...`); 
+    try {
+      await generateKlassentabellenPDF(supabase, setPdfGenerationMessage, selectedKlasse);
+    } catch (error: any) {
+      console.error(`Fehler beim Generieren der PDF für Klasse ${selectedKlasse}:`, error);
+      setPdfGenerationMessage(`Fehler: ${error.message || 'Unbekannter Fehler beim Generieren der Klassen-PDF'}`);
     }
     setPdfGenerationLoading(false);
   };
@@ -451,50 +473,70 @@ export default function PDFVerwaltung() {
         </CardContent>
       </Card>
       
-      <div className="flex justify-end mb-4">
-        <Button 
-          onClick={handleGenerateAllPDFs}
-          disabled={pdfGenerationLoading || Object.keys(alleKlassenPdfsDaten).length === 0 || !isZipsSupported}
-          className="w-full mb-2">
+      <div className="grid grid-cols-4 gap-2 mb-4 bg-gray-100 p-2 rounded">
+        <div className="col-span-4 mb-1">
+          <h3 className="text-sm font-semibold">PDF-Export:</h3>
+        </div>
+        
+        {/* Button für die ausgewählte Klasse als PDF - NEUER HAUPTBUTTON */}
+        <Button
+          onClick={handleGenerateSelectedKlassePDF}
+          disabled={pdfGenerationLoading || selectedKlasse === 'alle'}
+          className="text-xs py-1 h-auto bg-blue-700 hover:bg-blue-800">
           {pdfGenerationLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> PDFs werden generiert...
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Gewählte Klasse
             </>
           ) : (
             <>
-              <FileDown className="mr-2 h-4 w-4" /> Alle PDFs als ZIP exportieren
+              <FileDown className="mr-1 h-3 w-3" /> {selectedKlasse !== 'alle' ? `${selectedKlasse} PDF` : 'Klasse wählen'}
             </>
           )}
         </Button>
         
-        {/* Neuer Button für die Helfer-Tabelle als PDF */}
+        {/* Button für die Helfer-Tabelle als PDF */}
         <Button
           onClick={handleGenerateHelferTabelle}
           disabled={pdfGenerationLoading}
-          className="w-full mb-2">
+          className="text-xs py-1 h-auto">
           {pdfGenerationLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> PDF wird erstellt...
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Helfer-PDF
             </>
           ) : (
             <>
-              <FileDown className="mr-2 h-4 w-4" /> Helfer-Tabelle als PDF
+              <FileDown className="mr-1 h-3 w-3" /> Helfer-PDF
             </>
           )}
         </Button>
         
-        {/* Button für die Klassentabellen als PDF */}
+        {/* Button für alle Klassentabellen als PDF */}
         <Button
           onClick={handleGenerateKlassentabellen}
           disabled={pdfGenerationLoading}
-          className="w-full">
+          className="text-xs py-1 h-auto">
           {pdfGenerationLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Klassenlisten werden erstellt...
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Alle Klassen
             </>
           ) : (
             <>
-              <FileDown className="mr-2 h-4 w-4" /> Klassenlisten als PDF
+              <FileDown className="mr-1 h-3 w-3" /> Alle Klassen
+            </>
+          )}
+        </Button>
+        
+        <Button 
+          onClick={handleGenerateAllPDFs}
+          disabled={pdfGenerationLoading || Object.keys(alleKlassenPdfsDaten).length === 0 || !isZipsSupported}
+          className="text-xs py-1 h-auto">
+          {pdfGenerationLoading ? (
+            <>
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Alle ZIP
+            </>
+          ) : (
+            <>
+              <FileDown className="mr-1 h-3 w-3" /> Alle ZIP
             </>
           )}
         </Button>

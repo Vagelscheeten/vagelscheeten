@@ -289,13 +289,16 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
     
     try {
       toast.loading(`PDF für ${kind.vorname} ${kind.nachname} wird generiert...`);
+      
+      // Just pass the kindId to the simple generatePDF function
       await generatePDF(kindId);
+      
       toast.dismiss();
       toast.success(`PDF für ${kind.vorname} ${kind.nachname} erfolgreich generiert`);
     } catch (error) {
       console.error('Fehler bei der PDF-Generierung:', error);
       toast.dismiss();
-      toast.error(`Fehler bei der PDF-Generierung für ${kind.vorname} ${kind.nachname}`);
+      toast.error(`Fehler bei der PDF-Generierung für ${kind.vorname} ${kind.nachname}: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
     }
   };
   

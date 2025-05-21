@@ -8,17 +8,25 @@ import autoTable from 'jspdf-autotable';
  */
 export async function generateKlassentabellenPDF(
   supabase: any,
-  setPdfGenerationMessage?: (message: string | null) => void
+  setPdfGenerationMessage?: (message: string | null) => void,
+  spezifischeKlasse?: string
 ): Promise<void> {
   if (setPdfGenerationMessage) setPdfGenerationMessage('Erzeuge Klassentabellen-PDFs...');
   
   try {
-    // 1. Kinderdaten laden
+    // 1. Kinderdaten laden - wenn eine spezifische Klasse ausgewählt wurde, nur diese laden
     if (setPdfGenerationMessage) setPdfGenerationMessage('Lade Kinder...');
-    const { data: kinderData, error: kinderError } = await supabase
+    let kinderQuery = supabase
       .from('kinder')
-      .select('id, vorname, nachname, klasse')
-      .order('klasse, nachname, vorname');
+      .select('id, vorname, nachname, klasse');
+      
+    // Wenn eine spezifische Klasse ausgewählt wurde, filtern wir danach
+    if (spezifischeKlasse) {
+      kinderQuery = kinderQuery.eq('klasse', spezifischeKlasse);
+      if (setPdfGenerationMessage) setPdfGenerationMessage(`Lade Kinder für Klasse ${spezifischeKlasse}...`);
+    }
+    
+    const { data: kinderData, error: kinderError } = await kinderQuery.order('nachname, vorname');
       
     if (kinderError) {
       console.error('Fehler beim Laden der Kinder:', kinderError);
@@ -189,7 +197,7 @@ export async function generateKlassentabellenPDF(
         // Tabelle mit Inhalten
         autoTable(doc, {
           startY: 40,
-          head: [['Name', 'Aufgaben', 'Wünsche', 'Essensspenden']],
+          head: [['Nachname', 'Vorname', 'Rückmeldung (Wunsch)', 'Zuteilung', 'Essensspende']],
           body: kindDaten.map(kind => {
             const aufgabenText = kind.aufgaben.length > 0 
               ? kind.aufgaben.map((a: any) => `${a.titel}${a.zeitfenster ? ` - ${a.zeitfenster}` : ''}${a.viaSpringer ? ' (Springer)' : ''}`).join('\n')
@@ -200,15 +208,10 @@ export async function generateKlassentabellenPDF(
               : 'Keine';
               
             const spendenText = kind.spenden.length > 0
-              ? kind.spenden.map((s: any) => `${s.titel}${s.menge ? ` (${s.menge}x)` : ''}${s.freitext ? ` - "${s.freitext}"` : ''}`).join('\n')
+              ? kind.spenden.map((s: any) => `${s.titel}${s.menge ? ` (${s.menge} Stück)` : ''}${s.freitext ? ` - "${s.freitext}"` : ''}`).join('\n')
               : 'Keine';
-              
-            return [
-              `${kind.vorname} ${kind.nachname}`,
-              aufgabenText,
-              wuenscheText,
-              spendenText
-            ];
+
+            return [kind.nachname, kind.vorname, wuenscheText, aufgabenText, spendenText];
           }),
           theme: 'striped',
           styles: {
@@ -216,15 +219,16 @@ export async function generateKlassentabellenPDF(
             cellPadding: 4
           },
           headStyles: {
-            fillColor: [100, 100, 100],
+            fillColor: [60, 60, 60],
             textColor: [255, 255, 255],
             fontStyle: 'bold'
           },
           columnStyles: {
-            0: { cellWidth: 40 }, // Name
-            1: { cellWidth: 50 }, // Aufgaben
-            2: { cellWidth: 50 }, // Wünsche
-            3: { cellWidth: 50 }  // Spenden
+            0: { cellWidth: 30 }, // Nachname
+            1: { cellWidth: 30 }, // Vorname
+            2: { cellWidth: 50 }, // Rückmeldung (Wunsch)
+            3: { cellWidth: 50 }, // Zuteilung
+            4: { cellWidth: 40 }  // Essensspende
           },
           alternateRowStyles: {
             fillColor: [245, 245, 245]

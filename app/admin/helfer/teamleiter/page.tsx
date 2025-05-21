@@ -113,10 +113,10 @@ export default function TeamleiterPage() {
           } else if (helfer.kind && typeof helfer.kind === 'object') {
             // Direkter Zugriff auf das kind-Objekt
             kindObj = { 
-              id: helfer.kind.id || '', 
-              vorname: helfer.kind.vorname || '', 
-              nachname: helfer.kind.nachname || '', 
-              klasse: helfer.kind.klasse
+              id: Array.isArray(helfer.kind) ? (helfer.kind[0]?.id || '') : (helfer.kind?.id || ''), 
+              vorname: Array.isArray(helfer.kind) ? (helfer.kind[0]?.vorname || '') : (helfer.kind?.vorname || ''), 
+              nachname: Array.isArray(helfer.kind) ? (helfer.kind[0]?.nachname || '') : (helfer.kind?.nachname || ''), 
+              klasse: Array.isArray(helfer.kind) ? (helfer.kind[0]?.klasse || '') : (helfer.kind?.klasse || '')
             };
           }
 
@@ -134,8 +134,8 @@ export default function TeamleiterPage() {
           } else if (helfer.externe_helfer && typeof helfer.externe_helfer === 'object') {
             // Direkter Zugriff auf das externe_helfer-Objekt
             externerHelferObj = { 
-              id: helfer.externe_helfer.id || '', 
-              name: helfer.externe_helfer.name || ''
+              id: Array.isArray(helfer.externe_helfer) ? (helfer.externe_helfer[0]?.id || '') : (helfer.externe_helfer?.id || ''), 
+              name: Array.isArray(helfer.externe_helfer) ? (helfer.externe_helfer[0]?.name || '') : (helfer.externe_helfer?.name || '')
             };
           }
 
