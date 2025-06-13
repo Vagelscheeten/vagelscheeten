@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { leiterLogin } from '../actions';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,7 @@ function SubmitButton() {
 export default function LeiterLoginPage() {
   const [state, formAction] = useFormState<LeiterLoginState, FormData>(leiterLogin, initialState);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     console.log('Leiter Login Page: useEffect triggered. State:', state);
@@ -64,6 +65,7 @@ export default function LeiterLoginPage() {
                 type="text"
                 placeholder="Deine Gruppe"
                 required
+                defaultValue={searchParams.get('gruppenname') || ''}
                 className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 text-sm outline-2 placeholder:text-gray-500 dark:border-gray-800"
               />
             </div>
@@ -76,6 +78,7 @@ export default function LeiterLoginPage() {
                 placeholder="Code"
                 required
                 minLength={6}
+                defaultValue={searchParams.get('zugangscode') || ''}
                 className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 text-sm outline-2 placeholder:text-gray-500 dark:border-gray-800"
               />
             </div>

@@ -210,15 +210,6 @@ export function GruppenPDFGenerator({ activeEventId, selectedKlasseName }: Grupp
 
       toast.info(`Generiere Teamleiter-PDFs für alle ${spielgruppen.length} Gruppen...`);
 
-      // QR-Code einmal generieren und wiederverwenden
-      const qrCodeURL = "https://www.vagelscheeten.de/leiter/login";
-      const qrCodeDataURL = await generateQRCode(qrCodeURL);
-      
-      if (!qrCodeDataURL) {
-        toast.error('QR-Code konnte nicht generiert werden.');
-        return;
-      }
-
       // Erstelle ein ZIP-Archiv
       const zip = new JSZip();
       const generatePromises = [];
@@ -230,11 +221,28 @@ export function GruppenPDFGenerator({ activeEventId, selectedKlasseName }: Grupp
           console.warn(`Gruppe ${gruppe.name} hat keinen Zugangscode. Generiere trotzdem PDF.`);
         }
 
+        // URL für den QR-Code mit Anmeldedaten erstellen
+        const loginUrl = new URL("https://www.vagelscheeten.de/leiter/login");
+        loginUrl.searchParams.append('gruppenname', gruppe.name);
+        if (gruppe.leiter_zugangscode) {
+          loginUrl.searchParams.append('zugangscode', gruppe.leiter_zugangscode);
+        }
+
+        // QR-Code für diese spezifische URL generieren
+        const qrCodeDataURL = await generateQRCode(loginUrl.toString());
+
+        if (!qrCodeDataURL) {
+          console.error(`QR-Code für Gruppe ${gruppe.name} konnte nicht generiert werden.`);
+          // Optional: Generierung für diese Gruppe überspringen
+          continue;
+        }
+
         // Generiere PDF für diese Gruppe
         const generatePromise = pdf(
           <TeamleiterInfoPDF 
             spielgruppe={gruppe} 
-            qrCodeDataURL={qrCodeDataURL} 
+            qrCodeDataURL={qrCodeDataURL}
+            loginUrl={loginUrl.toString()}
           />
         )
           .toBlob()

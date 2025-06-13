@@ -6,6 +6,7 @@ import { Spielgruppe } from '@/lib/types';
 interface TeamleiterInfoPDFProps {
   spielgruppe: Spielgruppe;
   qrCodeDataURL?: string;
+  loginUrl: string;
 }
 
 // Styles für das PDF-Dokument im DIN A4 Format
@@ -86,7 +87,7 @@ const styles = StyleSheet.create({
 });
 
 // Die eigentliche PDF-Komponente
-export const TeamleiterInfoPDF = ({ spielgruppe, qrCodeDataURL }: TeamleiterInfoPDFProps) => {
+export const TeamleiterInfoPDF = ({ spielgruppe, qrCodeDataURL, loginUrl }: TeamleiterInfoPDFProps) => {
   // Fallback QR Code (statisches Bild, falls die Generierung fehlschlägt)
   // Dies ist ein Mini-QR-Code-Beispiel als Base64 (tauschen Sie es bei Bedarf aus)
   const fallbackQRCode = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAABQklEQVR4nO3aQQ7CIBRF0YLuXLtC908XVBMTEgZ+Pd9zJrYVuFGhLAAAAAAAAAAAAAAAAMAU11Navc5Y+7mb3h38Vmv/tO75Zjm/xHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxHHfxPFdYs6aYx6Yjrm3zzHHXD/7wPg/yddjbuYnkWr/KOOl5LHfKI8Z8ZSWGd4JAgAAAAAAAAAAAMColP9lJP2/QhJxzCvpvBZxzKu24MzxKpFHHPM6Ys/VvKJvn+JrMR/5rFJR4gjEEYgjEEcgjkAcgTgCcQAAAAAAAAAAAAAAAAAAMNMXCBgpOBvs7WkAAAAASUVORK5CYII=';
@@ -111,7 +112,7 @@ export const TeamleiterInfoPDF = ({ spielgruppe, qrCodeDataURL }: TeamleiterInfo
           <Image style={styles.qrCode} src={qrCodeDataURL || fallbackQRCode} />
         </View>
         
-        <Text style={styles.qrLink}>www.vagelscheeten.de/leiter/login</Text>
+        <Text style={styles.qrLink}>{loginUrl.replace('https://', '')}</Text>
         
         <Text style={styles.instructions}>
           Wähle zuerst das Spiel, danach das Kind und gib dann das Ergebnis ein. Sobald alle Kinder das Spiel absolviert haben, beende die Erfassung mit dem Button "Spiel abschließen".
