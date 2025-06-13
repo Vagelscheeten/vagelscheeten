@@ -3,15 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, Variants } from 'framer-motion';
 
-const staggerContainer: Variants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.15,
-    },
-  },
-};
-
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
@@ -81,65 +72,50 @@ const calculateTimeLeft = (targetDate: Date): { days: number; hours: number; min
 };
 
 const EventCountdown = ({ targetDate }: { targetDate: Date }) => {
-  const [currentTime, setCurrentTime] = React.useState(new Date());
-  const [timeLeft, setTimeLeft] = React.useState(calculateTimeLeft(targetDate));
+  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft(targetDate));
 
-  React.useEffect(() => {
+  useEffect(() => {
     const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(now);
       setTimeLeft(calculateTimeLeft(targetDate));
     }, 1000);
+
+    // Clear interval if the event is past to prevent unnecessary updates
+    if (timeLeft.isPast) {
+      clearInterval(timer);
+    }
+
     return () => clearInterval(timer);
-  }, [targetDate]);
+  }, [targetDate, timeLeft.isPast]); // Add timeLeft.isPast to dependencies
 
-  const eventDayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-  const eventEffectiveEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 18, 0, 0);
-
-  const glassEffectStyle = {
-    background: 'rgba(0, 0, 0, 0.3)',
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)',
-  };
-
-  if (currentTime >= eventEffectiveEnd) {
+  if (timeLeft.isToday) {
     return (
-      <div className="text-center text-white">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          style={glassEffectStyle}
-          className="p-6 md:p-8 rounded-2xl"
-        >
-          <div className="text-2xl md:text-3xl font-semibold mb-3" style={{ fontFamily: 'var(--font-poppins)' }}>
-            Das Melsdörper Vagelscheeten 2025 hat bereits stattgefunden.
-          </div>
-          <p className="text-lg md:text-xl">Wir hoffen, ihr hattet einen fantastischen Tag und freuen uns schon auf das nächste Mal!</p>
-        </motion.div>
+      <div className="text-center p-6 sm:p-8 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-lg max-w-2xl mx-auto">
+        <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
+          Heute ist es soweit!
+        </p>
+        <p className="text-sm sm:text-md lg:text-lg text-white/90 mt-2">
+          Wir wünschen allen Kindern viel Erfolg sowie den Helfern und Besuchern einen fantastischen Tag beim Vogelschießen in Melsdorf!
+        </p>
       </div>
     );
   }
 
-  if (currentTime >= eventDayStart && currentTime < eventEffectiveEnd) {
+  if (timeLeft.isPast) {
     return (
-      <div className="text-center text-white">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          style={glassEffectStyle}
-          className="p-6 md:p-8 rounded-2xl"
-        >
-          <div className="text-2xl md:text-3xl font-semibold mb-3" style={{ fontFamily: 'var(--font-poppins)' }}>
-            Heute ist es soweit!
-          </div>
-          <p className="text-lg md:text-xl">Wir wünschen allen Kindern viel Erfolg und allen Helfern und Besuchern einen fantastischen Tag beim Melsdörper Vagelscheeten!</p>
-        </motion.div>
+      <div className="text-center p-6 sm:p-8 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 shadow-lg max-w-2xl mx-auto">
+        <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
+          Das Vogelschießen 2025 ist vorbei.
+        </p>
+        <p className="text-sm sm:text-md lg:text-lg text-white/90 mt-2">
+          Vielen Dank an alle Teilnehmer, Helfer, Sponsoren und Besucher! Ergebnisse und Fotos folgen in Kürze.
+        </p>
       </div>
     );
+  }
+
+  // Only show countdown if not past and not today
+  if (timeLeft.days < 0 && !timeLeft.isToday) { // Ensure countdown doesn't show for past dates if somehow isPast is false
+    return null; 
   }
 
   return (
