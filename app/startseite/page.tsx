@@ -1,6 +1,25 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, Variants } from 'framer-motion';
+
+const staggerContainer: Variants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.15,
+    },
+  },
+};
+
+const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: "easeOut" },
+  },
+};
 import { Button } from "@/components/ui/button";
 import { RouteMap } from "@/components/route/RouteComponents";
 import Image from 'next/image';
@@ -43,36 +62,95 @@ const CountdownItem = ({ value, label }: { value: number; label: string }) => {
   );
 };
 
-const calculateTimeLeft = (targetDate: Date) => {
-  const difference = targetDate.getTime() - new Date().getTime();
+const calculateTimeLeft = (targetDate: Date): { days: number; hours: number; minutes: number; seconds: number; isPast: boolean; isToday: boolean } => {
+  const now = new Date();
+  const difference = targetDate.getTime() - now.getTime();
+  
+  const isToday = now.getFullYear() === targetDate.getFullYear() &&
+                  now.getMonth() === targetDate.getMonth() &&
+                  now.getDate() === targetDate.getDate();
+
+  const isPast = difference < 0 && !isToday;
+
   const days = Math.floor(difference / (1000 * 60 * 60 * 24));
   const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((difference % (1000 * 60)) / 1000);
 
-  return { days, hours, minutes, seconds };
+  return { days, hours, minutes, seconds, isPast, isToday };
 };
 
 const EventCountdown = ({ targetDate }: { targetDate: Date }) => {
-  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft(targetDate));
+  const [currentTime, setCurrentTime] = React.useState(new Date());
+  const [timeLeft, setTimeLeft] = React.useState(calculateTimeLeft(targetDate));
 
-  useEffect(() => {
+  React.useEffect(() => {
     const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now);
       setTimeLeft(calculateTimeLeft(targetDate));
     }, 1000);
-
     return () => clearInterval(timer);
   }, [targetDate]);
 
+  const eventDayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+  const eventEffectiveEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 18, 0, 0);
+
+  const glassEffectStyle = {
+    background: 'rgba(0, 0, 0, 0.3)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)',
+  };
+
+  if (currentTime >= eventEffectiveEnd) {
+    return (
+      <div className="text-center text-white">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          style={glassEffectStyle}
+          className="p-6 md:p-8 rounded-2xl"
+        >
+          <div className="text-2xl md:text-3xl font-semibold mb-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+            Das Melsdörper Vagelscheeten 2025 hat bereits stattgefunden.
+          </div>
+          <p className="text-lg md:text-xl">Wir hoffen, ihr hattet einen fantastischen Tag und freuen uns schon auf das nächste Mal!</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (currentTime >= eventDayStart && currentTime < eventEffectiveEnd) {
+    return (
+      <div className="text-center text-white">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          style={glassEffectStyle}
+          className="p-6 md:p-8 rounded-2xl"
+        >
+          <div className="text-2xl md:text-3xl font-semibold mb-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+            Heute ist es soweit!
+          </div>
+          <p className="text-lg md:text-xl">Wir wünschen allen Kindern viel Erfolg und allen Helfern und Besuchern einen fantastischen Tag beim Melsdörper Vagelscheeten!</p>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex justify-center items-center space-x-2 xs:space-x-3 sm:space-x-4 lg:space-x-6">
-      <CountdownItem value={timeLeft.days} label="Tage" />
+      <CountdownItem value={timeLeft.days < 0 ? 0 : timeLeft.days} label="Tage" />
       <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
-      <CountdownItem value={timeLeft.hours} label="Std" />
+      <CountdownItem value={timeLeft.hours < 0 ? 0 : timeLeft.hours} label="Std" />
       <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
-      <CountdownItem value={timeLeft.minutes} label="Min" />
+      <CountdownItem value={timeLeft.minutes < 0 ? 0 : timeLeft.minutes} label="Min" />
       <div className="w-1 h-1 xs:w-1.5 xs:h-1.5 sm:w-2 sm:h-2 lg:w-3 lg:h-3 bg-white/30 rounded-full"></div>
-      <CountdownItem value={timeLeft.seconds} label="Sek" />
+      <CountdownItem value={timeLeft.seconds < 0 ? 0 : timeLeft.seconds} label="Sek" />
     </div>
   );
 };
@@ -616,7 +694,13 @@ export default function Startseite() {
     Samstag, 14. Juni · Regenbogenschule Melsdorf
   </div>
   <div className="flex justify-center items-center space-x-2 xs:space-x-3 sm:space-x-4 mb-2 xs:mb-3 sm:mb-4">
-    <EventCountdown targetDate={eventDate} />
+    <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                >
+                  <EventCountdown targetDate={eventDate} />
+                </motion.div>
   </div>
   <p className="text-white text-xs xs:text-sm sm:text-base lg:text-xl mb-1 xs:mb-2 sm:mb-4 lg:mb-6 max-w-full">
     Mach den Tag möglich – mit Deiner Spende.
@@ -882,7 +966,9 @@ export default function Startseite() {
           <div className="max-w-5xl mx-auto">
             <div className="bg-white rounded-3xl shadow-lg overflow-hidden transform hover:-translate-y-2 transition-all duration-500 border border-white/50">
               <div className="aspect-[16/9] relative">
-                <RouteMap />
+                <motion.div variants={fadeInUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}>
+                  <RouteMap />
+                </motion.div>
               </div>
               <div className="p-8 bg-white">
                 <div className="flex items-start mb-4">
@@ -905,14 +991,30 @@ export default function Startseite() {
       </div>
       
       {/* Spiele-Sektion */}
-      <div id="spiele" className="py-24 bg-pastel-green/30" ref={spieleRef}>
+      <motion.div
+        id="spiele"
+        className="py-24 bg-pastel-green/30"
+        ref={spieleRef}
+        variants={fadeInUp}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+      >
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-tertiary font-medium text-sm mb-3 shadow-sm">🎮 Spaß für alle</span>
-            <h2 className="text-4xl font-bold text-tertiary-dark mb-4" style={{ fontFamily: 'var(--font-poppins)' }}>Unsere Spiele</h2>
+            <motion.h2
+              className="text-4xl md:text-5xl font-bold text-center text-tertiary mb-12 md:mb-16"
+              style={{ fontFamily: 'var(--font-poppins)' }}
+              variants={fadeInUp}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.2 }}
+            >
+              Unsere Spiele
+            </motion.h2>
             <p className="text-gray-700 max-w-2xl mx-auto">Entdecke unsere spannenden Wettbewerbe und Spiele beim diesjährigen Melsdörper Vagelscheeten</p>
           </div>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {loading.games ? (
               <div className="col-span-full bg-white rounded-2xl shadow-md p-12 text-center">
@@ -941,13 +1043,22 @@ export default function Startseite() {
                 </div>
               </div>
             ) : (
-              games.map((game) => (
-                <GameCard
-                  key={game.id}
-                  game={game}
-                  onClick={setSelectedGame}
-                />
+              games.map((game, index) => (
+                <motion.div
+                  key={game.id} // Ensure key is on the motion component if it's the direct child of map
+                  variants={fadeInUp}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, amount: 0.1 }}
+                  transition={{ delay: index * 0.1, duration: 0.5, ease: "easeOut" }}
+                >
+                  <GameCard
+                    game={game}
+                    onClick={setSelectedGame}
+                  />
+                </motion.div>
               ))
+                
             )}
           </div>
           
@@ -968,7 +1079,7 @@ export default function Startseite() {
           </div>
         </div>
           
-      </div>
+      </motion.div>
 
       {/* Modal für Spieldetails */}
       <Modal isOpen={selectedGame !== null} onClose={() => setSelectedGame(null)}>
@@ -985,7 +1096,15 @@ export default function Startseite() {
       </Modal>
       
       {/* Spenden-Sektion */}
-      <div id="spenden" className="py-20 bg-white" ref={spendenRef}>
+      <motion.div
+        id="spenden"
+        className="py-20 bg-white"
+        ref={spendenRef}
+        variants={fadeInUp}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+      >
         <div className="container max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-yellow-100 rounded-full text-yellow-800 font-medium text-sm mb-3 shadow-sm">💰 Unterstützen</span>
@@ -1045,7 +1164,7 @@ export default function Startseite() {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
       
       {/* Galerie-Sektion */}
       <div id="galerie" className="py-24 bg-gradient-to-b from-white to-gray-50" ref={galerieRef}>
@@ -1167,7 +1286,15 @@ export default function Startseite() {
       </div>
       
       {/* Kontakt-Sektion */}
-      <div id="kontakt" className="py-16 bg-gray-50" ref={kontaktRef}>
+      <motion.div
+        id="kontakt"
+        className="py-16 bg-gray-50"
+        ref={kontaktRef}
+        variants={fadeInUp}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+      >
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold text-green-700 mb-8 text-center">Kontakt</h2>
           
@@ -1179,14 +1306,23 @@ export default function Startseite() {
             <ContactForm />
           </div>
         </div>
-      </div>
+      </motion.div>
       
       {/* Downloads-Sektion */}
       <div id="downloads" className="py-20 bg-gradient-to-b from-pastel-blue/10 to-white" ref={downloadsRef}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 bg-white rounded-full text-primary font-medium text-sm mb-3 shadow-sm">📥 Materialien</span>
-            <h2 className="text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'var(--font-poppins)' }}>Downloads</h2>
+            <motion.h2
+            className="text-4xl font-bold text-gray-900 mb-4" 
+            style={{ fontFamily: 'var(--font-poppins)' }}
+            variants={fadeInUp}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.2 }}
+          >
+            Downloads
+          </motion.h2>
             <p className="text-gray-700 max-w-2xl mx-auto">Hier findest du wichtige Dokumente und Materialien zum Herunterladen</p>
           </div>
           
