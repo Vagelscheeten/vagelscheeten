@@ -942,7 +942,7 @@ export default function Startseite() {
           <div className="max-w-5xl mx-auto">
             <div className="bg-white rounded-3xl shadow-lg overflow-hidden transform hover:-translate-y-2 transition-all duration-500 border border-white/50">
               <div className="aspect-[16/9] relative">
-                <motion.div variants={fadeInUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}>
+                <motion.div className="w-full h-full" variants={fadeInUp} initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}>
                   <RouteMap />
                 </motion.div>
               </div>
