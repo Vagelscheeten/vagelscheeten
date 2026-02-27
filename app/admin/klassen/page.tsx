@@ -1,481 +1,375 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client'; // Corrected path
-import { Database } from '@/lib/database.types'; // Import updated types
+import { createClient } from '@/lib/supabase/client';
+import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Import Input
-import { Label } from '@/components/ui/label'; // Import Label
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'; // Import Dialog components
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Import AlertDialog components
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { PlusCircle, Edit, Trash2 } from 'lucide-react'; // Icons for buttons
-import { toast } from 'sonner'; // Corrected import from sonner library
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle, Loader2, PlusCircle, Pencil, Trash2, Users, Gamepad2 } from 'lucide-react';
+import { toast } from 'sonner';
 
-// Define the type for a class based on the new schema
 type Klasse = Database['public']['Tables']['klassen']['Row'];
-// Define the type for an event
-type Event = Database['public']['Tables']['events']['Row'];
 
 export default function KlassenVerwaltungPage() {
-  const supabase = createClient();
   const [klassen, setKlassen] = useState<Klasse[]>([]);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false); // State for Add/Edit Dialog
-  const [newClassName, setNewClassName] = useState(''); // State for new class name input
-  const [editingKlasse, setEditingKlasse] = useState<Klasse | null>(null); // State for the class being edited
-  const [isSaving, setIsSaving] = useState(false); // State for saving indicator
-  const [isAlertOpen, setIsAlertOpen] = useState(false); // State for Delete Confirmation Dialog
-  const [klasseToDeleteId, setKlasseToDeleteId] = useState<string | null>(null); // State for ID of class to delete
-  const [isSyncingKlassen, setIsSyncingKlassen] = useState(false); // State for syncing classes from kinder table
 
-  // Function to fetch the active event
-  const fetchActiveEvent = useCallback(async () => {
+  // Stats: Kinder je Klasse (nach Name-String), Spiele je Klasse (nach ID)
+  const [kinderCountByName, setKinderCountByName] = useState<Map<string, number>>(new Map());
+  const [spieleCountById, setSpieleCountById] = useState<Map<string, number>>(new Map());
+  // Integritätsprüfung: kinder.klasse-Werte ohne Eintrag in klassen-Tabelle
+  const [orphanedNames, setOrphanedNames] = useState<string[]>([]);
+
+  // Dialog
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingKlasse, setEditingKlasse] = useState<Klasse | null>(null);
+  const [inputName, setInputName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Delete
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [klasseToDelete, setKlasseToDelete] = useState<Klasse | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     setError(null);
+    const supabase = createClient();
     try {
-      const { data, error: eventError } = await supabase
+      // 1. Aktives Event holen
+      const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('id')
         .eq('ist_aktiv', true)
-        .single(); // Expecting only one active event
+        .single();
 
       if (eventError) {
-        if (eventError.code === 'PGRST116') { // code for 'no rows found'
-          throw new Error('Kein aktives Event gefunden. Bitte im Event-Management ein Event aktivieren.');
-        } else {
-          throw eventError;
+        throw new Error(
+          eventError.code === 'PGRST116'
+            ? 'Kein aktives Event gefunden. Bitte im Event-Management ein Event aktivieren.'
+            : eventError.message
+        );
+      }
+
+      const eventId = eventData.id;
+      setActiveEventId(eventId);
+
+      // 2. Klassen, Kinder-Statistiken und Spiele-Zuweisungen parallel laden
+      const [klassenRes, kinderRes, spieleRes] = await Promise.all([
+        supabase.from('klassen').select('*').eq('event_id', eventId).order('name', { ascending: true }),
+        supabase.from('kinder').select('klasse').eq('event_id', eventId).not('klasse', 'is', null),
+        supabase.from('klasse_spiele').select('klasse_id'),
+      ]);
+
+      if (klassenRes.error) throw klassenRes.error;
+      if (kinderRes.error) throw kinderRes.error;
+      if (spieleRes.error) throw spieleRes.error;
+
+      const klassenData = klassenRes.data || [];
+      setKlassen(klassenData);
+
+      // Kinder je Klasse anhand des String-Feldes kinder.klasse zählen
+      const kinderMap = new Map<string, number>();
+      for (const k of kinderRes.data || []) {
+        if (k.klasse) kinderMap.set(k.klasse, (kinderMap.get(k.klasse) || 0) + 1);
+      }
+      setKinderCountByName(kinderMap);
+
+      // Spiele je Klasse anhand der UUID klasse_spiele.klasse_id zählen
+      const klassenIds = new Set(klassenData.map(k => k.id));
+      const spieleMap = new Map<string, number>();
+      for (const s of spieleRes.data || []) {
+        if (s.klasse_id && klassenIds.has(s.klasse_id)) {
+          spieleMap.set(s.klasse_id, (spieleMap.get(s.klasse_id) || 0) + 1);
         }
       }
-      if (data?.id) {
-        setActiveEventId(data.id);
+      setSpieleCountById(spieleMap);
+
+      // Integritätsprüfung: gibt es kinder.klasse-Werte ohne Klasse in der Tabelle?
+      const klassenNames = new Set(klassenData.map(k => k.name));
+      const uniqueKinderKlassen = [...new Set(
+        (kinderRes.data || []).map(k => k.klasse).filter(Boolean) as string[]
+      )].sort();
+      setOrphanedNames(uniqueKinderKlassen.filter(n => !klassenNames.has(n)));
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const openAddDialog = () => {
+    if (!activeEventId) { toast.error('Kein aktives Event gefunden.'); return; }
+    setEditingKlasse(null);
+    setInputName('');
+    setIsDialogOpen(true);
+  };
+
+  const openEditDialog = (klasse: Klasse) => {
+    setEditingKlasse(klasse);
+    setInputName(klasse.name);
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputName.trim()) { toast.error('Name darf nicht leer sein.'); return; }
+
+    setIsSaving(true);
+    const supabase = createClient();
+    try {
+      if (editingKlasse) {
+        const { error } = await supabase
+          .from('klassen')
+          .update({ name: inputName.trim() })
+          .eq('id', editingKlasse.id);
+        if (error) throw error;
+        toast.success(`Klasse „${inputName.trim()}" aktualisiert.`);
       } else {
-        // This case should technically be covered by the error handling above,
-        // but added for robustness.
-        throw new Error('Aktives Event konnte nicht geladen werden (keine ID).');
+        const { error } = await supabase
+          .from('klassen')
+          .insert({ name: inputName.trim(), event_id: activeEventId! });
+        if (error) throw error;
+        toast.success(`Klasse „${inputName.trim()}" erstellt.`);
       }
-    } catch (err: any) { // Explicitly type err as any or Error
-      console.error('Error fetching active event:', err);
-      setError(`Fehler beim Laden des aktiven Events: ${err.message}`);
-      toast.error(`Aktives Event nicht geladen: ${err.message}`);
-      setActiveEventId(null); // Ensure activeEventId is null on error
-      setLoading(false); // Stop loading if event fetch fails
-    }
-  }, [supabase]);
-
-  // Function to fetch classes for the active event
-  const fetchKlassen = useCallback(async () => {
-    if (!activeEventId) {
-      // Don't fetch classes if we don't have an active event ID
-      setKlassen([]); // Clear existing classes
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error: klassenError } = await supabase
-        .from('klassen')
-        .select('*')
-        .eq('event_id', activeEventId) // Filter by active event
-        .order('name', { ascending: true });
-
-      if (klassenError) throw klassenError;
-      setKlassen(data || []);
-    } catch (err: any) { // Explicitly type err as any or Error
-      console.error('Error fetching klassen:', err);
-      setError('Fehler beim Laden der Klassen.');
-      toast.error('Die Klassen konnten nicht geladen werden.');
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase, activeEventId]);
-
-  // Fetch active event on component mount
-  useEffect(() => {
-    fetchActiveEvent();
-  }, [fetchActiveEvent]);
-
-  // Fetch classes when active event ID is available
-  useEffect(() => {
-    if (activeEventId) {
-      fetchKlassen();
-    }
-  }, [activeEventId, fetchKlassen]);
-
-  // Function to handle opening the Add dialog
-  const handleAddKlasseClick = () => {
-    if (!activeEventId) {
-      toast.error('Kann keine Klasse hinzufügen, da kein aktives Event gefunden wurde.');
-      return;
-    }
-    setNewClassName(''); // Reset form fields
-    setEditingKlasse(null); // Ensure we are in 'add' mode
-    setIsDialogOpen(true); // Open the dialog
-  };
-
-  // Function to handle updating an existing class
-  const handleUpdateKlasse = async () => {
-    if (!editingKlasse) return;
-    if (!newClassName.trim()) {
-        toast.error('Klassenname darf nicht leer sein.');
-        return;
-    }
-
-    setIsSaving(true);
-    try {
-        const { error: updateError } = await supabase
-            .from('klassen')
-            .update({ name: newClassName.trim() })
-            .eq('id', editingKlasse.id);
-
-        if (updateError) throw updateError;
-
-        toast.success(`Klasse "${newClassName.trim()}" erfolgreich aktualisiert.`);
-        setIsDialogOpen(false); // Close dialog on success
-        fetchKlassen(); // Refresh the class list
-
+      setIsDialogOpen(false);
+      fetchData();
     } catch (err: any) {
-        console.error('Error updating klasse:', err);
-        toast.error(`Fehler beim Aktualisieren der Klasse: ${err.message}`);
-    } finally {
-        setIsSaving(false);
-    }
-  };
-
-  // Function to handle saving the new class
-  const handleSaveNewKlasse = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); // Prevent default form submission
-    if (!activeEventId) {
-      toast.error('Fehler: Kein aktives Event für das Speichern vorhanden.');
-      return;
-    }
-    if (!newClassName.trim()) {
-      toast.error('Klassenname darf nicht leer sein.');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const { error: insertError } = await supabase
-        .from('klassen')
-        .insert({
-          name: newClassName.trim(),
-          event_id: activeEventId, // Include the active event ID
-        });
-
-      if (insertError) throw insertError;
-
-      toast.success(`Klasse "${newClassName.trim()}" erfolgreich hinzugefügt.`);
-      setIsDialogOpen(false); // Close dialog on success
-      fetchKlassen(); // Refresh the class list
-
-    } catch (err: any) {
-      console.error('Error saving new klasse:', err);
-      toast.error(`Fehler beim Speichern der Klasse: ${err.message}`);
+      toast.error(`Fehler: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Combined submit handler for the form
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (editingKlasse) {
-        await handleUpdateKlasse();
-    } else {
-        await handleSaveNewKlasse(event); // Pass event for potential future use
-    }
-  };
-
-  // Function to handle opening the Edit dialog
-  const handleEditKlasseClick = (klasse: Klasse) => {
-    setEditingKlasse(klasse);
-    setNewClassName(klasse.name); // Pre-fill the input
-    setIsDialogOpen(true);
-  };
-
-  // Function to trigger the delete confirmation
-  const handleDeleteKlasseClick = (klasseId: string) => {
-    setKlasseToDeleteId(klasseId);
-    setIsAlertOpen(true);
-  };
-
-  // Function to sync classes from kinder table
-  const syncKlassenFromKinder = async () => {
-    if (!activeEventId) {
-      toast.error('Fehler: Kein aktives Event für die Synchronisierung vorhanden.');
-      return;
-    }
-
-    setIsSyncingKlassen(true);
+  const confirmDelete = async () => {
+    if (!klasseToDelete) return;
+    const supabase = createClient();
     try {
-      // 1. Get all unique classes from kinder table
-      const { data: kinderKlassen, error: kinderError } = await supabase
-        .from('kinder')
-        .select('klasse')
-        .eq('event_id', activeEventId)
-        .not('klasse', 'is', null);
-
-      if (kinderError) throw kinderError;
-
-      // 2. Extract unique class names and filter out empty values
-      const uniqueKlassen = [...new Set(kinderKlassen
-        .map(k => k.klasse?.trim())
-        .filter(k => k && k.length > 0))];
-
-      // 3. Get existing classes for this event with IDs
-      const { data: existingKlassen, error: existingError } = await supabase
-        .from('klassen')
-        .select('id, name')
-        .eq('event_id', activeEventId);
-
-      if (existingError) throw existingError;
-
-      // 4. Find new classes that don't exist yet
-      const existingNames = existingKlassen.map(k => k.name);
-      const newKlassen = uniqueKlassen.filter(k => !existingNames.includes(k as string));
-
-      // 5. Find existing classes that are no longer in the kinder table
-      const classesToRemove = existingKlassen.filter(k => !uniqueKlassen.includes(k.name));
-
-      // 6. Insert new classes
-      if (newKlassen.length > 0) {
-        const newKlassenObjects = newKlassen.map(name => ({
-          name: name as string,
-          event_id: activeEventId
-        }));
-
-        const { error: insertError } = await supabase
-          .from('klassen')
-          .insert(newKlassenObjects);
-
-        if (insertError) throw insertError;
-
-        toast.success(`${newKlassen.length} neue Klasse(n) erfolgreich importiert.`);
-      }
-
-      // 7. Remove classes that no longer exist in the kinder table
-      if (classesToRemove.length > 0) {
-        // Check if any of these classes have children assigned to them
-        const classIdsToRemove = classesToRemove.map(k => k.id);
-        
-        // First, check if any of these classes have dependencies
-        // This is a safety check to avoid foreign key violations
-        const { data: dependencies, error: dependencyError } = await supabase
-          .from('kind_spielgruppe_zuordnung')
-          .select('id')
-          .in('spielgruppe_id', (await supabase
-            .from('spielgruppen')
-            .select('id')
-            .in('klasse', classesToRemove.map(k => k.name))
-            .then(res => res.data?.map(g => g.id) || [])))
-          .limit(1);
-        
-        if (dependencyError) throw dependencyError;
-        
-        if (dependencies && dependencies.length > 0) {
-          toast.warning(`${classesToRemove.length} Klasse(n) konnten nicht entfernt werden, da ihnen noch Kinder zugeordnet sind.`);
-        } else {
-          // Delete the classes if no dependencies exist
-          const { error: deleteError } = await supabase
-            .from('klassen')
-            .delete()
-            .in('id', classIdsToRemove);
-
-          if (deleteError) throw deleteError;
-
-          toast.success(`${classesToRemove.length} nicht mehr verwendete Klasse(n) erfolgreich entfernt.`);
-        }
-      }
-
-      // 8. Summary message if no changes were made
-      if (newKlassen.length === 0 && classesToRemove.length === 0) {
-        toast.info('Keine Änderungen notwendig. Klassenliste ist bereits aktuell.');
-      }
-
-      // 9. Refresh the class list
-      fetchKlassen();
-
+      const { error } = await supabase.from('klassen').delete().eq('id', klasseToDelete.id);
+      if (error) throw error;
+      toast.success(`Klasse „${klasseToDelete.name}" gelöscht.`);
+      fetchData();
     } catch (err: any) {
-      console.error('Error syncing classes from kinder:', err);
-      toast.error(`Fehler bei der Synchronisierung: ${err.message}`);
-    } finally {
-      setIsSyncingKlassen(false);
-    }
-  };
-
-  // Function to perform the actual deletion after confirmation
-  const confirmDeleteKlasse = async () => {
-    if (!klasseToDeleteId) return;
-
-    // Optional: Add check for dependencies (e.g., assigned games) here later
-
-    try {
-      const { error: deleteError } = await supabase
-        .from('klassen')
-        .delete()
-        .match({ id: klasseToDeleteId });
-
-      if (deleteError) throw deleteError;
-
-      toast.success('Klasse erfolgreich gelöscht.');
-      fetchKlassen(); // Refresh list
-
-    } catch (err: any) {
-      console.error('Error deleting klasse:', err);
-      // Provide more specific error if possible (e.g., foreign key violation)
-      if (err.code === '23503') { // PostgreSQL foreign key violation code
-           toast.error('Fehler: Klasse kann nicht gelöscht werden, da ihr noch Spiele zugeordnet sind.');
+      if (err.code === '23503') {
+        toast.error('Klasse kann nicht gelöscht werden — es sind noch Spiele zugewiesen.');
       } else {
-           toast.error(`Fehler beim Löschen der Klasse: ${err.message}`);
+        toast.error(`Fehler: ${err.message}`);
       }
     } finally {
-      setKlasseToDeleteId(null); // Reset the ID
-      // No need to manually close dialog here, AlertDialogAction does it
+      setKlasseToDelete(null);
     }
   };
+
+  if (loading) {
+    return (
+      <main className="p-4 md:p-8 flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="p-4 md:p-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Fehler</AlertTitle>
+          <AlertDescription>
+            {error}
+            {!activeEventId && (
+              <> Bitte gehe zur <a href="/admin/events" className="underline font-medium">Event-Verwaltung</a> und aktiviere ein Event.</>
+            )}
+          </AlertDescription>
+        </Alert>
+      </main>
+    );
+  }
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Klassen Verwalten</h1>
-        <div className="flex gap-2">
-          <Button 
-            onClick={syncKlassenFromKinder}
-            disabled={isSyncingKlassen || loading || !activeEventId}
-            variant="outline"
-          >
-            {isSyncingKlassen ? (
-              <>
-                <span className="animate-spin mr-2">⟳</span> Synchronisiere...
-              </>
-            ) : (
-              <>
-                <span className="mr-2">⟳</span> Aus Kinderliste importieren
-              </>
-            )}
-          </Button>
-          <Button onClick={handleAddKlasseClick}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Neue Klasse
-          </Button>
-        </div>
+    <main className="p-4 md:p-8 space-y-5">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-slate-900">Klassen</h1>
+        <Button onClick={openAddDialog} size="sm">
+          <PlusCircle className="mr-2 h-4 w-4" /> Neue Klasse
+        </Button>
       </div>
 
-      {loading && <p>Lade Daten...</p>}
-      {error && (
-        <div className="text-red-500 bg-red-100 border border-red-400 p-4 rounded mb-4">
-          <p><b>Fehler:</b></p>
-          <p>{error}</p>
-          {/* Optional: Suggest action if no active event */} 
-          {!activeEventId && error.includes('Kein aktives Event') && (
-             <p className="mt-2">Bitte gehe zur <a href="/admin/events" className="underline">Event-Verwaltung</a> und aktiviere ein Event.</p>
-          )}
-        </div>
+      {/* Integritätswarnung: kinder.klasse-Werte ohne Klassen-Eintrag */}
+      {orphanedNames.length > 0 && (
+        <Alert className="border-orange-200 bg-orange-50">
+          <AlertCircle className="h-4 w-4 text-orange-500" />
+          <AlertTitle className="text-orange-700">Datenproblem erkannt</AlertTitle>
+          <AlertDescription className="text-orange-600">
+            Diese Klassen-Bezeichnungen stehen in den Kinderdaten, existieren aber nicht in der Klassen-Tabelle:{' '}
+            <strong>{orphanedNames.join(', ')}</strong>.
+            Für diese Kinder können bei der Auswertung keine Spielzuweisungen gefunden werden —
+            die Ermittlung der Königspaare ist dadurch fehlerhaft.
+            Bitte diese Klassen manuell anlegen.
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* Only show table if not loading, no error, and an active event exists */}
-      {!loading && !error && activeEventId && (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Aktionen</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {klassen.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={2} className="text-center">Keine Klassen gefunden.</TableCell>
-              </TableRow>
-            ) : (
-              klassen.map((klasse) => (
-                <TableRow key={klasse.id}>
-                  <TableCell>{klasse.name}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => handleEditKlasseClick(klasse)} className="mr-2">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteKlasseClick(klasse.id)} className="text-red-600 hover:text-red-800">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between pb-3">
+          <div>
+            <CardTitle className="text-base">Klassen des aktiven Events</CardTitle>
+            <CardDescription className="mt-0.5">
+              Klassen sind dem aktiven Event zugeordnet. Für jede Klasse werden König und Königin ermittelt.
+              Die Namen müssen exakt mit den Klassen-Angaben in den Kinderdaten übereinstimmen.
+            </CardDescription>
+          </div>
+          <span className="shrink-0 ml-4 text-sm text-slate-400 font-normal">
+            {klassen.length} {klassen.length === 1 ? 'Klasse' : 'Klassen'}
+          </span>
+        </CardHeader>
+        <CardContent>
+          {klassen.length === 0 ? (
+            <p className="text-sm text-slate-500 py-6 text-center">
+              Noch keine Klassen angelegt. Über „Neue Klasse" hinzufügen.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                      <Users size={13} /> Kinder
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                      <Gamepad2 size={13} /> Spiele
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-right">Aktionen</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      )}
-      {/* Add/Edit Class Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-              setEditingKlasse(null); // Reset editing state when dialog closes
-          }
-      }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form onSubmit={handleSubmit}> {/* Use combined submit handler */}
+              </TableHeader>
+              <TableBody>
+                {klassen.map(klasse => {
+                  const kinderCount = kinderCountByName.get(klasse.name) ?? 0;
+                  const spieleCount = spieleCountById.get(klasse.id) ?? 0;
+                  return (
+                    <TableRow key={klasse.id}>
+                      <TableCell className="font-semibold text-slate-800">{klasse.name}</TableCell>
+                      <TableCell>
+                        {kinderCount > 0
+                          ? <span className="text-slate-700">{kinderCount}</span>
+                          : <span className="text-slate-400 text-sm">–</span>
+                        }
+                      </TableCell>
+                      <TableCell>
+                        {spieleCount > 0
+                          ? (
+                            <Badge variant="secondary" className="bg-orange-50 text-orange-600 border border-orange-200 text-xs">
+                              {spieleCount} {spieleCount === 1 ? 'Spiel' : 'Spiele'}
+                            </Badge>
+                          )
+                          : <span className="text-slate-400 text-sm">keine</span>
+                        }
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(klasse)} title="Bearbeiten">
+                          <Pencil size={15} />
+                        </Button>
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-destructive hover:text-destructive-foreground hover:bg-destructive"
+                          onClick={() => { setKlasseToDelete(klasse); setIsAlertOpen(true); }}
+                          title="Löschen"
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setEditingKlasse(null); }}>
+        <DialogContent className="sm:max-w-[380px]">
+          <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>{editingKlasse ? 'Klasse bearbeiten' : 'Neue Klasse hinzufügen'}</DialogTitle>
+              <DialogTitle>{editingKlasse ? 'Klasse bearbeiten' : 'Neue Klasse'}</DialogTitle>
               <DialogDescription>
                 {editingKlasse
-                  ? 'Ändere den Namen der Klasse.'
-                  : 'Gib den Namen für die neue Klasse ein.'}
+                  ? `Namen der Klasse „${editingKlasse.name}" ändern.`
+                  : 'Name der neuen Klasse eingeben. Muss exakt mit den Klassen-Angaben in den Kinderdaten übereinstimmen (z.B. „1a", „2b").'}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Name
-                </Label>
+            <div className="py-4">
+              <div className="grid grid-cols-4 items-center gap-3">
+                <Label htmlFor="klasse-name" className="text-right text-sm">Name</Label>
                 <Input
-                  id="name"
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
+                  id="klasse-name"
+                  value={inputName}
+                  onChange={(e) => setInputName(e.target.value)}
                   className="col-span-3"
-                  required // HTML5 validation
+                  placeholder="z.B. 1a"
+                  autoFocus
+                  required
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Abbrechen</Button>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
+                Abbrechen
+              </Button>
               <Button type="submit" disabled={isSaving}>
-                {isSaving ? 'Speichern...' : (editingKlasse ? 'Änderungen speichern' : 'Speichern')}
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSaving ? 'Speichern...' : (editingKlasse ? 'Änderungen speichern' : 'Klasse erstellen')}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Bist du sicher?</AlertDialogTitle>
+            <AlertDialogTitle>Klasse wirklich löschen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Diese Aktion kann nicht rückgängig gemacht werden. Dadurch wird die Klasse
-              "{klassen.find(k => k.id === klasseToDeleteId)?.name ?? ''}" dauerhaft gelöscht.
-              Eventuell zugeordnete Spiele müssen manuell neu zugewiesen werden.
+              Soll die Klasse „{klasseToDelete?.name}" wirklich gelöscht werden?
+              Alle Spielzuweisungen für diese Klasse werden ebenfalls entfernt.
+              Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setKlasseToDeleteId(null)}>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteKlasse} className="bg-red-600 hover:bg-red-700">
-              Löschen
+            <AlertDialogCancel onClick={() => setKlasseToDelete(null)}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Endgültig löschen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-    </div>
+    </main>
   );
 }

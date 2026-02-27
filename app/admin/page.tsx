@@ -1,13 +1,79 @@
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CalendarDays, UserCheck, DollarSign, BarChart3, FileText, Phone, FileDown, Image, Download } from 'lucide-react';
+import { Users, CalendarDays, UserCheck, BarChart3, Phone, Image, Download, Clock, HelpCircle, Crown, Settings } from 'lucide-react';
 
 export default function AdminHome() {
   return (
-    <main className="p-8">
-      <h1 className="text-3xl font-bold mb-6">Admin-Bereich</h1>
-      <p className="mb-8">Hier verwaltest du alle organisatorischen Bereiche des Vogelschießens.</p>
+    <main className="p-4 md:p-8">
+      <h1 className="text-2xl font-bold text-slate-900 mb-2">Admin-Bereich</h1>
+      <p className="text-sm text-slate-500 mb-8">Hier verwaltest du alle organisatorischen Bereiche des Vogelschießens.</p>
+
+      {/* CMS – Inhalte der öffentlichen Webseite */}
+      <h2 className="text-lg font-semibold mb-4 text-slate-600">Webseiten-Inhalte</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Clock className="mr-2 h-5 w-5" />
+              Ablaufplan
+            </CardTitle>
+            <CardDescription>Tagesablauf bearbeiten</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin/ablauf" className="text-blue-600 hover:underline">
+              Ablauf verwalten
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <HelpCircle className="mr-2 h-5 w-5" />
+              FAQ
+            </CardTitle>
+            <CardDescription>Häufig gestellte Fragen</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin/faq" className="text-blue-600 hover:underline">
+              FAQ verwalten
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Crown className="mr-2 h-5 w-5" />
+              Historie
+            </CardTitle>
+            <CardDescription>Ehemalige Königspaare</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin/historie" className="text-blue-600 hover:underline">
+              Historie verwalten
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Settings className="mr-2 h-5 w-5" />
+              Einstellungen
+            </CardTitle>
+            <CardDescription>Texte, Kontakt, Spenden</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin/einstellungen" className="text-blue-600 hover:underline">
+              Einstellungen verwalten
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      <h2 className="text-lg font-semibold mb-4 text-slate-600">Organisation</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Kinder & Gruppen */}
@@ -72,11 +138,6 @@ export default function AdminHome() {
                 </Link>
               </li>
               <li>
-                <Link href="/admin/helfer-bearbeiten" className="text-blue-600 hover:underline">
-                  Zuteilungen bearbeiten
-                </Link>
-              </li>
-              <li>
                 <Link href="/admin/helfer/pdf" className="text-blue-600 hover:underline">
                   Helfer-PDFs generieren
                 </Link>
@@ -105,46 +166,46 @@ export default function AdminHome() {
           </CardContent>
         </Card>
         
-        {/* Sponsoring */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <DollarSign className="mr-2 h-5 w-5" />
-              Sponsoring
-            </CardTitle>
-            <CardDescription>Verwaltung von Sponsoren und Spenden</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              <li>
-                <Link href="/admin/sponsoren" className="text-blue-600 hover:underline">
-                  Sponsoren verwalten
-                </Link>
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
-        
-        {/* Reporting & Statistiken */}
+        {/* Auswertung */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <BarChart3 className="mr-2 h-5 w-5" />
-              Reporting & Statistiken
+              Auswertung
             </CardTitle>
-            <CardDescription>Auswertungen und Berichte</CardDescription>
+            <CardDescription>Ergebnisse und Punkteberechnung</CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
               <li>
-                <Link href="/admin/statistiken" className="text-blue-600 hover:underline">
-                  Statistiken anzeigen
+                <Link href="/admin/auswertung" className="text-blue-600 hover:underline">
+                  Auswertung anzeigen
                 </Link>
               </li>
             </ul>
           </CardContent>
         </Card>
         
+        {/* Event-Verwaltung */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <CalendarDays className="mr-2 h-5 w-5" />
+              Events
+            </CardTitle>
+            <CardDescription>Vogelschießen-Events verwalten</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/admin/events" className="text-blue-600 hover:underline">
+                  Events verwalten
+                </Link>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+
         {/* Galerie-Verwaltung */}
         <Card>
           <CardHeader>

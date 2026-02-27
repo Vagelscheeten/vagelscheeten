@@ -6,8 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import ImportDialog from './ImportDialog';
-import { Trash2, Edit, Upload, ArrowUpDown } from 'lucide-react'; // Import icons
+import { Trash2, Edit, ArrowUpDown } from 'lucide-react';
 
 // Import Table components from shadcn/ui
 import {
@@ -65,9 +64,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-// Constants for dropdown options
-const KLASSEN_OPTIONEN = ["Schuli", "1a", "1b", "2a", "2b", "3a", "3b", "4a", "4b"];
-
 // Import Types (Using the new types.ts file)
 import { Kind, Spielgruppe, KindZuordnung } from '@/lib/types';
 
@@ -95,7 +91,6 @@ function KinderVerwaltung({
   const [nachname, setNachname] = useState('');
   const [geschlecht, setGeschlecht] = useState('Junge');
   const [klasse, setKlasse] = useState('');
-  const [showImportDialog, setShowImportDialog] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]); // State for sorting
   const [editingKind, setEditingKind] = useState<Kind | null>(null); // State for the kind being edited
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // State for edit dialog visibility
@@ -103,6 +98,7 @@ function KinderVerwaltung({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]); // State for column filters
   const [batchKlasse, setBatchKlasse] = useState<string>(''); // State for batch class update input
   const [klassenFilter, setKlassenFilter] = useState<string>(''); // State for klasse filter
+  const [nameSearch, setNameSearch] = useState<string>(''); // State for name search
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [kindToDelete, setKindToDelete] = useState<string | null>(null);
 
@@ -184,7 +180,7 @@ function KinderVerwaltung({
   const handleBatchUpdateKlasse = async () => {
     const selectedRows = table.getFilteredSelectedRowModel().rows;
     if (selectedRows.length === 0 || !batchKlasse) {
-      toast.warning("Bitte wählen Sie Kinder aus und geben Sie eine neue Klasse ein.");
+      toast.warning("Bitte wähle Kinder aus und gib eine neue Klasse ein.");
       return;
     }
 
@@ -373,13 +369,21 @@ function KinderVerwaltung({
     }
   }, [klassenFilter, uniqueKlassen]);
 
-  // Filtere Kinder basierend auf dem Klassenfilter (mit Memoization)
+  // Filtere Kinder basierend auf Klassenfilter und Namenssuche (mit Memoization)
   const filteredKinder = React.useMemo(() => {
-    if (!klassenFilter || klassenFilter === 'all') {
-      return alleKinderDesEvents;
+    let result = alleKinderDesEvents;
+    if (klassenFilter && klassenFilter !== 'all') {
+      result = result.filter(kind => kind && kind.klasse === klassenFilter);
     }
-    return alleKinderDesEvents.filter(kind => kind && kind.klasse === klassenFilter);
-  }, [alleKinderDesEvents, klassenFilter]);
+    if (nameSearch.trim()) {
+      const query = nameSearch.trim().toLowerCase();
+      result = result.filter(kind =>
+        kind &&
+        (`${kind.vorname} ${kind.nachname}`).toLowerCase().includes(query)
+      );
+    }
+    return result;
+  }, [alleKinderDesEvents, klassenFilter, nameSearch]);
     
   const table = useReactTable({
     data: filteredKinder, // Verwende die gefilterten Kinder
@@ -433,32 +437,8 @@ function KinderVerwaltung({
     }
   };
 
-  const handleImportComplete = () => {
-    setShowImportDialog(false);
-    onKinderChange();
-  };
-
   return (
     <div>
-      <div className="mb-4 flex justify-between items-center">
-        <div></div>
-        <Button
-          onClick={() => setShowImportDialog(true)}
-          disabled={isLoading || !activeEventId}
-          variant="default"
-        >
-          Kinder importieren
-        </Button>
-      </div>
-
-      {showImportDialog && (
-        <div className="mb-6">
-          <ImportDialog
-            eventId={activeEventId}
-            onImportComplete={handleImportComplete}
-          />
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <Card>
@@ -529,29 +509,35 @@ function KinderVerwaltung({
           <CardDescription>Übersicht aller erfassten Kinder</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Filter Dropdown */}
-          <div className="flex items-center py-4 space-x-4">
-            <Label htmlFor="klassen-filter" className="text-base">Nach Klasse filtern:</Label>
-            <div className="relative w-[180px] md:w-[220px]">
-              <select
-                id="klassen-filter"
-                value={klassenFilter || 'all'}
-                onChange={(e) => {
-                  // Verwende eine Callback-Funktion, um den aktuellsten Zustand zu erhalten
-                  setKlassenFilter(e.target.value);
-                }}
-                className="w-full h-10 px-4 py-2 text-base border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                // Deaktiviere den Filter, wenn keine Klassen vorhanden sind
-                disabled={isLoading || uniqueKlassen.length === 0}
+          {/* Filter Row */}
+          <div className="flex flex-wrap items-center gap-3 py-4">
+            <Input
+              placeholder="Name suchen..."
+              value={nameSearch}
+              onChange={(e) => setNameSearch(e.target.value)}
+              className="h-10 w-[200px]"
+              disabled={isLoading}
+            />
+            <select
+              id="klassen-filter"
+              value={klassenFilter || 'all'}
+              onChange={(e) => setKlassenFilter(e.target.value)}
+              className="h-10 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-primary w-[160px]"
+              disabled={isLoading || uniqueKlassen.length === 0}
+            >
+              <option value="all">Alle Klassen</option>
+              {uniqueKlassen.map((klasse) => (
+                <option key={klasse} value={klasse}>{klasse}</option>
+              ))}
+            </select>
+            {(nameSearch || (klassenFilter && klassenFilter !== 'all')) && (
+              <button
+                onClick={() => { setNameSearch(''); setKlassenFilter('all'); }}
+                className="text-xs text-slate-400 hover:text-slate-600 underline"
               >
-                <option value="all">Alle Klassen</option>
-                {uniqueKlassen.map((klasse) => (
-                  <option key={klasse} value={klasse}>
-                    {klasse}
-                  </option>
-                ))}
-              </select>
-            </div>
+                Filter zurücksetzen
+              </button>
+            )}
           </div>
 
           {/* Batch Action Section */}
@@ -565,7 +551,7 @@ function KinderVerwaltung({
                 className="flex h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">-- Klasse wählen --</option>
-                {KLASSEN_OPTIONEN.map(option => (
+                {uniqueKlassen.map(option => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>

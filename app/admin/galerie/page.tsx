@@ -86,7 +86,7 @@ export default function AdminGallery() {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session) {
         console.error('Fehler: Benutzer ist nicht angemeldet');
-        setError('Sie müssen angemeldet sein, um Bilder zu löschen. Bitte melden Sie sich an und versuchen Sie es erneut.');
+        setError('Du musst angemeldet sein, um Bilder zu löschen. Bitte melde dich an und versuche es erneut.');
         return;
       }
       
@@ -247,11 +247,12 @@ export default function AdminGallery() {
           </div>
         </div>
       )}
-      <div className="mb-6 flex items-center">
-        <Link href="/admin" className="text-gray-600 hover:text-gray-900 mr-4">
-          <ArrowLeft className="h-5 w-5" />
+      <div className="mb-6">
+        <Link href="/admin" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3 transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+          Zurück
         </Link>
-        <h1 className="text-3xl font-bold">Galerie verwalten</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Galerie verwalten</h1>
       </div>
       
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
@@ -260,7 +261,7 @@ export default function AdminGallery() {
           Neue Bilder hochladen
         </h2>
         <p className="text-gray-600 mb-4">
-          Laden Sie hier neue Bilder für die Galerie hoch. Unterstützte Formate: JPG, PNG, GIF, WEBP. 
+          Lade hier neue Bilder für die Galerie hoch. Unterstützte Formate: JPG, PNG, GIF, WEBP. 
           Maximale Dateigröße: 5MB.
         </p>
         <ImageUpload />

@@ -19,7 +19,6 @@ export function createClient() {
     }
   );
 
-  console.log('Supabase Client erstellt mit URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
   
   return client;
 }

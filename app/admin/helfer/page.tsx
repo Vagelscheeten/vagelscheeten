@@ -1,234 +1,182 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-// Direkte Importe ohne Typprüfung, um Kompilierungsfehler zu vermeiden
-const HeadingSection = require('./HeadingSection').HeadingSection;
-const AufgabenListe = require('./AufgabenListe').AufgabenListe;
-const HelferRueckmeldungForm = require('./HelferRueckmeldungForm').HelferRueckmeldungForm;
-const AuswertungView = require('./AuswertungView').AuswertungView;
-const EssensspendenTabs = require('./essensspenden/EssensspendenTabs').EssensspendenTabs;
-import { Button } from '@/components/ui/button';
-import { PlusCircle, ClipboardList, Settings, Users, Edit, Coffee, FileDown, Phone, Clock } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
+import { Loader2, ExternalLink, FlaskConical, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-// Verwende einen einfachen Div statt der Skeleton-Komponente
-// import { Skeleton } from '@/components/ui/skeleton';
+import { WorkflowDashboard, WorkflowStats } from './_components/WorkflowDashboard';
+import { ElternInfoPDFDownload } from './_components/ElternInfoPDFDownload';
 
-interface Aufgabe {
-  id: string;
-  titel: string;
-  beschreibung: string | null;
-  bedarf: number;
-}
-
-interface Rueckmeldung {
-  id: string;
-  kind_id: string;
-  aufgabe_id: string;
-  prioritaet: number;
-  freitext: string | null;
-  kind?: {
-    vorname: string;
-    nachname: string;
-    klasse?: string;
-  };
-}
-
-export default function HelferVerwaltung() {
+export default function HelferPage() {
+  const [stats, setStats] = useState<WorkflowStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [aufgaben, setAufgaben] = useState<Aufgabe[]>([]);
-  const [rueckmeldungen, setRueckmeldungen] = useState<Rueckmeldung[]>([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
-  // Daten laden
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      const supabase = createClient();
-      
-      // Aufgaben laden
-      const { data: aufgabenData, error: aufgabenError } = await supabase
-        .from('helferaufgaben')
-        .select('*')
-        .order('titel');
-      
-      if (aufgabenError) {
-        console.error('Fehler beim Laden der Aufgaben:', aufgabenError);
-      } else {
-        setAufgaben(aufgabenData || []);
-      }
-      
-      // Rückmeldungen laden mit Kinder-Daten
-      const { data: rueckmeldungenData, error: rueckmeldungenError } = await supabase
-        .from('helfer_rueckmeldungen')
-        .select(`
-          *,
-          kind:kinder(vorname, nachname, klasse)
-        `);
-      
-      if (rueckmeldungenError) {
-        console.error('Fehler beim Laden der Rückmeldungen:', rueckmeldungenError);
-      } else {
-        setRueckmeldungen(rueckmeldungenData || []);
-      }
-      
+  const [testLoading, setTestLoading] = useState<'reset' | 'seed' | null>(null);
+
+  const ladeStats = useCallback(async () => {
+    const supabase = createClient();
+
+    const { data: event } = await supabase
+      .from('events')
+      .select('id')
+      .eq('ist_aktiv', true)
+      .single();
+
+    if (!event) {
+      toast.error('Kein aktives Event gefunden');
       setIsLoading(false);
-    };
-    
-    fetchData();
-  }, [refreshTrigger]);
-  
-  // Callback für erfolgreiche Formular-Übermittlung
-  const handleFormSubmit = () => {
-    setIsFormOpen(false);
-    setRefreshTrigger(prev => prev + 1); // Daten neu laden
+      return;
+    }
+
+    const eventId = event.id;
+
+    const [rueckRes, zuteilRes, aufgabenRes, benachrichtigtRes, zuBenachrichtigenRes, essensspendenRes, eventRes] = await Promise.all([
+      supabase
+        .from('helfer_rueckmeldungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId),
+      supabase
+        .from('helfer_zuteilungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId),
+      supabase
+        .from('helferaufgaben')
+        .select('id, titel, bedarf, zeitfenster')
+        .eq('event_id', eventId)
+        .order('titel'),
+      supabase
+        .from('anmeldungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('verifiziert', true)
+        .not('benachrichtigt_am', 'is', null),
+      supabase
+        .from('anmeldungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('verifiziert', true)
+        .not('eltern_email', 'is', null),
+      supabase
+        .from('essensspenden_rueckmeldungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('bestaetigt', true),
+      supabase
+        .from('events')
+        .select('essensspenden_verteilt_am')
+        .eq('id', eventId)
+        .single(),
+    ]);
+
+    setStats({
+      eventId,
+      anzahlRueckmeldungen: rueckRes.count || 0,
+      anzahlZuteilungen: zuteilRes.count || 0,
+      anzahlBenachrichtigt: benachrichtigtRes.count || 0,
+      anzahlZuBenachrichtigen: zuBenachrichtigenRes.count || 0,
+      aufgaben: aufgabenRes.data || [],
+      anzahlEssensspendenRueckmeldungen: essensspendenRes.count || 0,
+      essensspendenVerteilt: !!(eventRes.data?.essensspenden_verteilt_am),
+    });
+
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => { ladeStats(); }, [ladeStats]);
+
+  const handleTest = async (action: 'reset' | 'seed') => {
+    if (!stats?.eventId) return;
+    setTestLoading(action);
+    try {
+      const res = await fetch('/api/helfer/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, eventId: stats.eventId }),
+      });
+      const data = await res.json();
+      if (data.erfolg) {
+        toast.success(action === 'reset'
+          ? 'Testdaten gelöscht'
+          : `${data.rueckmeldungen} Rückmeldungen (${data.davonSpringer || 0} Springer, ${data.davonFreitext || 0} Freitext)`
+        );
+        await ladeStats();
+      } else {
+        toast.error(data.error || 'Fehler');
+      }
+    } catch {
+      toast.error('Fehler');
+    } finally {
+      setTestLoading(null);
+    }
   };
-  
-  // Callback, der NUR die Daten neu lädt (für onSuccess prop)
-  const handleFormSuccess = () => {
-    setRefreshTrigger(prev => prev + 1); // Daten neu laden
-  };
-  
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="animate-spin text-gray-400" size={24} />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="p-6 text-center text-slate-500">
+        Kein aktives Event gefunden.
+      </div>
+    );
+  }
+
   return (
-    <main className="p-6">
-      <div className="mb-8">
-        <HeadingSection /> 
-        <div className="flex flex-wrap gap-2 mt-4">
-          <Button onClick={() => setIsFormOpen(true)} size="sm" variant="secondary">
-            <PlusCircle className="mr-2 h-4 w-4" /> Neue Rückmeldung
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
+    <main className="p-4 md:p-8 max-w-5xl">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Helfer-Workflow</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Geführter 4-Schritte-Prozess: Von den Rückmeldungen bis zur Eltern-Kommunikation
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ElternInfoPDFDownload />
+          <Link
+            href="/admin/helfer/detail"
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 border rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors whitespace-nowrap"
           >
-            <Link href="/admin/helfer/rueckmeldungen">
-              <ClipboardList className="mr-2 h-4 w-4" /> Rückmeldungen verwalten
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/aufgaben">
-              <Settings className="mr-2 h-4 w-4" /> Aufgaben verwalten
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/zuteilung">
-              <Users className="mr-2 h-4 w-4" /> Helfer zuteilen
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer-bearbeiten">
-              <Edit className="mr-2 h-4 w-4" /> Zuteilungen bearbeiten
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/slots">
-              <Clock className="mr-2 h-4 w-4" /> Slot-Zuteilung
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/spielbetreuer">
-              <Users className="mr-2 h-4 w-4" /> Spielbetreuer
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/teamleiter">
-              <Users className="mr-2 h-4 w-4" /> Teamleiter
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/helfer/pdf">
-              <FileDown className="mr-2 h-4 w-4" /> PDF-Ausgabe
-            </Link>
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            asChild
-          >
-            <Link href="/admin/kontakte">
-              <Phone className="mr-2 h-4 w-4" /> Ansprechpartner
-            </Link>
-          </Button>
+            <ExternalLink size={14} />
+            Detail-Zuteilung
+          </Link>
         </div>
       </div>
-      
-      <Tabs defaultValue="aufgaben" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
-          <TabsTrigger value="aufgaben" className="px-2 py-2 text-sm whitespace-normal">Aufgaben & Rückmeldungen</TabsTrigger>
-          <TabsTrigger value="auswertung" className="px-2 py-2 text-sm whitespace-normal">Auswertung</TabsTrigger>
-          <TabsTrigger value="essensspenden" className="px-2 py-2 text-sm whitespace-normal">Essensspenden</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="aufgaben" className="mt-6">
-          {isLoading ? (
-            <div className="space-y-4">
-              <div className="h-12 w-full bg-gray-200 animate-pulse rounded-md" />
-              <div className="h-12 w-full bg-gray-200 animate-pulse rounded-md" />
-              <div className="h-12 w-full bg-gray-200 animate-pulse rounded-md" />
-            </div>
-          ) : (
-            <AufgabenListe 
-              aufgaben={aufgaben} 
-              rueckmeldungen={rueckmeldungen} 
-            />
-          )}
-        </TabsContent>
-        
-        <TabsContent value="auswertung" className="mt-6">
-          <div className="space-y-6">
-            <AuswertungView 
-              aufgaben={aufgaben} 
-              rueckmeldungen={rueckmeldungen}
-              isLoading={isLoading}
-            />
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="essensspenden" className="mt-6">
-          <EssensspendenTabs />
-        </TabsContent>
-      </Tabs>
-      
-      {/* Formular für neue Rückmeldungen */}
-      {isFormOpen && (
-        <HelferRueckmeldungForm 
-          aufgaben={aufgaben}
-          onClose={() => setIsFormOpen(false)}
-          onSubmit={handleFormSubmit}
-          onSuccess={handleFormSuccess} // Use the new prop and handler
-        />
-      )}
+
+      <WorkflowDashboard stats={stats} onRefresh={ladeStats} />
+
+      {/* ── TEST-BEREICH — vor echtem Einsatz entfernen ───────────────── */}
+      <div className="mt-10 border-2 border-dashed border-amber-300 rounded-xl p-4 bg-amber-50">
+        <div className="flex items-center gap-2 mb-3">
+          <FlaskConical size={16} className="text-amber-600" />
+          <span className="text-sm font-semibold text-amber-800">Testbereich — vor echtem Einsatz entfernen</span>
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => handleTest('seed')}
+            disabled={testLoading !== null}
+            className="flex items-center gap-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {testLoading === 'seed' ? <Loader2 size={14} className="animate-spin" /> : <FlaskConical size={14} />}
+            Test-Rückmeldungen erstellen
+          </button>
+          <button
+            onClick={() => handleTest('reset')}
+            disabled={testLoading !== null}
+            className="flex items-center gap-2 text-sm font-medium bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {testLoading === 'reset' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Test-Einträge löschen
+          </button>
+        </div>
+        <p className="text-xs text-amber-700 mt-2">
+          "Erstellen" fügt ~100 Rückmeldungen + Essensspenden hinzu. "Löschen" entfernt alle Rückmeldungen, Zuteilungen und Essensspenden (Kinder &amp; Klassen bleiben).
+        </p>
+      </div>
     </main>
   );
 }

@@ -42,10 +42,24 @@ export default function AufgabenVerwaltung() {
       setIsLoading(true);
       const supabase = createClient();
       
-      // Aufgaben laden
+      // Get active event first
+      const { data: activeEvent, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('ist_aktiv', true)
+        .single();
+      
+      if (eventError || !activeEvent) {
+        console.error('Kein aktives Event gefunden:', eventError);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Aufgaben laden - gefiltert nach aktivem Event
       const { data: aufgabenData, error: aufgabenError } = await supabase
         .from('helferaufgaben')
         .select('*')
+        .eq('event_id', activeEvent.id)
         .order('titel');
       
       if (aufgabenError) {
@@ -54,10 +68,11 @@ export default function AufgabenVerwaltung() {
         setAufgaben(aufgabenData || []);
       }
       
-      // Rückmeldungen laden
+      // Rückmeldungen laden - gefiltert nach aktivem Event
       const { data: rueckmeldungenData, error: rueckmeldungenError } = await supabase
         .from('helfer_rueckmeldungen')
-        .select('id, kind_id, aufgabe_id, prioritaet, freitext');
+        .select('id, kind_id, aufgabe_id, prioritaet, freitext')
+        .eq('event_id', activeEvent.id);
       
       if (rueckmeldungenError) {
         console.error('Fehler beim Laden der Rückmeldungen:', rueckmeldungenError);

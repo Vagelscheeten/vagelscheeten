@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { FileDown, Loader2 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 // Typen aus der types.ts-Datei importieren
 import type { Kind, Helferaufgabe, Zuteilung, Ansprechpartner, SpendenRueckmeldung, SpendenBedarf } from './types';
@@ -48,7 +48,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
       setIsLoading(true);
       
       try {
-        console.log(`Lade Daten für PDF-Vorschau, Kind-ID: ${kindId}`);
         
         // Kind-Daten laden
         const { data: kindData, error: kindError } = await createClient()
@@ -67,7 +66,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
         }
         
         setKind(kindData);
-        console.log('Kind-Daten geladen:', kindData);
         
         // Zuteilungen laden
         const { data: zuteilungenData, error: zuteilungenError } = await createClient()
@@ -80,7 +78,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
           throw new Error(`Fehler beim Laden der Zuteilungen: ${zuteilungenError.message}`);
         }
         
-        console.log(`${zuteilungenData.length} Zuteilungen gefunden`);
         
         // Aufgaben separat laden
         const aufgabenIds = zuteilungenData.map(z => z.aufgabe_id);
@@ -101,7 +98,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
           throw new Error(`Fehler beim Laden der Aufgaben: ${aufgabenError.message}`);
         }
         
-        console.log(`${aufgabenData.length} Aufgaben geladen`);
         
         // Aufgaben in Map umwandeln für schnellen Zugriff
         const aufgabenMap = aufgabenData.reduce((acc, aufgabe) => {
@@ -131,7 +127,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
         
         // Slot-Zuteilungen laden, wenn Zuteilungen vorhanden sind
         if (zuteilungIds.length > 0) {
-          console.log('Lade Slot-Zuteilungen für Zuteilungs-IDs:', zuteilungIds);
           
           const { data: slotZuteilungenData, error: slotZuteilungenError } = await supabase
             .from('helfer_slot_zuteilungen')
@@ -141,7 +136,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
           if (slotZuteilungenError) {
             console.error('Fehler beim Laden der Slot-Zuteilungen:', slotZuteilungenError);
           } else if (slotZuteilungenData && slotZuteilungenData.length > 0) {
-            console.log(`${slotZuteilungenData.length} Slot-Zuteilungen gefunden`);
             
             // Slot-IDs für die Slot-Details-Abfrage sammeln
             const slotIds = slotZuteilungenData.map(sz => sz.slot_id);
@@ -155,7 +149,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
             if (slotDetailsError) {
               console.error('Fehler beim Laden der Slot-Details:', slotDetailsError);
             } else if (slotDetailsData && slotDetailsData.length > 0) {
-              console.log(`${slotDetailsData.length} Slot-Details geladen`);
               
               // Slot-Details in Map umwandeln für schnellen Zugriff
               const slotDetailsMap = slotDetailsData.reduce((acc, slot) => {
@@ -188,7 +181,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
                 }
               });
               
-              console.log('Transformierte Zuteilungen mit Slots:', transformedZuteilungen);
             }
           }
         }
@@ -205,13 +197,11 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
           throw new Error(`Fehler beim Laden der Ansprechpartner: ${ansprechpartnerError.message}`);
         }
         
-        console.log(`${ansprechpartnerData?.length || 0} Ansprechpartner geladen`);
         setAnsprechpartner(ansprechpartnerData || []);
         
         // Essensspenden laden
         // Wir müssen den kind_identifier im Format "Nachname, Vorname (Klasse)" erstellen
         const kindIdentifier = `${kindData.nachname}, ${kindData.vorname}${kindData.klasse ? ` (${kindData.klasse})` : ''}`;
-        console.log(`Suche Essensspenden für Kind-Identifier: ${kindIdentifier}`);
         
         // Jetzt die Rueckmeldungen laden mit dem korrekten Identifier
         const { data: essensspendenData, error: essensspendenError } = await createClient()
@@ -230,7 +220,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
           console.error('Fehler beim Laden der Essensspenden:', essensspendenError);
           setEssensspenden([]);
         } else if (essensspendenData && essensspendenData.length > 0) {
-          console.log(`${essensspendenData.length} Essensspenden gefunden`);
           
           // Alle Spenden-IDs sammeln
           const spendeIds = essensspendenData.map(s => s.spende_id);
@@ -268,7 +257,6 @@ export function PDFVorschauModal({ isOpen, onClose, kindId }: PDFVorschauModalPr
             });
             
             setEssensspenden(transformedEssensspenden);
-            console.log(`${transformedEssensspenden.length} Essensspenden transformiert`);
           }
         } else {
           setEssensspenden([]);

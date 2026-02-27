@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import { SpendenBedarf } from './types';
 import {
   Dialog,
@@ -19,21 +19,22 @@ import { Loader2 } from 'lucide-react';
 
 interface SpendenBedarfFormProps {
   bedarf: SpendenBedarf | null;
+  eventId: string;
   onClose: () => void;
   onSubmit: () => void;
 }
 
-export function SpendenBedarfForm({ 
-  bedarf, 
-  onClose, 
-  onSubmit 
+export function SpendenBedarfForm({
+  bedarf,
+  eventId,
+  onClose,
+  onSubmit
 }: SpendenBedarfFormProps) {
   const [titel, setTitel] = useState(bedarf?.titel || '');
   const [beschreibung, setBeschreibung] = useState(bedarf?.beschreibung || '');
   const [anzahlBenoetigt, setAnzahlBenoetigt] = useState(bedarf?.anzahl_benoetigt || 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Formular zurücksetzen, wenn sich der Bedarf ändert
+
   useEffect(() => {
     if (bedarf) {
       setTitel(bedarf.titel);
@@ -45,27 +46,25 @@ export function SpendenBedarfForm({
       setAnzahlBenoetigt(1);
     }
   }, [bedarf]);
-  
-  // Formular absenden
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!titel.trim()) {
       toast.error('Bitte gib einen Titel ein.');
       return;
     }
-    
+
     if (anzahlBenoetigt < 1) {
       toast.error('Die benötigte Anzahl muss mindestens 1 sein.');
       return;
     }
-    
+
     setIsSubmitting(true);
     const supabase = createClient();
-    
+
     try {
       if (bedarf) {
-        // Bestehenden Bedarf aktualisieren
         const { error } = await supabase
           .from('essensspenden_bedarf')
           .update({
@@ -74,23 +73,23 @@ export function SpendenBedarfForm({
             anzahl_benoetigt: anzahlBenoetigt
           })
           .eq('id', bedarf.id);
-          
+
         if (error) throw error;
         toast.success('Bedarf erfolgreich aktualisiert!');
       } else {
-        // Neuen Bedarf erstellen
         const { error } = await supabase
           .from('essensspenden_bedarf')
           .insert({
             titel: titel.trim(),
             beschreibung: beschreibung.trim() || null,
-            anzahl_benoetigt: anzahlBenoetigt
+            anzahl_benoetigt: anzahlBenoetigt,
+            event_id: eventId
           });
-          
+
         if (error) throw error;
         toast.success('Bedarf erfolgreich erstellt!');
       }
-      
+
       onSubmit();
     } catch (error: any) {
       console.error('Fehler beim Speichern des Bedarfs:', error);
@@ -99,7 +98,7 @@ export function SpendenBedarfForm({
       setIsSubmitting(false);
     }
   };
-  
+
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[500px]">
@@ -108,7 +107,7 @@ export function SpendenBedarfForm({
             {bedarf ? 'Bedarf bearbeiten' : 'Neuen Bedarf hinzufügen'}
           </DialogTitle>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="titel">Titel</Label>
@@ -120,7 +119,7 @@ export function SpendenBedarfForm({
               disabled={isSubmitting}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="beschreibung">Beschreibung (optional)</Label>
             <Textarea
@@ -131,7 +130,7 @@ export function SpendenBedarfForm({
               disabled={isSubmitting}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="anzahl">Benötigte Anzahl</Label>
             <Input
@@ -143,7 +142,7 @@ export function SpendenBedarfForm({
               disabled={isSubmitting}
             />
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Abbrechen

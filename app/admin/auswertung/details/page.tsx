@@ -338,7 +338,7 @@ export default function AuswertungDetailsPage() {
   }, [selectedKlasse, selectedGruppeId, selectedSpielId, ergebnisse, spiele, kinder]);
   
   return (
-    <main className="container mx-auto py-6 space-y-8">
+    <main className="p-4 md:p-8 space-y-8">
       <Tabs defaultValue="details" className="w-full">
         <div className="flex justify-between items-center mb-4">
           <TabsList>
@@ -500,7 +500,7 @@ export default function AuswertungDetailsPage() {
                 <div className="text-center py-8 text-gray-500">
                   {selectedKlasse && selectedGruppeId 
                     ? 'Keine Ergebnisse für die ausgewählten Filter gefunden.' 
-                    : 'Bitte wählen Sie eine Klasse und Gruppe aus, um die Punkteberechnung anzuzeigen.'}
+                    : 'Bitte wähle eine Klasse und Gruppe aus, um die Punkteberechnung anzuzeigen.'}
                 </div>
               )}
               

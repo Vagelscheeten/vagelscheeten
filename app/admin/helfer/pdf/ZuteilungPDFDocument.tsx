@@ -121,7 +121,6 @@ const styles = StyleSheet.create({
 
 export function ZuteilungPDFDocument({ kind, zuteilungen, ansprechpartner, essensspenden }: ZuteilungPDFDocumentProps) {
   // Debug-Log für die Zuteilungen in der PDF-Komponente
-  console.log('DEBUG PDF: Zuteilungen in ZuteilungPDFDocument:', JSON.stringify(zuteilungen, null, 2));
   
   // Gruppiere Ansprechpartner nach Bereich
   const ansprechpartnerByBereich = ansprechpartner.reduce<Record<string, Ansprechpartner[]>>((acc, person) => {
@@ -186,7 +185,6 @@ export function ZuteilungPDFDocument({ kind, zuteilungen, ansprechpartner, essen
               {zuteilung.slots && Array.isArray(zuteilung.slots) && zuteilung.slots.length > 0 && (
                 <View>
                   {zuteilung.slots.map((slotZuteilung, index) => {
-                    console.log('Slot-Zuteilung in PDF:', slotZuteilung);
                     
                     // Sicherheitsprüfung für slot-Objekt
                     if (!slotZuteilung.slot || typeof slotZuteilung.slot !== 'object') {

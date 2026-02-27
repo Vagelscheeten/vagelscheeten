@@ -35,6 +35,7 @@ interface Zuteilung {
   manuell: boolean;
   via_springer?: boolean;
   zugewiesen_am?: string;
+  event_id?: string;
 }
 
 interface NichtZugewieseneRueckmeldung {
@@ -46,6 +47,18 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
 
+    // Auth-Check
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ erfolg: false, fehler: 'Nicht autorisiert' }, { status: 401 });
+    }
+
+    const { eventId } = await req.json();
+
+    if (!eventId) {
+      return NextResponse.json({ erfolg: false, fehler: 'eventId fehlt' }, { status: 400 });
+    }
+
     // 1. Alle regulären Rückmeldungen abrufen (keine Springer)
     const { data: regulaereRueckmeldungen, error: rueckmeldungenError } = await supabase
       .from('helfer_rueckmeldungen')
@@ -53,7 +66,6 @@ export async function POST(req: NextRequest) {
         id,
         kind_id,
         aufgabe_id,
-        prioritaet,
         ist_springer,
         helferaufgaben!inner(
           id,
@@ -62,19 +74,45 @@ export async function POST(req: NextRequest) {
           bedarf
         )
       `)
+      .eq('event_id', eventId)
       .eq('ist_springer', false)
-      .order('prioritaet', { ascending: true });  // Removed nullsLast as it's not supported
+      .order('erstellt_am', { ascending: true });
 
     if (rueckmeldungenError) throw rueckmeldungenError;
 
-    // 2. Alle bestehenden Zuteilungen abrufen
+    // 2. Essensspenden-Verteilung zurücksetzen (muss nach neuer Helferzuteilung erneut erfolgen)
+    await supabase
+      .from('events')
+      .update({ essensspenden_verteilt_am: null })
+      .eq('id', eventId);
+
+    // 3. Alte nicht-manuelle Zuteilungen löschen (fresh start)
+    // 2a. Zuteilungen mit korrekter event_id löschen
+    await supabase
+      .from('helfer_zuteilungen')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('manuell', false);
+
+    // 2b. Legacy-Einträge ohne event_id löschen (über rueckmeldung_id identifizieren)
+    const alleRueckmeldungIds = (regulaereRueckmeldungen || []).map(r => r.id);
+    if (alleRueckmeldungIds.length > 0) {
+      await supabase
+        .from('helfer_zuteilungen')
+        .delete()
+        .in('rueckmeldung_id', alleRueckmeldungIds)
+        .eq('manuell', false);
+    }
+
+    // 3. Verbleibende Zuteilungen laden (nur noch manuelle)
     const { data: bestehendeZuteilungen, error: zuteilungenError } = await supabase
       .from('helfer_zuteilungen')
-      .select('*');
+      .select('*')
+      .eq('event_id', eventId);
 
     if (zuteilungenError) throw zuteilungenError;
 
-    // 3. Aufgaben mit aktueller Belegung ermitteln
+    // 4. Aufgaben mit aktueller Belegung ermitteln (aus manuellen Zuteilungen)
     const aufgabenBelegung: Record<string, number> = {};
     bestehendeZuteilungen?.forEach((zuteilung: Zuteilung) => {
       if (!aufgabenBelegung[zuteilung.aufgabe_id]) {
@@ -83,7 +121,7 @@ export async function POST(req: NextRequest) {
       aufgabenBelegung[zuteilung.aufgabe_id]++;
     });
 
-    // 4. Kinder mit Zeitfenster-Zuteilungen tracken und Anzahl der Aufgaben pro Kind
+    // 5. Kinder mit Zeitfenster-Zuteilungen tracken und Anzahl der Aufgaben pro Kind
     const kinderZeitfenster: Record<string, Set<string>> = {};
     const helferAufgabenAnzahl: Record<string, number> = {};
     
@@ -108,44 +146,29 @@ export async function POST(req: NextRequest) {
       helferAufgabenAnzahl[zuteilung.kind_id]++;
     });
 
-    // 5. Rückmeldungen nach Priorität sortieren (1, 2, 3, null)
-    // Wir müssen hier den Typ explizit als any[] setzen, um TypeScript-Fehler zu vermeiden
+    // 6. Rückmeldungen zufällig mischen (Fairness — kein Vorteil durch frühe Anmeldung)
     const rueckmeldungenArray = regulaereRueckmeldungen as any[] || [];
-    const sortiereRueckmeldungen = [...rueckmeldungenArray].sort((a, b) => {
-      // Wenn beide eine Priorität haben, nach Priorität sortieren
-      if (a.prioritaet && b.prioritaet) {
-        return a.prioritaet - b.prioritaet;
-      }
-      // Wenn nur a eine Priorität hat, a zuerst
-      if (a.prioritaet && !b.prioritaet) {
-        return -1;
-      }
-      // Wenn nur b eine Priorität hat, b zuerst
-      if (!a.prioritaet && b.prioritaet) {
-        return 1;
-      }
-      // Wenn beide keine Priorität haben, zufällig sortieren
-      return Math.random() - 0.5;
-    });
+    const sortiereRueckmeldungen = [...rueckmeldungenArray].sort(() => Math.random() - 0.5);
 
-    // 6. Neue Zuteilungen erstellen
+    // 7. Neue Zuteilungen erstellen
     const neueZuteilungen: Zuteilung[] = [];
     const nichtZugewieseneRueckmeldungen: NichtZugewieseneRueckmeldung[] = [];
-    
-    // 6.1 Rückmeldungen in zwei Phasen aufteilen: Helfer ohne Aufgaben und Helfer mit Aufgaben
-    const erstePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r => 
+
+    // 7.1 Rückmeldungen in zwei Phasen aufteilen: Helfer ohne Aufgaben und Helfer mit Aufgaben
+    const erstePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r =>
       !helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0
     );
-    
-    const zweitePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r => 
+
+    const zweitePhaseRueckmeldungen = sortiereRueckmeldungen.filter(r =>
       helferAufgabenAnzahl[r.kind_id] && helferAufgabenAnzahl[r.kind_id] > 0
     );
     
-    console.log(`Erste Phase: ${erstePhaseRueckmeldungen.length} Rückmeldungen`);
-    console.log(`Zweite Phase: ${zweitePhaseRueckmeldungen.length} Rückmeldungen`);
     
     // Funktion zum Zuweisen einer Rückmeldung
     const weiseRueckmeldungZu = (rueckmeldung: any): boolean => {
+      // Rückmeldungen ohne kind_id überspringen (ungültige Daten)
+      if (!rueckmeldung.kind_id) return false;
+
       // Sicherstellen, dass helferaufgaben ein Objekt ist
       const aufgabe = rueckmeldung.helferaufgaben as unknown as Aufgabe;
       const aufgabeId = aufgabe.id;
@@ -189,7 +212,8 @@ export async function POST(req: NextRequest) {
         aufgabe_id: aufgabeId,
         rueckmeldung_id: rueckmeldung.id,
         zeitfenster: zeitfenster,
-        manuell: false
+        manuell: false,
+        event_id: eventId
       });
       
       // Belegung aktualisieren
@@ -232,12 +256,10 @@ export async function POST(req: NextRequest) {
     
     // Nur wenn alle Helfer der ersten Phase mindestens eine Aufgabe haben ODER alle verbleibenden Plätze gefüllt werden müssen
     if (helferOhneAufgabe === 0) {
-      console.log('Zweite Phase wird gestartet - alle Helfer haben mindestens eine Aufgabe');
       for (const rueckmeldung of zweitePhaseRueckmeldungen) {
         weiseRueckmeldungZu(rueckmeldung);
       }
     } else {
-      console.log(`Zweite Phase wird übersprungen - ${helferOhneAufgabe} Helfer haben noch keine Aufgabe`);
     }
 
     // 7. Neue Zuteilungen in die Datenbank einfügen
@@ -255,18 +277,20 @@ export async function POST(req: NextRequest) {
     }
     
     // 8. Springer-Zuteilungen verarbeiten
-    // 8.1 Alle Aufgaben abrufen
+    // 8.1 Alle Aufgaben abrufen (nur für das aktive Event!)
     const { data: alleAufgaben, error: aufgabenError } = await supabase
       .from('helferaufgaben')
-      .select('id, titel, zeitfenster, bedarf');
+      .select('id, titel, zeitfenster, bedarf')
+      .eq('event_id', eventId);
       
     if (aufgabenError) throw aufgabenError;
     
     // 8.2 Aktuelle Belegung nach der ersten Zuteilungsrunde aktualisieren
     const { data: aktuelleZuteilungen, error: aktuelleZuteilungenError } = await supabase
       .from('helfer_zuteilungen')
-      .select('aufgabe_id');
-      
+      .select('aufgabe_id')
+      .eq('event_id', eventId);
+
     if (aktuelleZuteilungenError) throw aktuelleZuteilungenError;
     
     // Belegung pro Aufgabe zählen
@@ -328,6 +352,7 @@ export async function POST(req: NextRequest) {
         ist_springer,
         kind:kinder(id, vorname, nachname, klasse)
       `)
+      .eq('event_id', eventId)
       .eq('ist_springer', true);
       
     if (springerError) throw springerError;
@@ -343,6 +368,8 @@ export async function POST(req: NextRequest) {
     
     // Springer nach Zeitfenster sortieren
     alleSpringerRueckmeldungen?.forEach(springer => {
+      // Springer ohne kind_id überspringen (ungültige Daten)
+      if (!springer.kind_id) return;
       // Nur Springer berücksichtigen, die noch nicht zugewiesen wurden
       if (zugewieseneKinder.has(springer.kind_id)) return;
       
@@ -399,7 +426,8 @@ export async function POST(req: NextRequest) {
         rueckmeldung_id: springer.id,
         zeitfenster: zeitfenster,
         manuell: false,
-        via_springer: true
+        via_springer: true,
+        event_id: eventId
       });
       
       // Springer als zugewiesen markieren
@@ -427,7 +455,6 @@ export async function POST(req: NextRequest) {
     };
     
     // Erste Phase: Zuerst allen Springern ohne Aufgabe eine Aufgabe zuweisen
-    console.log(`Springer erste Phase: ${erstePhaseVormittagsSpringer.length + erstePhaseNachmittagsSpringer.length + erstePhaseGanztagsSpringer.length} Springer ohne Aufgabe`);
     
     // Vormittags-Springer zuweisen (erste Phase)
     erstePhaseVormittagsSpringer.forEach(springer => {
@@ -449,14 +476,12 @@ export async function POST(req: NextRequest) {
     });
     
     // Zweite Phase: Weiteren Springern zusätzliche Aufgaben zuweisen
-    console.log(`Springer zweite Phase: ${zweitePhaseVormittagsSpringer.length + zweitePhaseNachmittagsSpringer.length + zweitePhaseGanztagsSpringer.length} Springer mit Aufgabe`);
     
     // Prüfen, ob alle Springer der ersten Phase eine Aufgabe erhalten haben
     const springerOhneAufgabe = [...erstePhaseVormittagsSpringer, ...erstePhaseNachmittagsSpringer, ...erstePhaseGanztagsSpringer]
       .filter(springer => !zugewieseneSpringer[springer.id]).length;
       
     if (springerOhneAufgabe === 0) {
-      console.log('Springer zweite Phase wird gestartet - alle Springer haben mindestens eine Aufgabe');
       
       // Vormittags-Springer zuweisen (zweite Phase)
       zweitePhaseVormittagsSpringer.forEach(springer => {
@@ -477,7 +502,6 @@ export async function POST(req: NextRequest) {
         }
       });
     } else {
-      console.log(`Springer zweite Phase wird übersprungen - ${springerOhneAufgabe} Springer haben noch keine Aufgabe`);
     }
     
     // 8.6 Springer-Zuteilungen in die Datenbank einfügen

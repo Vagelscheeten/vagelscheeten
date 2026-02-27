@@ -7,8 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { PlusCircle, Trash2, Pencil, Save, X, Users } from 'lucide-react';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { 
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   DndContext, 
   closestCenter, 
   KeyboardSensor, 
@@ -22,6 +25,8 @@ import {
 } from '@dnd-kit/core';
 import LoadingIndicator from '@/components/ui/LoadingIndicator';
 import { Spielgruppe, Kind, KindZuordnung } from '@/lib/types';
+
+const UNASSIGNED_ID = '__unassigned__';
 
 // Typen für die Komponente
 interface GruppenVerwaltungNeuProps {
@@ -52,7 +57,6 @@ export function GruppenVerwaltungNeu({
   const [autoAssignmentDone, setAutoAssignmentDone] = useState<boolean>(false);
   const [activeGruppeId, setActiveGruppeId] = useState<string | null>(null);
   const [editingGruppeId, setEditingGruppeId] = useState<string | null>(null);
-  const [newGruppeName, setNewGruppeName] = useState<string>('');
   const [editGruppeName, setEditGruppeName] = useState<string>('');
   const [draggedKind, setDraggedKind] = useState<Kind | null>(null);
   
@@ -70,7 +74,7 @@ export function GruppenVerwaltungNeu({
   // Daten laden
   const loadData = useCallback(async () => {
     if (!activeEventId || !selectedKlasseName) return;
-    
+
     setIsLoading(true);
     try {
       // 1. Spielgruppen laden
@@ -80,149 +84,36 @@ export function GruppenVerwaltungNeu({
         .eq('event_id', activeEventId)
         .eq('klasse', selectedKlasseName)
         .order('name');
-      
+
       if (gruppenError) throw new Error(`Fehler beim Laden der Spielgruppen: ${gruppenError.message}`);
-      
-      // Wenn keine Spielgruppen existieren, erstelle eine erste Gruppe
-      if (!gruppenData || gruppenData.length === 0) {
-        console.log(`Keine Spielgruppen für Klasse ${selectedKlasseName} gefunden. Erstelle erste Gruppe...`);
-        
-        // Immer dasselbe Format für Gruppennamen verwenden: ohne Leerzeichen
-        const gruppenName = `${selectedKlasseName}-1`;
-        const leiterCode = `${selectedKlasseName}-leiter`;
-        
-        const { data: neueGruppe, error: createError } = await supabase
-          .from('spielgruppen')
-          .insert({
-            name: gruppenName,
-            klasse: selectedKlasseName,
-            event_id: activeEventId,
-            leiter_zugangscode: leiterCode
-          })
-          .select()
-          .single();
-          
-        if (createError) {
-          throw new Error(`Fehler beim Erstellen der ersten Gruppe: ${createError.message}`);
-        }
-        
-        console.log(`Erste Gruppe erstellt: ${gruppenName}`);
-        toast.success(`Erste Gruppe erstellt: ${gruppenName}`);
-        
-        // Setze die Spielgruppen mit der neu erstellten Gruppe
-        setSpielgruppen([neueGruppe]);
-        
-        // 2. Alle Kinder dieser Klasse laden
-        const { data: kinderData, error: kinderError } = await supabase
-          .from('kinder')
-          .select('*')
-          .eq('event_id', activeEventId)
-          .eq('klasse', selectedKlasseName);
-        
-        if (kinderError) throw new Error(`Fehler beim Laden der Kinder: ${kinderError.message}`);
-        setAlleKinderDieserKlasse(kinderData || []);
-        
-        // 3. Alle Kinder der ersten Gruppe zuordnen
-        if (kinderData && kinderData.length > 0 && neueGruppe) {
-          console.log(`${kinderData.length} Kinder gefunden. Ordne sie der ersten Gruppe zu...`);
-          
-          const zuordnungen = kinderData.map(kind => ({
-            kind_id: kind.id,
-            spielgruppe_id: neueGruppe.id,
-            event_id: activeEventId
-          }));
-          
-          const { error: zuordnungError } = await supabase
-            .from('kind_spielgruppe_zuordnung')
-            .insert(zuordnungen);
-          
-          if (zuordnungError) {
-            console.error('Fehler beim Zuordnen der Kinder:', zuordnungError);
-            toast.error(`Fehler beim Zuordnen der Kinder: ${zuordnungError.message}`);
-          } else {
-            console.log(`${kinderData.length} Kinder wurden der Gruppe ${gruppenName} zugeordnet`);
-            toast.success(`${kinderData.length} Kinder wurden der Gruppe ${gruppenName} zugeordnet`);
-            
-            // Lade die Zuordnungen
-            const { data: zuordnungenData } = await supabase
-              .from('kind_spielgruppe_zuordnung')
-              .select('*')
-              .eq('event_id', activeEventId)
-              .eq('spielgruppe_id', neueGruppe.id);
-            
-            setKinderZuordnungen(zuordnungenData || []);
-          }
-        } else {
-          setKinderZuordnungen([]);
-        }
-      } else {
-        // Spielgruppen existieren bereits
-        setSpielgruppen(gruppenData);
-        
-        // 2. Alle Kinder dieser Klasse laden
-        const { data: kinderData, error: kinderError } = await supabase
-          .from('kinder')
-          .select('*')
-          .eq('event_id', activeEventId)
-          .eq('klasse', selectedKlasseName);
-        
-        if (kinderError) throw new Error(`Fehler beim Laden der Kinder: ${kinderError.message}`);
-        setAlleKinderDieserKlasse(kinderData || []);
-        
-        // 3. Bestehende Zuordnungen laden
+      setSpielgruppen(gruppenData || []);
+
+      // 2. Alle Kinder dieser Klasse laden
+      const { data: kinderData, error: kinderError } = await supabase
+        .from('kinder')
+        .select('*')
+        .eq('event_id', activeEventId)
+        .eq('klasse', selectedKlasseName);
+
+      if (kinderError) throw new Error(`Fehler beim Laden der Kinder: ${kinderError.message}`);
+      setAlleKinderDieserKlasse(kinderData || []);
+
+      // 3. Bestehende Zuordnungen laden (nur wenn Gruppen existieren)
+      if (gruppenData && gruppenData.length > 0) {
         const gruppenIds = gruppenData.map(g => g.id);
         const { data: zuordnungenData, error: zuordnungenError } = await supabase
           .from('kind_spielgruppe_zuordnung')
           .select('*')
           .eq('event_id', activeEventId)
           .in('spielgruppe_id', gruppenIds);
-        
+
         if (zuordnungenError) throw new Error(`Fehler beim Laden der Zuordnungen: ${zuordnungenError.message}`);
         setKinderZuordnungen(zuordnungenData || []);
-        
-        // 4. Prüfe, ob alle Kinder zugeordnet sind
-        if (kinderData && kinderData.length > 0) {
-          const kinderOhneZuordnung = kinderData.filter(kind => 
-            !zuordnungenData?.some(z => z.kind_id === kind.id)
-          );
-          
-          if (kinderOhneZuordnung.length > 0) {
-            console.log(`${kinderOhneZuordnung.length} Kinder ohne Zuordnung gefunden. Ordne sie der ersten Gruppe zu...`);
-            
-            const ersteGruppe = gruppenData[0];
-            const zuordnungen = kinderOhneZuordnung.map(kind => ({
-              kind_id: kind.id,
-              spielgruppe_id: ersteGruppe.id,
-              event_id: activeEventId
-            }));
-            
-            const { error: zuordnungError } = await supabase
-              .from('kind_spielgruppe_zuordnung')
-              .insert(zuordnungen);
-            
-            if (zuordnungError) {
-              console.error('Fehler beim Zuordnen der Kinder:', zuordnungError);
-              toast.error(`Fehler beim Zuordnen der Kinder: ${zuordnungError.message}`);
-            } else {
-              console.log(`${kinderOhneZuordnung.length} Kinder wurden der Gruppe ${ersteGruppe.name} zugeordnet`);
-              toast.success(`${kinderOhneZuordnung.length} Kinder wurden der Gruppe ${ersteGruppe.name} zugeordnet`);
-              
-              // Lade alle Zuordnungen neu
-              const { data: alleZuordnungen } = await supabase
-                .from('kind_spielgruppe_zuordnung')
-                .select('*')
-                .eq('event_id', activeEventId)
-                .in('spielgruppe_id', gruppenIds);
-              
-              setKinderZuordnungen(alleZuordnungen || []);
-            }
-          }
-        }
+      } else {
+        setKinderZuordnungen([]);
       }
-      
-      // Reset des Auto-Assignment-Status, wenn die Daten neu geladen werden
+
       setAutoAssignmentDone(true);
-      
     } catch (error: any) {
       console.error('Fehler beim Laden der Daten:', error);
       toast.error(`Fehler: ${error.message}`);
@@ -247,20 +138,24 @@ export function GruppenVerwaltungNeu({
   // DnD-State aktualisieren
   const updateDndState = () => {
     const newItems: DndItemsState = {};
-    
+
     // Für jede Spielgruppe die zugeordneten Kinder finden
     spielgruppen.forEach(gruppe => {
       const kinderIds = kinderZuordnungen
         .filter(z => z.spielgruppe_id === gruppe.id)
         .map(z => z.kind_id);
-      
-      const kinderInGruppe = alleKinderDieserKlasse.filter(kind => 
+
+      const kinderInGruppe = alleKinderDieserKlasse.filter(kind =>
         kinderIds.includes(kind.id)
       );
-      
+
       newItems[gruppe.id] = kinderInGruppe;
     });
-    
+
+    // Nicht zugeordnete Kinder
+    const assignedKindIds = new Set(kinderZuordnungen.map(z => z.kind_id));
+    newItems[UNASSIGNED_ID] = alleKinderDieserKlasse.filter(k => !assignedKindIds.has(k.id));
+
     setDndItems(newItems);
   };
   
@@ -285,7 +180,6 @@ export function GruppenVerwaltungNeu({
       // Finde die höchste Gruppennummer durch direkten Vergleich mit allen Gruppen
       let maxNumber = 0;
       if (existingGroups && existingGroups.length > 0) {
-        console.log('Alle vorhandenen Gruppen:', existingGroups.map(g => g.name));
         
         existingGroups.forEach(gruppe => {
           // Erkenne beide Formate: mit und ohne Leerzeichen
@@ -297,10 +191,8 @@ export function GruppenVerwaltungNeu({
           let num = 0;
           if (matchWithoutSpaces && matchWithoutSpaces[1]) {
             num = parseInt(matchWithoutSpaces[1], 10);
-            console.log(`Gruppe '${gruppe.name}' hat Nummer ${num} (Format ohne Leerzeichen)`);
           } else if (matchWithSpaces && matchWithSpaces[1]) {
             num = parseInt(matchWithSpaces[1], 10);
-            console.log(`Gruppe '${gruppe.name}' hat Nummer ${num} (Format mit Leerzeichen)`);
           }
           
           if (!isNaN(num) && num > maxNumber) {
@@ -314,9 +206,6 @@ export function GruppenVerwaltungNeu({
       const newGroupName = `${selectedKlasseName}-${newGroupNumber}`;
       const leiterCode = `${selectedKlasseName}-leiter`;
       
-      console.log(`Existierende Gruppen:`, existingGroups);
-      console.log(`Höchste gefundene Nummer: ${maxNumber}`);
-      console.log(`Neue Gruppe wird erstellt: ${newGroupName}`);
       
       // Neue Gruppe in der Datenbank erstellen
       const { data: newGruppe, error } = await supabase
@@ -406,8 +295,8 @@ export function GruppenVerwaltungNeu({
   
   // Dialog zur automatischen Verteilung öffnen
   const handleAutoDistributeClick = () => {
-    if (spielgruppen.length < 2) {
-      toast.warning("Bitte erstellen Sie mindestens zwei Spielgruppen, um die Kinder zu verteilen.");
+    if (spielgruppen.length < 1) {
+      toast.warning("Bitte erstelle mindestens eine Spielgruppe, um die Kinder zu verteilen.");
       return;
     }
     
@@ -433,7 +322,6 @@ export function GruppenVerwaltungNeu({
       const shuffledMaedchen = [...maedchen].sort(() => Math.random() - 0.5);
       const shuffledJungen = [...jungen].sort(() => Math.random() - 0.5);
       
-      console.log(`Verteile ${shuffledMaedchen.length} Mädchen und ${shuffledJungen.length} Jungen auf ${spielgruppen.length} Gruppen`);
       
       // Neue Zuordnungen erstellen
       const neueZuordnungen: { kind_id: string; spielgruppe_id: string; event_id: string }[] = [];
@@ -501,22 +389,33 @@ export function GruppenVerwaltungNeu({
     const { active, over } = event;
     
     if (!over || !draggedKind) return;
-    
+
     const kindId = active.id as string;
     const targetGruppeId = over.id as string;
-    
-    // Prüfen, ob das Kind bereits in dieser Gruppe ist
-    const existingZuordnung = kinderZuordnungen.find(
-      z => z.kind_id === kindId && z.spielgruppe_id === targetGruppeId
-    );
-    
-    if (existingZuordnung) {
-      // Kind ist bereits in dieser Gruppe, nichts zu tun
-      return;
-    }
-    
+
     try {
-      // Alte Zuordnung finden und löschen
+      if (targetGruppeId === UNASSIGNED_ID) {
+        // Kind aus Gruppe entfernen
+        const oldZuordnung = kinderZuordnungen.find(z => z.kind_id === kindId);
+        if (oldZuordnung) {
+          const { error } = await supabase
+            .from('kind_spielgruppe_zuordnung')
+            .delete()
+            .eq('kind_id', kindId)
+            .eq('event_id', activeEventId);
+          if (error) throw error;
+          loadData();
+        }
+        return;
+      }
+
+      // Prüfen, ob das Kind bereits in dieser Gruppe ist
+      const existingZuordnung = kinderZuordnungen.find(
+        z => z.kind_id === kindId && z.spielgruppe_id === targetGruppeId
+      );
+      if (existingZuordnung) return;
+
+      // Alte Zuordnung löschen
       const oldZuordnung = kinderZuordnungen.find(z => z.kind_id === kindId);
       if (oldZuordnung) {
         const { error: deleteError } = await supabase
@@ -524,10 +423,9 @@ export function GruppenVerwaltungNeu({
           .delete()
           .eq('kind_id', kindId)
           .eq('event_id', activeEventId);
-        
         if (deleteError) throw deleteError;
       }
-      
+
       // Neue Zuordnung erstellen
       const { error: insertError } = await supabase
         .from('kind_spielgruppe_zuordnung')
@@ -536,10 +434,8 @@ export function GruppenVerwaltungNeu({
           spielgruppe_id: targetGruppeId,
           event_id: activeEventId
         });
-      
       if (insertError) throw insertError;
-      
-      // Daten neu laden
+
       loadData();
     } catch (error: any) {
       console.error('Fehler beim Verschieben des Kindes:', error);
@@ -665,6 +561,38 @@ export function GruppenVerwaltungNeu({
     );
   };
   
+  // Container für nicht zugeordnete Kinder
+  const UnassignedContainer = () => {
+    const { isOver, setNodeRef } = useDroppable({ id: UNASSIGNED_ID });
+    const kinder = dndItems[UNASSIGNED_ID] || [];
+    const jungenCount = kinder.filter(k => k.geschlecht === 'Junge').length;
+    const maedchenCount = kinder.filter(k => k.geschlecht === 'Mädchen').length;
+
+    return (
+      <Card className={`border-dashed ${isOver ? 'ring-2 ring-primary' : 'border-slate-300'}`}>
+        <CardHeader className="p-3 pb-0">
+          <CardTitle className="text-base text-slate-500 flex items-center gap-2">
+            Nicht zugeordnet
+            <span className="text-xs font-normal text-muted-foreground">
+              ({kinder.length}: {jungenCount}♂ {maedchenCount}♀)
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent ref={setNodeRef} className="p-3 min-h-[80px]">
+          {kinder.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center mt-4">Alle Kinder sind zugeordnet</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1">
+              {kinder.map(kind => (
+                <DraggableKindItem key={kind.id} kind={kind} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   // Hauptkomponente rendern
   return (
     <div className="space-y-6">
@@ -677,27 +605,18 @@ export function GruppenVerwaltungNeu({
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Spielgruppen für {selectedKlasseName}</h3>
             <div className="flex space-x-2">
-              {spielgruppen.length >= 2 && (
-                <Button 
-                  onClick={handleAutoDistributeClick} 
+              {spielgruppen.length >= 1 && (
+                <Button
+                  onClick={handleAutoDistributeClick}
                   disabled={alleKinderDieserKlasse.length === 0 || isLoading}
                   variant="outline"
                 >
                   <Users className="mr-2 h-4 w-4" /> Kinder automatisch verteilen
                 </Button>
               )}
-              <div className="flex space-x-2 items-center">
-                <Input
-                  value={newGruppeName}
-                  onChange={(e) => setNewGruppeName(e.target.value)}
-                  placeholder="Neue Gruppe"
-                  className="w-40"
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateGruppe()}
-                />
-                <Button onClick={handleCreateGruppe} variant="outline">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Gruppe erstellen
-                </Button>
-              </div>
+              <Button onClick={handleCreateGruppe} variant="outline">
+                <PlusCircle className="mr-2 h-4 w-4" /> Gruppe erstellen
+              </Button>
             </div>
           </div>
 
@@ -707,11 +626,14 @@ export function GruppenVerwaltungNeu({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
+            {alleKinderDieserKlasse.length > 0 && (
+              <UnassignedContainer />
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {spielgruppen.map(gruppe => (
-                <DroppableContainer 
-                  key={gruppe.id} 
-                  id={gruppe.id} 
+                <DroppableContainer
+                  key={gruppe.id}
+                  id={gruppe.id}
                   title={gruppe.name}
                 >
                   {dndItems[gruppe.id]?.map(kind => (
@@ -724,62 +646,51 @@ export function GruppenVerwaltungNeu({
 
           {spielgruppen.length === 0 && (
             <div className="text-center text-muted-foreground mt-8">
-              Noch keine Gruppen erstellt. Erstellen Sie eine neue Gruppe, um Kinder zuzuordnen.
+              Noch keine Gruppen erstellt. Erstelle eine neue Gruppe, um Kinder zuzuordnen.
             </div>
           )}
           
-          {/* Dialoge innerhalb des return-Statements */}
-          {deleteDialogOpen && (
-            <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-              <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-                <h2 className="text-xl font-bold mb-4">Gruppe löschen</h2>
-                <p className="mb-6">Möchten Sie die Gruppe "{spielgruppen.find(g => g.id === deleteGruppeId)?.name || ''}" wirklich löschen? Alle Kinder in dieser Gruppe werden keiner Gruppe mehr zugeordnet sein.</p>
-                <div className="flex justify-end space-x-2">
-                  <button 
-                    className="px-4 py-2 border rounded-md" 
-                    onClick={() => setDeleteDialogOpen(false)}
-                  >
-                    Abbrechen
-                  </button>
-                  <button 
-                    className="px-4 py-2 bg-red-600 text-white rounded-md" 
-                    onClick={() => {
-                      setDeleteDialogOpen(false);
-                      deleteGruppe(deleteGruppeId);
-                    }}
-                  >
-                    Löschen
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Gruppe löschen */}
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Gruppe löschen?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Soll die Gruppe „{spielgruppen.find(g => g.id === deleteGruppeId)?.name || ''}" wirklich gelöscht werden?
+                  Alle Kinder in dieser Gruppe werden keiner Gruppe mehr zugeordnet sein.
+                  Diese Aktion kann nicht rückgängig gemacht werden.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteGruppe(deleteGruppeId)}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Endgültig löschen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-          {autoDistributeDialogOpen && (
-            <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-              <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
-                <h2 className="text-xl font-bold mb-4">Kinder automatisch verteilen</h2>
-                <p className="mb-6">Möchten Sie alle Kinder automatisch auf die Gruppen verteilen? Bestehende Zuordnungen werden überschrieben.</p>
-                <div className="flex justify-end space-x-2">
-                  <button 
-                    className="px-4 py-2 border rounded-md" 
-                    onClick={() => setAutoDistributeDialogOpen(false)}
-                  >
-                    Abbrechen
-                  </button>
-                  <button 
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md" 
-                    onClick={() => {
-                      setAutoDistributeDialogOpen(false);
-                      handleAutoDistribute();
-                    }}
-                  >
-                    Verteilen
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Kinder automatisch verteilen */}
+          <AlertDialog open={autoDistributeDialogOpen} onOpenChange={setAutoDistributeDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Kinder automatisch verteilen?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Alle Kinder der Klasse {selectedKlasseName} werden gleichmäßig und zufällig auf die Gruppen verteilt.
+                  Bestehende Zuordnungen werden dabei überschrieben.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction onClick={handleAutoDistribute}>
+                  Verteilen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
     </div>

@@ -49,7 +49,6 @@ async function preparePDFData(kindId: string) {
   const zuteilungIds = zuteilungenData?.map(z => z.id) || [];
   let slotZuteilungenMap: Record<string, any[]> = {};
   
-  console.log('DEBUG: Zuteilungs-IDs für Slots:', zuteilungIds);
   
   if (zuteilungIds.length > 0) {
     // Lade zuerst die Slot-Zuteilungen
@@ -62,8 +61,6 @@ async function preparePDFData(kindId: string) {
       `)
       .in('zuteilung_id', zuteilungIds);
       
-    console.log('DEBUG: Slot-Zuteilungen Daten:', slotZuteilungenData);
-    console.log('DEBUG: Slot-Zuteilungen Fehler:', slotZuteilungenError);
       
     if (slotZuteilungenError) {
       console.error('Fehler beim Laden der Slot-Zuteilungen:', slotZuteilungenError);
@@ -78,8 +75,6 @@ async function preparePDFData(kindId: string) {
         .select('id, beschreibung, startzeit, endzeit, max_helfer')
         .in('id', slotIds);
         
-      console.log('DEBUG: Slots Daten:', slotsData);
-      console.log('DEBUG: Slots Fehler:', slotsError);
       
       if (slotsError) {
         console.error('Fehler beim Laden der Slots:', slotsError);
@@ -106,7 +101,6 @@ async function preparePDFData(kindId: string) {
           return acc;
         }, {} as Record<string, any[]>);
         
-        console.log('DEBUG: Slot-Zuteilungen Map (neu):', slotZuteilungenMap);
       }
     }
   }
@@ -210,7 +204,6 @@ async function preparePDFData(kindId: string) {
   })) || [];
   
   // Debug-Log für die transformierten Zuteilungen
-  console.log('DEBUG: Transformierte Zuteilungen mit Slots:', JSON.stringify(transformedZuteilungen, null, 2));
   
   // 8. Daten für das PDF zusammenstellen
   const pdfData = {
@@ -220,7 +213,6 @@ async function preparePDFData(kindId: string) {
     essensspenden: transformedSpenden  // Geändert von 'spenden' zu 'essensspenden', um mit ZuteilungPDFDocument übereinzustimmen
   };
   
-  console.log('DEBUG: Vollständige PDF-Daten:', JSON.stringify(pdfData, null, 2));
   
   return pdfData;
 }

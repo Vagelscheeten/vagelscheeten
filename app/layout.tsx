@@ -7,7 +7,7 @@ import { Toaster } from "sonner"; // Import Toaster from sonner package
 import MainNavigation from "@/components/ui/MainNavigation";
 import AdminSidebarWrapper from "@/components/ui/AdminSidebarWrapper";
 import ScrollToTopButton from "@/components/ui/ScrollToTopButton";
-import { Footer } from "@/components/layout/Footer";
+import { ConditionalFooter } from "@/components/layout/ConditionalFooter";
 // import { AuthProvider } from "@/context/AuthContext"; // Temporarily disabled
 
 const geistSans = Geist({
@@ -61,7 +61,7 @@ export default function RootLayout({
           <main className="container-main py-6 flex-grow">
             {children}
           </main>
-          <Footer />
+          <ConditionalFooter />
         </div>
         <Toaster richColors />
         <ScrollToTopButton />

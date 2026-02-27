@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, GripVertical, Info, Loader2, Pencil, PlusCircle, Trash2, X } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, PlusCircle, Trash2 } from "lucide-react";
 import { toast } from 'sonner';
 import {
   Table,
@@ -29,33 +29,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  UniqueIdentifier,
-  DragOverlay,
-  pointerWithin,
-  useDroppable,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  rectSortingStrategy, // Or choose another strategy
-  arrayMove
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 // Import Tabs components from shadcn/ui
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import KlassenMigrationButton from "./KlassenMigrationButton";
-
 // Import Badge component
 import { Badge } from "@/components/ui/badge";
 
@@ -96,7 +72,50 @@ interface SpielZuordnung { // Renaming might not be strictly needed but helps cl
   // Could add primary key 'id' if needed
 }
 
-const ALL_GAMES_CONTAINER_ID = '__all_games__'; // Container for all available games
+// A — Lesbare Labels + Erklärungskarte + B — Konditionelle Felder
+const WERTUNGSTYP_CONFIG: Record<WertungstypEnum, {
+  label: string;
+  description: string;
+  example: string;
+  unitExample: string;
+  fields: string[];
+}> = {
+  WEITE_MAX_AUS_N: {
+    label: 'Weitester Versuch (aus N)',
+    description: 'Das Kind hat N Versuche. Der weiteste/beste Einzelversuch zählt. Mehr Distanz = besser.',
+    example: 'Gummistiefelweitwurf: 3 Versuche, bester zählt',
+    unitExample: 'z.B. cm, m',
+    fields: ['anzahl_versuche', 'einheit'],
+  },
+  MENGE_MAX_ZEIT: {
+    label: 'Menge in Zeitlimit',
+    description: 'In einer festen Zeit so viele Einheiten wie möglich erreichen. Mehr ist besser.',
+    example: 'Korbwurf: 30 Sek, so viele Treffer wie möglich',
+    unitExample: 'z.B. Treffer, Körbe',
+    fields: ['zeitlimit_sekunden', 'einheit'],
+  },
+  ZEIT_MIN_STRAFE: {
+    label: 'Zeit + Strafzeit',
+    description: 'Gemessene Zeit in Sekunden, plus Strafzeit für Fehler. Weniger ist besser.',
+    example: 'Hindernisrennen: Zeit in Sek, +5 Sek je Fehler',
+    unitExample: 'z.B. Sekunden',
+    fields: ['strafzeit_sekunden', 'einheit'],
+  },
+  PUNKTE_SUMME_AUS_N: {
+    label: 'Punktesumme (N Versuche)',
+    description: 'N Versuche werden durchgeführt, alle Punkte addiert. Mehr Punkte = besser.',
+    example: 'Darts: 3 Würfe, Gesamtpunktzahl zählt',
+    unitExample: 'z.B. Punkte',
+    fields: ['anzahl_versuche', 'einheit'],
+  },
+  PUNKTE_ABZUG: {
+    label: 'Punkte mit Abzug',
+    description: 'Startet mit einer fixen Punktzahl. Fehler ziehen Punkte ab. Mehr übrige Punkte = besser.',
+    example: 'Startpunkte: 100, −5 pro Fehler',
+    unitExample: 'z.B. Punkte',
+    fields: ['startpunkte', 'einheit'],
+  },
+};
 
 // Funktion, um ein passendes Icon für ein Spiel zu bestimmen
 function getSpielIcon(spiel: Spiel): string {
@@ -128,9 +147,6 @@ export default function SpieleVerwaltung() {
   const [error, setError] = useState<string | null>(null);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
-  // State for tracking the currently dragged item's ID (for DragOverlay)
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-
   // State for the Create New Game Dialog
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newSpielData, setNewSpielData] = useState<Partial<Spiel>>({ name: '' }); 
@@ -145,12 +161,6 @@ export default function SpieleVerwaltung() {
   // State for Delete Confirmation
   const [spielToDelete, setSpielToDelete] = useState<Spiel | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Dnd-kit sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor)
-  );
 
   // Function to fetch the active event
   const fetchActiveEvent = useCallback(async () => {
@@ -395,267 +405,29 @@ export default function SpieleVerwaltung() {
     }
   };
 
-  // --- Drag and Drop Handlers --- //
+  // Checkbox-Toggle: Zuweisung hinzufügen oder entfernen
+  const handleToggleAssignment = async (spielId: string, klasseId: string) => {
+    const isAssigned = spielZuordnungen.some(z => z.spiel_id === spielId && z.klasse_id === klasseId);
+    const original = [...spielZuordnungen];
 
-  // Function to handle drag start - Sets the activeId for the overlay
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    
-    // Wichtig: Wir setzen die activeId auf die ID des Spiels, das der Benutzer tatsächlich angeklickt hat
-    // Dadurch wird sichergestellt, dass immer die angeklickte Karte an der Maus hängt
-    setActiveId(active.id);
-  };
-
-  // Central logic for updating state after drag ends - NEEDS COMPLETE REWRITE for M:N
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null); // Reset activeId regardless of outcome
-
-    // Ensure we have a valid drop target (over) and it's not the original container
-    if (!over || !active) {
-      return; // No valid drop target
-    }
-
-    const activeSpielId = active.id.toString();
-    const targetContainerId = over.id.toString();
-
-    // --- Check 1: Prevent dropping onto the 'All Games' list itself --- 
-    if (targetContainerId === ALL_GAMES_CONTAINER_ID) {
-      // Maybe show a message? For now, just return.
-      console.log("Cannot drop onto the 'All Games' list.");
-      return;
-    }
-
-    // --- Check 2: Verify the target is a valid Klasse ID --- 
-    const targetKlasse = klassen.find(k => k.id === targetContainerId);
-    if (!targetKlasse) {
-      console.error(`Invalid drop target container ID: ${targetContainerId}`);
-      toast.error("Ungültiges Ziel zum Ablegen des Spiels.");
-      return;
-    }
-
-    // --- Check 3: Prevent adding if the game is already assigned to this Klasse --- 
-    const isAlreadyAssigned = spielZuordnungen.some(
-      z => z.spiel_id === activeSpielId && z.klasse_id === targetContainerId
-    );
-
-    if (isAlreadyAssigned) {
-      const spielName = spiele.find(s => s.id === activeSpielId)?.name ?? 'Dieses Spiel';
-      toast.info(`"${spielName}" ist bereits der Stufe "${targetKlasse.name}" zugewiesen.`);
-      return;
-    }
-
-    // --- Add the new assignment --- 
-    const spielToAdd = spiele.find(s => s.id === activeSpielId);
-    if (!spielToAdd) {
-      console.error(`Dragged Spiel with ID ${activeSpielId} not found in state.`);
-      toast.error("Fehler: Gezogenes Spiel nicht gefunden.");
-      return;
-    }
-
-    const newAssignment: SpielZuordnung = {
-      spiel_id: activeSpielId,
-      klasse_id: targetContainerId,
-    };
-
-    // Optimistic UI Update
-    const originalZuordnungen = [...spielZuordnungen];
-    setSpielZuordnungen(prev => [...prev, newAssignment]);
-    toast.success(`"${spielToAdd.name}" zur Stufe "${targetKlasse.name}" hinzugefügt.`);
-
-    // Add to Database
-    const supabase = createClient();
-    const { error: insertError } = await supabase
-      .from('klasse_spiele')
-      .insert({ 
-        spiel_id: newAssignment.spiel_id, 
-        klasse_id: newAssignment.klasse_id
-      });
-
-    if (insertError) {
-      console.error('Error adding spiel assignment:', insertError);
-      toast.error(`Fehler beim Hinzufügen von "${spielToAdd.name}": ${insertError.message}`);
-      // Revert optimistic UI update
-      setSpielZuordnungen(originalZuordnungen);
-    }
-  }, [spiele, klassen, spielZuordnungen]); // Add dependencies as needed
-
-  // Function to remove a Spiel assignment from a Klasse
-  const handleRemoveAssignment = async (spielIdToRemove: string, klasseIdToRemove: string) => {
-    const spielName = spiele.find(s => s.id === spielIdToRemove)?.name ?? 'Unbekanntes Spiel';
-    const stufeName = klassen.find(k => k.id === klasseIdToRemove)?.name ?? 'Unbekannte Stufe';
-
-    // Optimistic UI update: Remove the assignment from the local state
-    const originalZuordnungen = [...spielZuordnungen];
-    setSpielZuordnungen(prev => prev.filter(z => !(z.spiel_id === spielIdToRemove && z.klasse_id === klasseIdToRemove)));
-    toast.success(`Zuordnung von "${spielName}" zu Stufe "${stufeName}" entfernt.`);
-
-    // Remove from database
-    const supabase = createClient();
-    const { error: deleteError } = await supabase
-      .from('klasse_spiele')
-      .delete()
-      .match({ 
-        spiel_id: spielIdToRemove, 
-        klasse_id: klasseIdToRemove
-      });
-
-    if (deleteError) {
-      console.error('Error removing spiel assignment:', deleteError);
-      toast.error(`Fehler beim Entfernen der Zuordnung von "${spielName}": ${deleteError.message}`);
-      // Revert optimistic UI update on error
-      setSpielZuordnungen(originalZuordnungen);
+    if (isAssigned) {
+      setSpielZuordnungen(prev => prev.filter(z => !(z.spiel_id === spielId && z.klasse_id === klasseId)));
+      const supabase = createClient();
+      const { error } = await supabase.from('klasse_spiele').delete().match({ spiel_id: spielId, klasse_id: klasseId });
+      if (error) {
+        toast.error(`Fehler: ${error.message}`);
+        setSpielZuordnungen(original);
+      }
+    } else {
+      setSpielZuordnungen(prev => [...prev, { spiel_id: spielId, klasse_id: klasseId }]);
+      const supabase = createClient();
+      const { error } = await supabase.from('klasse_spiele').insert({ spiel_id: spielId, klasse_id: klasseId });
+      if (error) {
+        toast.error(`Fehler: ${error.message}`);
+        setSpielZuordnungen(original);
+      }
     }
   };
-
-  // --- Helper Components --- //
-
-  // --- Draggable Spiel Item Component (for M:N) ---
-  interface DraggableSpielItemProps {
-    spiel: Spiel;
-    mode: 'manage' | 'assign'; // Determine which actions to show
-    onEdit?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
-    onDelete?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
-    onRemoveAssignment?: () => void; // Optional: Used in 'assign' mode
-    assignmentCount?: number; // Optional: Number of classes this game is assigned to
-  }
-
-  function DraggableSpielItem({ spiel, mode, onEdit, onDelete, onRemoveAssignment, assignmentCount }: DraggableSpielItemProps) {
-    const { attributes, listeners, setNodeRef, transform, transition, isOver } = useSortable({ id: spiel.id });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isOver ? 0.5 : 1,
-      zIndex: isOver ? 100 : 'auto',
-      cursor: isOver ? 'grabbing' : undefined, // Cursor only changes while dragging
-    };
-
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className={`bg-card p-2 rounded-md shadow-sm border flex justify-between items-center touch-manipulation ${isOver ? 'ring-2 ring-primary' : ''} hover:bg-accent/50 hover:shadow-md transition-all duration-150`}
-      >
-        <div className="flex items-center flex-grow min-w-0 space-x-2">
-          {/* Make the Grip the drag handle */} 
-          <button {...listeners} {...attributes} className="cursor-grab p-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-primary rounded">
-            <GripVertical size={16} />
-          </button>
-          <span className="font-medium truncate" title={spiel.name}>
-            {spiel.name}
-            {assignmentCount !== undefined && mode === 'assign' && (
-              <span className="ml-1 text-xs text-muted-foreground">({assignmentCount})</span>
-            )}
-          </span>
-        </div>
-        <div className="flex-shrink-0 flex items-center space-x-1">
-          {mode === 'manage' && onEdit && onDelete && (
-            <div className="flex space-x-1">
-              <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onEdit(spiel)} title="Bearbeiten">
-                <Pencil size={14} />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive-foreground hover:bg-destructive" onClick={() => onDelete(spiel)} title="Löschen">
-                <Trash2 size={14} />
-              </Button>
-            </div>
-          )}
-          {mode === 'assign' && onRemoveAssignment && (
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={onRemoveAssignment} title="Zuweisung aufheben">
-              <X size={16} />
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // --- Droppable Container Component (for M:N) ---
-  interface DroppableContainerProps {
-    id: string;
-    title: string;
-    items: Spiel[];
-    isMasterList: boolean;
-    containerMode: 'manage' | 'assign'; // Explicitly set mode for items within this container
-    onEdit?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
-    onDelete?: (spiel: Spiel) => void; // Optional: Used in 'manage' mode
-    onRemoveAssignment?: (spielId: string, containerId: string) => void; // Optional: Used in 'assign' mode
-  }
-
-  function DroppableContainer({ 
-    id, 
-    title, 
-    items, 
-    isMasterList, 
-    containerMode, // Receive the container mode
-    onEdit, // Now optional
-    onDelete, // Now optional
-    onRemoveAssignment // Now optional
-  }: DroppableContainerProps) {
-    const { setNodeRef, isOver } = useDroppable({ id });
-    const itemIds = useMemo(() => items.map(item => item.id), [items]);
-
-    return (
-      <div
-        ref={setNodeRef}
-        className={`w-full p-3 rounded-lg flex flex-col flex-shrink-0 border shadow-sm ${isMasterList ? 'bg-background border-gray-200' : 'bg-white border-gray-200'} ${isOver ? 'ring-2 ring-primary border-primary outline-none shadow-lg transition-all duration-200' : 'hover:border-primary/50 hover:shadow-md transition-all duration-200'}`}
-      >
-        <h3 className={`font-semibold mb-4 px-1 sticky top-0 z-10 py-1 ${isMasterList ? 'bg-background' : 'bg-white'} border-b pb-2`}>{title}</h3>
-        
-        {/* Unterschiedliche Darstellung je nach Container-Typ */}
-        {isMasterList ? (
-          // Für den Master-Container (verfügbare Spiele) die normale Darstellung mit Drag-Karten
-          <SortableContext id={id.toString()} items={itemIds} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2 overflow-y-auto flex-grow min-h-[150px]"> {/* Scrollable area */} 
-              {items.length > 0 ? (
-                items.map(spiel => (
-                  <DraggableSpielItem
-                    key={spiel.id}
-                    spiel={spiel}
-                    mode={containerMode}
-                    onEdit={onEdit ? () => onEdit(spiel) : undefined}
-                    onDelete={onDelete ? () => onDelete(spiel) : undefined}
-                  />
-                ))
-              ) : (
-                <div className="text-center text-sm text-muted-foreground py-4">
-                  Keine Spiele gefunden.
-                </div>
-              )}
-            </div>
-          </SortableContext>
-        ) : (
-          // Für Klassen-Container eine kompakte Liste mit Text-Einträgen
-          <div className="space-y-2 overflow-y-auto flex-grow min-h-[150px]">
-            {items.length > 0 ? (
-              <ul className="divide-y divide-gray-100">
-                {items.map(spiel => (
-                  <li key={spiel.id} className="py-2 px-2 flex justify-between items-center group hover:bg-gray-50 rounded transition-colors duration-150">
-                    <span className="text-sm font-medium truncate">{spiel.name}</span>
-                    {onRemoveAssignment && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-500" 
-                        onClick={() => onRemoveAssignment(spiel.id, id)}
-                        title="Zuweisung entfernen"
-                      >
-                        <X size={14} />
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-center text-sm text-muted-foreground py-4">
-                {isOver ? "Spiel hier ablegen..." : "Keine Spiele zugewiesen."}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   // --- Render Logic --- //
 
@@ -683,9 +455,10 @@ export default function SpieleVerwaltung() {
   }
 
   return (
-    <main className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Spiele Verwaltung</h1>
+    <main className="p-4 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Spiele Verwaltung</h1>
+        <p className="text-sm text-slate-500 mt-1">Spiele anlegen und Klassen zuweisen</p>
       </div>
 
       <Tabs defaultValue="zuweisen" className="w-full">
@@ -732,7 +505,7 @@ export default function SpieleVerwaltung() {
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {spiel.wertungstyp ? (
-                            <Badge variant="secondary">{spiel.wertungstyp.replace(/_/g, ' ')}</Badge>
+                            <Badge variant="secondary">{WERTUNGSTYP_CONFIG[spiel.wertungstyp]?.label ?? spiel.wertungstyp.replace(/_/g, ' ')}</Badge>
                           ) : '-'}
                         </TableCell>
                         <TableCell className="text-right">
@@ -758,9 +531,9 @@ export default function SpieleVerwaltung() {
         <TabsContent value="zuweisen">
           <Card>
             <CardHeader>
-              <CardTitle>Spiele Zuweisen</CardTitle>
+              <CardTitle>Spiele zuweisen</CardTitle>
               <CardDescription>
-                Ziehe Spiele aus der Liste "Alle verfügbaren Spiele" auf die gewünschte Klasse.
+                Wähle per Checkbox aus, welche Spiele welchen Klassen zugewiesen sind. Änderungen werden sofort gespeichert.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -776,89 +549,88 @@ export default function SpieleVerwaltung() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              {!isLoading && !error && (
-                <>
-                  {/* Header mit Hinweis und Import-Button */}
-                  <div className="mb-4 flex justify-between items-center">
-                    <div className="flex items-center">
-                      <Info className="h-5 w-5 mr-2 text-primary" />
-                      <p className="text-sm">Spiele können per Drag & Drop mehreren Klassen zugewiesen werden.</p>
-                    </div>
-                    <KlassenMigrationButton onSuccess={fetchData} />
-                  </div>
-                  
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={pointerWithin} // Use pointerWithin for better accuracy with nested containers
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  >
-                    {/* Spieleliste oben als horizontaler Container */}
-                    <div className="mb-8">
-                      <h3 className="text-lg font-semibold mb-4">Verfügbare Spiele ({spiele.length})</h3>
-                      <div className="bg-background border rounded-lg p-4">
-                        <div className="flex flex-wrap gap-2 items-center">
-                          {spiele.map(spiel => {
-                            // Zählen, wie oft das Spiel zugewiesen wurde
-                            const assignmentCount = spielZuordnungen.filter(z => z.spiel_id === spiel.id).length;
-                            
-                            return (
-                              <DraggableSpielItem
-                                key={spiel.id}
-                                spiel={spiel}
-                                mode="assign"
-                                onEdit={() => openEditDialog(spiel)}
-                                onDelete={() => openDeleteDialog(spiel)}
-                                assignmentCount={assignmentCount}
-                              />
-                            );
-                          })}
-                          {spiele.length === 0 && (
-                            <div className="text-sm text-muted-foreground p-2">Keine Spiele gefunden.</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Klassen darunter in einem Grid */}
-                    <div className="mt-10">
-                      <h3 className="text-lg font-semibold mb-6">Klassen ({klassen.length})</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {klassen.map((klasse) => {
-                          const assignedSpielIds = spielZuordnungen
-                            .filter(z => z.klasse_id === klasse.id)
-                            .map(z => z.spiel_id);
-                          const itemsInContainer = spiele.filter(s => assignedSpielIds.includes(s.id));
-                          const count = itemsInContainer.length;
-
+              {!isLoading && !error && klassen.length === 0 && (
+                <p className="text-sm text-slate-500 py-6 text-center">
+                  Keine Klassen gefunden. Bitte zuerst Klassen im Bereich „Klassen" anlegen.
+                </p>
+              )}
+              {!isLoading && !error && spiele.length === 0 && klassen.length > 0 && (
+                <p className="text-sm text-slate-500 py-6 text-center">
+                  Noch keine Spiele vorhanden. Bitte zuerst Spiele im Tab „Spiele Verwalten" erstellen.
+                </p>
+              )}
+              {!isLoading && !error && spiele.length > 0 && klassen.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-3 pr-8 font-medium text-slate-500 min-w-[200px] sticky left-0 bg-white">
+                          Spiel
+                        </th>
+                        {klassen.map(klasse => {
+                          const count = spielZuordnungen.filter(z => z.klasse_id === klasse.id).length;
                           return (
-                            <DroppableContainer
-                              key={klasse.id}
-                              id={klasse.id}
-                              title={`${klasse.name} (${count} Spiele)`} // Add count here
-                              items={itemsInContainer}
-                              isMasterList={false}
-                              containerMode="assign" // All containers in this tab are assign mode
-                              // No onEdit/onDelete for assignment lists
-                              onRemoveAssignment={handleRemoveAssignment} // Pass the main remove handler
-                            />
+                            <th key={klasse.id} className="px-4 py-3 text-center min-w-[80px]">
+                              <div className="flex flex-col items-center gap-1.5">
+                                <span className="font-semibold text-slate-700">{klasse.name}</span>
+                                <Badge
+                                  variant={count > 0 ? 'secondary' : 'outline'}
+                                  className={`text-[10px] h-4 px-1.5 ${count > 0 ? 'bg-orange-50 text-orange-600 border-orange-200' : 'text-slate-400'}`}
+                                >
+                                  {count} {count === 1 ? 'Spiel' : 'Spiele'}
+                                </Badge>
+                              </div>
+                            </th>
                           );
                         })}
-                      </div>
-                    </div>
-
-                    <DragOverlay>
-                      {activeId ? (
-                        (() => {
-                          const activeSpiel = spiele.find(s => s.id === activeId);
-                          return activeSpiel ? (
-                            <DraggableSpielItem spiel={activeSpiel} mode="assign" />
-                          ) : null;
-                        })()
-                      ) : null}
-                    </DragOverlay>
-                  </DndContext>
-                </>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {spiele.map(spiel => (
+                        <tr key={spiel.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 pr-8 sticky left-0 bg-white hover:bg-slate-50/60">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg leading-none">{spiel.icon || getSpielIcon(spiel)}</span>
+                              <span className="font-medium text-slate-700">{spiel.name}</span>
+                            </div>
+                          </td>
+                          {klassen.map(klasse => {
+                            const isAssigned = spielZuordnungen.some(
+                              z => z.spiel_id === spiel.id && z.klasse_id === klasse.id
+                            );
+                            return (
+                              <td key={klasse.id} className="px-4 py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isAssigned}
+                                  onChange={() => handleToggleAssignment(spiel.id, klasse.id)}
+                                  className="h-4 w-4 rounded border-slate-300 cursor-pointer accent-[#F2A03D]"
+                                  title={isAssigned ? `${spiel.name} aus ${klasse.name} entfernen` : `${spiel.name} zu ${klasse.name} hinzufügen`}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                    {/* Zusammenfassung-Zeile */}
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-200 bg-slate-50/50">
+                        <td className="py-2 pr-8 text-xs text-slate-400 font-medium sticky left-0 bg-slate-50/50">
+                          Gesamt
+                        </td>
+                        {klassen.map(klasse => {
+                          const count = spielZuordnungen.filter(z => z.klasse_id === klasse.id).length;
+                          return (
+                            <td key={klasse.id} className="px-4 py-2 text-center text-xs font-semibold text-slate-500">
+                              {count}/{spiele.length}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -867,265 +639,249 @@ export default function SpieleVerwaltung() {
 
       </Tabs>
 
-      {/* --- Dialogs --- */} 
-      {/* Create/Edit Dialog */} 
+      {/* --- Dialogs --- */}
+      {/* Create/Edit Dialog — C: scrollbares Modal mit fixem Header/Footer */}
       <Dialog open={isCreateDialogOpen || isEditDialogOpen} onOpenChange={(isOpen) => {
         if (!isOpen) {
           setIsCreateDialogOpen(false);
           setIsEditDialogOpen(false);
         }
       }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[560px] flex flex-col max-h-[90vh] p-0 gap-0">
+          {/* Fixer Header */}
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-100 shrink-0">
             <DialogTitle>{isCreateDialogOpen ? 'Neues Spiel erstellen' : 'Spiel bearbeiten'}</DialogTitle>
             <DialogDescription>
               {isCreateDialogOpen ? 'Fülle die Details für das neue Spiel aus.' : `Ändere die Details für das Spiel "${spielToEdit?.name}".`}
             </DialogDescription>
           </DialogHeader>
-          {(isCreateDialogOpen || isEditDialogOpen) && (
-            <form onSubmit={isCreateDialogOpen ? handleCreateSpiel : handleUpdateSpiel} className="grid gap-6 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Name*
-                </Label>
-                <Input
-                  id="name"
-                  value={isCreateDialogOpen ? newSpielData.name : editSpielData.name ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, name: value }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, name: value }));
-                    }
-                  }}
-                  className="col-span-3"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="beschreibung" className="text-right">
-                  Beschreibung
-                </Label>
-                <Textarea
-                  id="beschreibung"
-                  value={isCreateDialogOpen ? newSpielData.beschreibung ?? '' : editSpielData.beschreibung ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, beschreibung: value || null }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, beschreibung: value || null }));
-                    }
-                  }}
-                  className="col-span-3"
-                  rows={3}
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="ziel" className="text-right">
-                  Ziel
-                </Label>
-                <Textarea
-                  id="ziel"
-                  value={isCreateDialogOpen ? newSpielData.ziel ?? '' : editSpielData.ziel ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, ziel: value || null }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, ziel: value || null }));
-                    }
-                  }}
-                  className="col-span-3"
-                  rows={2}
-                  placeholder="Was ist das Ziel des Spiels?"
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="ort" className="text-right">
-                  Ort
-                </Label>
-                <Input
-                  id="ort"
-                  value={isCreateDialogOpen ? newSpielData.ort ?? '' : editSpielData.ort ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, ort: value || null }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, ort: value || null }));
-                    }
-                  }}
-                  className="col-span-3"
-                  placeholder="Wo findet das Spiel statt?"
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="regeln" className="text-right">
-                  Spielregeln
-                </Label>
-                <Textarea
-                  id="regeln"
-                  value={isCreateDialogOpen ? newSpielData.regeln ?? '' : editSpielData.regeln ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, regeln: value || null }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, regeln: value || null }));
-                    }
-                  }}
-                  className="col-span-3"
-                  rows={4}
-                  placeholder="Beschreibe die Regeln des Spiels. Verwende '- ' für Aufzählungspunkte."
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="icon" className="text-right">
-                  Icon (Emoji)
-                </Label>
-                <Input
-                  id="icon"
-                  value={isCreateDialogOpen ? newSpielData.icon ?? '' : editSpielData.icon ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, icon: value || null }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, icon: value || null }));
-                    }
-                  }}
-                  className="col-span-3"
-                  placeholder="Emoji für das Spiel, z.B. 🎯"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="wertungstyp" className="text-right">
-                  Wertungstyp
-                </Label>
-                <Select
-                  value={isCreateDialogOpen ? newSpielData.wertungstyp ?? '' : editSpielData.wertungstyp ?? ''}
-                  onValueChange={(value) => {
-                    const wertungstypValue = value ? value as WertungstypEnum : null;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, wertungstyp: wertungstypValue }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, wertungstyp: wertungstypValue }));
-                    }
-                  }}
+
+          {/* Scrollbarer Body */}
+          {(isCreateDialogOpen || isEditDialogOpen) && (() => {
+            const wt = (isCreateDialogOpen ? newSpielData.wertungstyp : editSpielData.wertungstyp) ?? null;
+            const wtConfig = wt ? WERTUNGSTYP_CONFIG[wt] : null;
+            // B: Zeige Feld, wenn kein Typ gewählt (alle sichtbar) oder Typ passt
+            const showField = (field: string) => !wt || (wtConfig?.fields ?? []).includes(field);
+            const getVal = (field: keyof Spiel) =>
+              ((isCreateDialogOpen ? newSpielData : editSpielData)[field] ?? '') as any;
+            const setVal = (field: keyof Spiel, value: any) => {
+              if (isCreateDialogOpen) setNewSpielData(prev => ({ ...prev, [field]: value }));
+              else setEditSpielData(prev => ({ ...prev, [field]: value }));
+            };
+            return (
+              <div className="overflow-y-auto flex-1">
+                <form
+                  id="spiel-form"
+                  onSubmit={isCreateDialogOpen ? handleCreateSpiel : handleUpdateSpiel}
+                  className="px-6 py-5 space-y-6"
                 >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Wertungstyp auswählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PUNKTE_ABZUG">Punkte Abzug</SelectItem>
-                    <SelectItem value="MENGE_MAX_ZEIT">Menge Max Zeit</SelectItem>
-                    <SelectItem value="PUNKTE_SUMME_AUS_N">Punkte Summe aus N</SelectItem>
-                    <SelectItem value="ZEIT_MIN_STRAFE">Zeit Min Strafe</SelectItem>
-                    <SelectItem value="WEITE_MAX_AUS_N">Weite Max aus N</SelectItem>
-                    {/* Add other WertungstypEnum values here if needed */}
-                  </SelectContent>
-                </Select>
+                  {/* D: Abschnitt Grundinfo */}
+                  <div className="space-y-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Grundinfo</p>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="name" className="text-right text-sm pt-2">Name *</Label>
+                      <Input
+                        id="name"
+                        value={getVal('name')}
+                        onChange={(e) => setVal('name', e.target.value)}
+                        className="col-span-3"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="icon" className="text-right text-sm pt-2">Icon</Label>
+                      <Input
+                        id="icon"
+                        value={getVal('icon')}
+                        onChange={(e) => setVal('icon', e.target.value || null)}
+                        className="col-span-3"
+                        placeholder="Emoji, z.B. 🎯"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="ort" className="text-right text-sm pt-2">Ort</Label>
+                      <Input
+                        id="ort"
+                        value={getVal('ort')}
+                        onChange={(e) => setVal('ort', e.target.value || null)}
+                        className="col-span-3"
+                        placeholder="Wo findet das Spiel statt?"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="beschreibung" className="text-right text-sm pt-2">Beschreibung</Label>
+                      <Textarea
+                        id="beschreibung"
+                        value={getVal('beschreibung')}
+                        onChange={(e) => setVal('beschreibung', e.target.value || null)}
+                        className="col-span-3"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="ziel" className="text-right text-sm pt-2">Ziel</Label>
+                      <Textarea
+                        id="ziel"
+                        value={getVal('ziel')}
+                        onChange={(e) => setVal('ziel', e.target.value || null)}
+                        className="col-span-3"
+                        rows={2}
+                        placeholder="Was ist das Ziel des Spiels?"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="regeln" className="text-right text-sm pt-2">Spielregeln</Label>
+                      <Textarea
+                        id="regeln"
+                        value={getVal('regeln')}
+                        onChange={(e) => setVal('regeln', e.target.value || null)}
+                        className="col-span-3"
+                        rows={4}
+                        placeholder="Beschreibe die Regeln. Verwende '- ' für Aufzählungspunkte."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100" />
+
+                  {/* D: Abschnitt Wertung */}
+                  <div className="space-y-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Wertung</p>
+
+                    {/* A: Wertungstyp mit lesbarem Label */}
+                    <div className="grid grid-cols-4 items-start gap-3">
+                      <Label htmlFor="wertungstyp" className="text-right text-sm pt-2">Typ</Label>
+                      <div className="col-span-3 space-y-2">
+                        <Select
+                          value={wt ?? ''}
+                          onValueChange={(value) => {
+                            const v = value ? value as WertungstypEnum : null;
+                            if (isCreateDialogOpen) setNewSpielData(prev => ({ ...prev, wertungstyp: v }));
+                            else setEditSpielData(prev => ({ ...prev, wertungstyp: v }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Wertungstyp auswählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(Object.entries(WERTUNGSTYP_CONFIG) as [WertungstypEnum, typeof WERTUNGSTYP_CONFIG[WertungstypEnum]][]).map(([value, config]) => (
+                              <SelectItem key={value} value={value}>{config.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {/* A: Erklärungskarte */}
+                        {wtConfig && (
+                          <div className="rounded-lg bg-orange-50 border border-orange-100 p-3 space-y-1">
+                            <p className="text-xs font-semibold text-orange-700">{wtConfig.label}</p>
+                            <p className="text-xs text-slate-600">{wtConfig.description}</p>
+                            <p className="text-[11px] text-slate-400 italic">Beispiel: {wtConfig.example}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* B: Anz. Versuche — nur bei WEITE_MAX_AUS_N, PUNKTE_SUMME_AUS_N */}
+                    {showField('anzahl_versuche') && (
+                      <div className="grid grid-cols-4 items-center gap-3">
+                        <Label htmlFor="anzahl_versuche" className="text-right text-sm">Anz. Versuche</Label>
+                        <Input
+                          id="anzahl_versuche"
+                          type="number"
+                          min="0"
+                          value={getVal('anzahl_versuche')}
+                          onChange={(e) => setVal('anzahl_versuche', e.target.value ? parseInt(e.target.value) : null)}
+                          className="col-span-3"
+                        />
+                      </div>
+                    )}
+
+                    {/* B: Zeitlimit — nur bei MENGE_MAX_ZEIT */}
+                    {showField('zeitlimit_sekunden') && (
+                      <div className="grid grid-cols-4 items-center gap-3">
+                        <Label htmlFor="zeitlimit_sekunden" className="text-right text-sm">Zeitlimit (sek)</Label>
+                        <Input
+                          id="zeitlimit_sekunden"
+                          type="number"
+                          min="0"
+                          value={getVal('zeitlimit_sekunden')}
+                          onChange={(e) => setVal('zeitlimit_sekunden', e.target.value ? parseInt(e.target.value) : null)}
+                          className="col-span-3"
+                        />
+                      </div>
+                    )}
+
+                    {/* B: Startpunkte — nur bei PUNKTE_ABZUG */}
+                    {showField('startpunkte') && (
+                      <div className="grid grid-cols-4 items-center gap-3">
+                        <Label htmlFor="startpunkte" className="text-right text-sm">Startpunkte</Label>
+                        <Input
+                          id="startpunkte"
+                          type="number"
+                          value={getVal('startpunkte')}
+                          onChange={(e) => setVal('startpunkte', e.target.value ? parseInt(e.target.value) : null)}
+                          className="col-span-3"
+                        />
+                      </div>
+                    )}
+
+                    {/* B: Strafzeit — nur bei ZEIT_MIN_STRAFE */}
+                    {showField('strafzeit_sekunden') && (
+                      <div className="grid grid-cols-4 items-center gap-3">
+                        <Label htmlFor="strafzeit_sekunden" className="text-right text-sm">Strafzeit (sek)</Label>
+                        <Input
+                          id="strafzeit_sekunden"
+                          type="number"
+                          min="0"
+                          value={getVal('strafzeit_sekunden')}
+                          onChange={(e) => setVal('strafzeit_sekunden', e.target.value ? parseInt(e.target.value) : null)}
+                          className="col-span-3"
+                        />
+                      </div>
+                    )}
+
+                    {/* Einheit — bei ausgewähltem Wertungstyp */}
+                    {wt && (
+                      <div className="grid grid-cols-4 items-center gap-3">
+                        <Label htmlFor="einheit" className="text-right text-sm">Einheit</Label>
+                        <Input
+                          id="einheit"
+                          value={getVal('einheit')}
+                          onChange={(e) => setVal('einheit', e.target.value || null)}
+                          className="col-span-3"
+                          placeholder={wtConfig?.unitExample ?? 'z.B. cm, Punkte'}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </form>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="anzahl_versuche" className="text-right">
-                  Anz. Versuche
-                </Label>
-                <Input
-                  id="anzahl_versuche"
-                  type="number"
-                  min="0"
-                  value={isCreateDialogOpen ? newSpielData.anzahl_versuche ?? '' : editSpielData.anzahl_versuche ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value ? parseInt(e.target.value) : null;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, anzahl_versuche: value }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, anzahl_versuche: value }));
-                    }
-                  }}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="zeitlimit_sekunden" className="text-right">
-                  Zeitlimit (sek)
-                </Label>
-                <Input
-                  id="zeitlimit_sekunden"
-                  type="number"
-                  min="0"
-                  value={isCreateDialogOpen ? newSpielData.zeitlimit_sekunden ?? '' : editSpielData.zeitlimit_sekunden ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value ? parseInt(e.target.value) : null;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, zeitlimit_sekunden: value }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, zeitlimit_sekunden: value }));
-                    }
-                  }}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="startpunkte" className="text-right">
-                  Startpunkte
-                </Label>
-                <Input
-                  id="startpunkte"
-                  type="number"
-                  // Allow negative numbers if needed, remove min="0"
-                  value={isCreateDialogOpen ? newSpielData.startpunkte ?? '' : editSpielData.startpunkte ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value ? parseInt(e.target.value) : null;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, startpunkte: value }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, startpunkte: value }));
-                    }
-                  }}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="strafzeit_sekunden" className="text-right">
-                  Strafzeit (sek)
-                </Label>
-                <Input
-                  id="strafzeit_sekunden"
-                  type="number"
-                  min="0"
-                  value={isCreateDialogOpen ? newSpielData.strafzeit_sekunden ?? '' : editSpielData.strafzeit_sekunden ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value ? parseInt(e.target.value) : null;
-                    if (isCreateDialogOpen) {
-                      setNewSpielData(prev => ({ ...prev, strafzeit_sekunden: value }));
-                    } else {
-                      setEditSpielData(prev => ({ ...prev, strafzeit_sekunden: value }));
-                    }
-                  }}
-                  className="col-span-3"
-                />
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => {
-                  setIsCreateDialogOpen(false);
-                  setIsEditDialogOpen(false);
-                }} disabled={isSaving || isUpdating}>
-                  Abbrechen
-                </Button>
-                <Button type="submit" disabled={isSaving || isUpdating}>
-                  {(isSaving || isUpdating) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {(isSaving || isUpdating) ? 'Speichern...' : (isCreateDialogOpen ? 'Spiel speichern' : 'Änderungen speichern')}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
+            );
+          })()}
+
+          {/* Fixer Footer */}
+          <div className="px-6 py-4 border-t border-slate-100 shrink-0 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                setIsEditDialogOpen(false);
+              }}
+              disabled={isSaving || isUpdating}
+            >
+              Abbrechen
+            </Button>
+            <Button type="submit" form="spiel-form" disabled={isSaving || isUpdating}>
+              {(isSaving || isUpdating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {(isSaving || isUpdating) ? 'Speichern...' : (isCreateDialogOpen ? 'Spiel speichern' : 'Änderungen speichern')}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

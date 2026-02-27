@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, FileDown, Eye, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'react-hot-toast';
+import Link from 'next/link';
+import { FileDown, Eye, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -64,7 +64,6 @@ interface AufgabeFilterOption {
 
 export default function PDFVerwaltung() {
   const supabase = createClient();
-  const router = useRouter();
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   // Prüfen, ob ZIP-Dateien unterstützt werden (für das Generieren mehrerer PDFs)
   const [isZipsSupported] = useState(true); // Vereinfachte Implementation, da moderne Browser ZIP unterstützen
@@ -85,13 +84,6 @@ export default function PDFVerwaltung() {
   const [isVorschauOpen, setIsVorschauOpen] = useState(false);
   const [vorschauKindId, setVorschauKindId] = useState<string | null>(null);
   
-  const [debugCounts, setDebugCounts] = useState({
-    kinder: 0,
-    zuteilungenRoh: 0,
-    transformedOnline: 0,
-    pdfDataKlassen: 0,
-    kinderInPdfData: 0,
-  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -257,14 +249,6 @@ export default function PDFVerwaltung() {
 
         setAlleKlassenPdfsDaten(aufbereitetePdfDaten);
 
-        setDebugCounts({
-          kinder: kinderData?.length || 0,
-          zuteilungenRoh: zuteilungenRohData?.length || 0,
-          transformedOnline: transformedZuteilungenFuerOnlineAnsicht?.length || 0,
-          pdfDataKlassen: Object.keys(aufbereitetePdfDaten).length,
-          kinderInPdfData: Object.values(aufbereitetePdfDaten).reduce((sum, klasse) => sum + klasse.kinderDieserKlasse.length, 0)
-        });
-
       } catch (error: any) {
         console.error('Fehler beim Laden oder Aufbereiten der Daten:', error);
         toast.error('Fehler beim Laden der Daten für PDF');
@@ -316,7 +300,7 @@ export default function PDFVerwaltung() {
       return;
     }
     if (Object.keys(alleKlassenPdfsDaten).length === 0) {
-      setPdfGenerationMessage('Keine aufbereiteten PDF-Daten vorhanden. Bitte laden Sie zuerst die Daten.');
+      setPdfGenerationMessage('Keine aufbereiteten PDF-Daten vorhanden. Bitte lade zuerst die Daten.');
       return;
     }
     setPdfGenerationLoading(true);
@@ -372,7 +356,7 @@ export default function PDFVerwaltung() {
   // Handler für das Generieren einer PDF für die ausgewählte Klasse
   const handleGenerateSelectedKlassePDF = async () => {
     if (!supabase || selectedKlasse === 'alle') {
-      setPdfGenerationMessage('Bitte wählen Sie eine Klasse aus.');
+      setPdfGenerationMessage('Bitte wähle eine Klasse aus.');
       return;
     }
     setPdfGenerationLoading(true);
@@ -387,29 +371,18 @@ export default function PDFVerwaltung() {
   };
   
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex items-center mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={() => router.push('/admin/helfer')}
-          className="mr-2"
+    <div className="p-4 md:p-8">
+      <div className="mb-6">
+        <Link
+          href="/admin/helfer"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3 transition-colors"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Zurück
-        </Button>
-        <h1 className="text-2xl font-bold">Helfer-Zuteilungen PDF</h1>
+          &larr; Zurück zur Helferverwaltung
+        </Link>
+        <h1 className="text-2xl font-bold text-slate-900">Helfer-Zuteilungen PDF</h1>
+        <p className="text-sm text-slate-500 mt-1">PDFs für Elternbriefe und Klassenübersichten generieren</p>
       </div>
       
-      <div className="mb-4 p-2 border border-yellow-500 bg-yellow-50 text-sm">
-        <h3 className="font-semibold text-yellow-700">Debug Informationen:</h3>
-        <p>Anzahl Kinder geladen: {debugCounts.kinder}</p>
-        <p>Anzahl Roh-Zuteilungen geladen: {debugCounts.zuteilungenRoh}</p>
-        <p>Anzahl Zuteilungen für Online-Tabelle (transformiert & gefiltert auf Kinder): {debugCounts.transformedOnline}</p>
-        <p>Anzahl Klassen im PDF-Datensatz: {debugCounts.pdfDataKlassen}</p>
-        <p>Anzahl Kinder insgesamt im PDF-Datensatz: {debugCounts.kinderInPdfData}</p>
-        <p className="text-red-600">Fehler Initial: {errorInitial || (debugCounts.kinder === 0 && !isLoadingInitial ? 'Keine Kinder geladen, aber kein expliziter Fehler gefangen.' : 'Kein Fehler')}</p>
-      </div>
-
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Filter</CardTitle>

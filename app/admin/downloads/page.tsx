@@ -3,19 +3,41 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from "@/components/ui/button";
-import { Trash2, Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
-import { useToast } from "@/components/ui/use-toast";
+import { Trash2, Upload, FileText, AlertCircle, Save, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function DownloadsAdmin() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const { toast } = useToast();
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [savingLabels, setSavingLabels] = useState(false);
 
-  // Initialisieren des authentifizierten Supabase-Clients
   const supabase = createClient();
-  
+
+  const fetchLabels = async () => {
+    const { data } = await supabase
+      .from('seiteneinstellungen')
+      .select('value')
+      .eq('key', 'downloads_labels')
+      .maybeSingle();
+    if (data?.value) setLabels(data.value as Record<string, string>);
+  };
+
+  const saveLabels = async () => {
+    setSavingLabels(true);
+    const { error } = await supabase
+      .from('seiteneinstellungen')
+      .upsert({ key: 'downloads_labels', value: labels, updated_at: new Date().toISOString() });
+    setSavingLabels(false);
+    if (error) {
+      toast.error('Fehler: ' + error.message);
+    } else {
+      toast.success('Anzeigetitel wurden gespeichert');
+    }
+  };
+
   // Funktion zum Bereinigen von Dateinamen (Umlaute und Sonderzeichen entfernen)
   const sanitizeFilename = (filename: string): string => {
     // Umlaute und andere Sonderzeichen ersetzen
@@ -53,11 +75,7 @@ export default function DownloadsAdmin() {
       setFiles(data || []);
     } catch (error: any) {
       console.error('Fehler beim Laden der Dateien:', error);
-      toast({
-        title: "Fehler",
-        description: `Dateien konnten nicht geladen werden: ${error.message}`,
-        variant: "destructive"
-      });
+      toast.error(`Dateien konnten nicht geladen werden: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -75,11 +93,7 @@ export default function DownloadsAdmin() {
     e.preventDefault();
     
     if (!selectedFile) {
-      toast({
-        title: "Fehler",
-        description: "Bitte wähle eine Datei aus",
-        variant: "destructive"
-      });
+      toast.error('Bitte wähle eine Datei aus');
       return;
     }
     
@@ -94,7 +108,6 @@ export default function DownloadsAdmin() {
       let fileToUpload = selectedFile;
       if (sanitizedName !== originalName) {
         fileToUpload = new File([selectedFile], sanitizedName, { type: selectedFile.type });
-        console.log(`Dateiname bereinigt: ${originalName} -> ${sanitizedName}`);
       }
       
       const { data, error } = await supabase
@@ -107,20 +120,12 @@ export default function DownloadsAdmin() {
         
       // Wenn der Dateiname bereinigt wurde, den Benutzer informieren
       if (sanitizedName !== originalName) {
-        toast({
-          title: "Hinweis",
-          description: `Der Dateiname wurde angepasst: ${originalName} → ${sanitizedName}`,
-          variant: "default"
-        });
+        toast.info(`Der Dateiname wurde angepasst: ${originalName} → ${sanitizedName}`);
       }
         
       if (error) throw error;
       
-      toast({
-        title: "Erfolg",
-        description: `Datei ${selectedFile.name} erfolgreich hochgeladen`,
-        variant: "default"
-      });
+      toast.success(`Datei ${selectedFile.name} erfolgreich hochgeladen`);
       
       setSelectedFile(null);
       // Formular zurücksetzen
@@ -131,11 +136,7 @@ export default function DownloadsAdmin() {
       fetchFiles();
     } catch (error: any) {
       console.error('Fehler beim Hochladen:', error);
-      toast({
-        title: "Fehler",
-        description: `Fehler beim Hochladen: ${error.message}`,
-        variant: "destructive"
-      });
+      toast.error(`Fehler beim Hochladen: ${error.message}`);
     } finally {
       setUploading(false);
     }
@@ -157,29 +158,21 @@ export default function DownloadsAdmin() {
         
       if (error) throw error;
       
-      toast({
-        title: "Erfolg",
-        description: `Datei ${fileName} erfolgreich gelöscht`,
-        variant: "default"
-      });
+      toast.success(`Datei ${fileName} erfolgreich gelöscht`);
       
       // Dateien neu laden
       fetchFiles();
     } catch (error: any) {
       console.error('Fehler beim Löschen:', error);
-      toast({
-        title: "Fehler",
-        description: `Fehler beim Löschen: ${error.message}`,
-        variant: "destructive"
-      });
+      toast.error(`Fehler beim Löschen: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Dateien beim Laden der Komponente abrufen
   useEffect(() => {
     fetchFiles();
+    fetchLabels();
   }, []);
 
   // URL für Download generieren
@@ -193,9 +186,10 @@ export default function DownloadsAdmin() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Download-Verwaltung</h1>
+    <div className="p-4 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Download-Verwaltung</h1>
+        <p className="text-sm text-slate-500 mt-1">Dateien für den öffentlichen Download-Bereich verwalten</p>
       </div>
       
       {/* Upload-Formular */}
@@ -240,6 +234,45 @@ export default function DownloadsAdmin() {
         </form>
       </div>
       
+      {/* Anzeigetitel */}
+      {files.length > 0 && (
+        <div className="bg-white shadow rounded-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+              <span>🏷️</span> Anzeigetitel
+            </h2>
+            <button
+              onClick={saveLabels}
+              disabled={savingLabels}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-900 disabled:opacity-50 transition-colors"
+            >
+              {savingLabels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Speichern
+            </button>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            Optionale Bezeichnung für die Webseite. Leer lassen = Dateiname wird angezeigt.
+          </p>
+          <div className="space-y-3">
+            {files.map(file => (
+              <div key={file.id} className="flex items-center gap-4">
+                <span className="text-sm text-gray-500 w-64 truncate flex-shrink-0" title={file.name}>
+                  {file.name}
+                </span>
+                <span className="text-gray-300">→</span>
+                <input
+                  type="text"
+                  value={labels[file.name] ?? ''}
+                  onChange={e => setLabels(prev => ({ ...prev, [file.name]: e.target.value }))}
+                  placeholder="Anzeigetitel (optional)"
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Dateien-Liste */}
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">

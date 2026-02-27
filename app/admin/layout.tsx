@@ -41,8 +41,10 @@ export default function AdminLayout({
   
   // Nur rendern, wenn authentifiziert
   return isAuthenticated ? (
-    <div className="pt-16 lg:pl-56 transition-all duration-300">
+    <div className="lg:pl-60 transition-all duration-300">
       {children}
     </div>
   ) : null;
 }
+
+

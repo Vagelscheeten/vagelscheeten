@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 // Typen
 interface KinderImportProps {
   activeEventId: string;
+  onImportComplete?: () => void;
 }
 
 type Kind = {
@@ -29,7 +30,7 @@ type Kind = {
   error?: string;
 };
 
-export function KinderImport({ activeEventId }: KinderImportProps) {
+export function KinderImport({ activeEventId, onImportComplete }: KinderImportProps) {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -42,7 +43,7 @@ export function KinderImport({ activeEventId }: KinderImportProps) {
   // Text-Import vorbereiten
   const handlePrepareTextImport = () => {
     if (!bulkText.trim()) {
-      toast.warning('Bitte fügen Sie Daten ein.');
+      toast.warning('Bitte füge Daten ein.');
       return;
     }
     
@@ -231,8 +232,7 @@ export function KinderImport({ activeEventId }: KinderImportProps) {
       setPreviewData([]);
       setImportMethod('text');
       
-      // Seite neu laden, um die Klassenliste zu aktualisieren
-      window.location.reload();
+      onImportComplete?.();
       
     } catch (error: any) {
       console.error('Fehler beim Importieren der Kinder:', error);
@@ -280,7 +280,7 @@ export function KinderImport({ activeEventId }: KinderImportProps) {
                 
                 {importMethod === 'text' ? (
                   <div>
-                    <Label htmlFor="bulk-import">Fügen Sie hier Ihre Daten ein (ein Kind pro Zeile, Format: Vorname Nachname Geschlecht Klasse)</Label>
+                    <Label htmlFor="bulk-import">Füge hier deine Daten ein (ein Kind pro Zeile, Format: Vorname Nachname Geschlecht Klasse)</Label>
                     <Textarea
                       id="bulk-import"
                       value={bulkText}
@@ -303,7 +303,7 @@ Peter Schmidt Junge Schulis"
                   </div>
                 ) : (
                   <div>
-                    <Label htmlFor="excel-import">Wählen Sie eine Excel-Datei aus (mit Spalten: Vorname, Nachname, Geschlecht, Klasse)</Label>
+                    <Label htmlFor="excel-import">Wähle eine Excel-Datei aus (mit Spalten: Vorname, Nachname, Geschlecht, Klasse)</Label>
                     <div className="flex items-center space-x-2 mt-2">
                       <Input
                         id="excel-import"

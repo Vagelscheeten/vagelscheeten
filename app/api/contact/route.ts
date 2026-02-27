@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { escapeHtml } from '@/lib/email-utils';
 
 // Initialisieren des Supabase-Clients mit Admin-Rechten
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,7 +15,6 @@ const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL || 'orgateam@vagelscheeten.d
 const supabaseAdmin = createClient(supabaseUrl!, supabaseServiceKey!);
 const resend = new Resend(resendApiKey);
 
-console.log('Kontakt-API initialisiert mit Supabase und Resend');
 
 export async function POST(request: Request) {
   try {
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     if (supabaseError) {
       console.error('Fehler beim Speichern der Kontaktanfrage:', supabaseError);
       return NextResponse.json(
-        { error: `Fehler beim Speichern der Nachricht: ${supabaseError.message}` },
+        { error: 'Fehler beim Speichern der Nachricht' },
         { status: 500 }
       );
     }
@@ -63,15 +63,15 @@ export async function POST(request: Request) {
       const { data: emailData, error: emailError } = await resend.emails.send({
         from: 'Vogelschießen Kontaktformular <onboarding@resend.dev>',
         to: [RECIPIENT_EMAIL],
-        subject: `Neue Kontaktanfrage von ${name}`,
+        subject: `Neue Kontaktanfrage von ${escapeHtml(name)}`,
         replyTo: email,
         text: `Name: ${name}\nE-Mail: ${email}\n\nNachricht:\n${message}`,
         html: `
           <h2>Neue Kontaktanfrage vom Vogelschießen-Formular</h2>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>E-Mail:</strong> ${email}</p>
+          <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+          <p><strong>E-Mail:</strong> ${escapeHtml(email)}</p>
           <h3>Nachricht:</h3>
-          <p>${message.replace(/\n/g, '<br>')}</p>
+          <p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>
         `,
       });
       
@@ -79,7 +79,6 @@ export async function POST(request: Request) {
         console.error('Fehler beim Senden der E-Mail:', emailError);
         // Wir geben trotzdem eine Erfolgsantwort zurück, da die Nachricht in der Datenbank gespeichert wurde
       } else {
-        console.log('E-Mail erfolgreich gesendet:', emailData);
       }
     } catch (emailSendError) {
       console.error('Fehler beim Senden der E-Mail:', emailSendError);
@@ -93,7 +92,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Unerwarteter Fehler:', error);
     return NextResponse.json(
-      { error: `Ein unerwarteter Fehler ist aufgetreten: ${error.message}` },
+      { error: 'Ein unerwarteter Fehler ist aufgetreten' },
       { status: 500 }
     );
   }

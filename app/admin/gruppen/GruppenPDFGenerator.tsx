@@ -26,7 +26,7 @@ export function GruppenPDFGenerator({ activeEventId, selectedKlasseName }: Grupp
   // Funktion zum Laden der Gruppen-Daten
   const loadGruppenData = async () => {
     if (!activeEventId || !selectedKlasseName) {
-      toast.error('Bitte wählen Sie ein Event und eine Klasse aus.');
+      toast.error('Bitte wähle ein Event und eine Klasse aus.');
       return null;
     }
 
@@ -157,7 +157,7 @@ export function GruppenPDFGenerator({ activeEventId, selectedKlasseName }: Grupp
   // Lädt alle Gruppen für alle Klassen im aktuellen Event
   const loadAllGruppenData = async () => {
     if (!activeEventId) {
-      toast.error('Bitte wählen Sie ein Event aus.');
+      toast.error('Bitte wähle ein Event aus.');
       return null;
     }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { SpendenBedarf } from './types';
+import { SpendenBedarfMitSumme } from './types';
 
 interface Kind {
   id: string;
@@ -30,9 +30,10 @@ interface Kind {
 interface ManuelleEssensspendeZuweisungModalProps {
   open: boolean;
   onClose: () => void;
-  bedarf: SpendenBedarf;
+  alleBedarfe: SpendenBedarfMitSumme[];
+  vorausgewaehlterBedarfId?: string;
+  eventId: string;
   onSave: () => void;
-  verfuegbareMenge: number;
 }
 
 interface Klasse {
@@ -40,42 +41,46 @@ interface Klasse {
   count: number;
 }
 
-export function ManuelleEssensspendeZuweisungModal({ 
-  open, 
-  onClose, 
-  bedarf,
+export function ManuelleEssensspendeZuweisungModal({
+  open,
+  onClose,
+  alleBedarfe,
+  vorausgewaehlterBedarfId,
+  eventId,
   onSave,
-  verfuegbareMenge
 }: ManuelleEssensspendeZuweisungModalProps) {
+  const [selectedBedarfId, setSelectedBedarfId] = useState<string>(vorausgewaehlterBedarfId || '');
   const [selectedKindId, setSelectedKindId] = useState<string>('');
   const [selectedKlasse, setSelectedKlasse] = useState<string>('');
   const [menge, setMenge] = useState<number>(1);
-  const [freitext, setFreitext] = useState<string>('');
   const [kinder, setKinder] = useState<Kind[]>([]);
   const [klassen, setKlassen] = useState<Klasse[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [zugewieseneKinder, setZugewieseneKinder] = useState<string[]>([]);
+  const [zugewieseneKinderMap, setZugewieseneKinderMap] = useState<Record<string, string[]>>({});
 
-  // Kinder und Klassen laden
+  const selectedBedarf = alleBedarfe.find(b => b.id === selectedBedarfId);
+  const verfuegbareMenge = selectedBedarf
+    ? Math.max(0, selectedBedarf.anzahl_benoetigt - selectedBedarf.summeRueckmeldungen)
+    : 0;
+
   useEffect(() => {
     const fetchData = async () => {
       if (!open) return;
-      
+
       setIsLoading(true);
       const supabase = createClient();
-      
+
       try {
-        // Kinder laden
         const { data, error } = await supabase
           .from('kinder')
           .select('id, vorname, nachname, klasse')
+          .eq('event_id', eventId)
           .order('nachname');
-          
+
         if (error) throw error;
         setKinder(data || []);
-        
-        // Klassen extrahieren und zählen
+
         const klassenMap = new Map<string, number>();
         data?.forEach(kind => {
           if (kind.klasse) {
@@ -83,27 +88,28 @@ export function ManuelleEssensspendeZuweisungModal({
             klassenMap.set(kind.klasse, count + 1);
           }
         });
-        
-        // In Array umwandeln und sortieren
+
         const klassenArray = Array.from(klassenMap.entries()).map(([klasse, count]) => ({
           klasse,
           count
         }));
         klassenArray.sort((a, b) => a.klasse.localeCompare(b.klasse));
-        
         setKlassen(klassenArray);
 
-        // Bereits zugewiesene Kinder laden
+        // Zugewiesene Kinder pro Bedarf laden
         const { data: rueckmeldungen, error: rueckmeldungenError } = await supabase
           .from('essensspenden_rueckmeldungen')
-          .select('kind_identifier')
-          .eq('spende_id', bedarf.id);
+          .select('kind_identifier, spende_id')
+          .eq('event_id', eventId);
 
         if (rueckmeldungenError) throw rueckmeldungenError;
-        
-        // Kind-Identifier extrahieren
-        const zugewieseneIdentifier = rueckmeldungen?.map(r => r.kind_identifier) || [];
-        setZugewieseneKinder(zugewieseneIdentifier);
+
+        const map: Record<string, string[]> = {};
+        rueckmeldungen?.forEach(r => {
+          if (!map[r.spende_id]) map[r.spende_id] = [];
+          map[r.spende_id].push(r.kind_identifier);
+        });
+        setZugewieseneKinderMap(map);
       } catch (error: any) {
         console.error('Fehler beim Laden der Daten:', error);
         toast.error(`Fehler: ${error.message || 'Unbekannter Fehler'}`);
@@ -111,26 +117,30 @@ export function ManuelleEssensspendeZuweisungModal({
         setIsLoading(false);
       }
     };
-    
+
     fetchData();
-  }, [open, bedarf.id]);
-  
-  // Kinder nach Klasse filtern
+  }, [open, eventId]);
+
   const filteredKinder = useMemo(() => {
     if (!selectedKlasse || selectedKlasse === "all") return kinder;
     return kinder.filter(kind => kind.klasse === selectedKlasse);
   }, [kinder, selectedKlasse]);
 
-  // Prüfen, ob ein Kind bereits zugewiesen ist
+  const zugewieseneKinder = selectedBedarfId ? (zugewieseneKinderMap[selectedBedarfId] || []) : [];
+
   const isKindBereitsZugewiesen = (kind: Kind): boolean => {
     const kindIdentifier = `${kind.nachname}, ${kind.vorname}${kind.klasse ? ` (${kind.klasse})` : ''}`;
     return zugewieseneKinder.includes(kindIdentifier);
   };
 
-  // Kinder filtern, die noch nicht zugewiesen sind
   const verfuegbareKinder = filteredKinder.filter(kind => !isKindBereitsZugewiesen(kind));
 
   const handleSubmit = async () => {
+    if (!selectedBedarfId || !selectedBedarf) {
+      toast.error('Bitte wähle eine Spendenart aus');
+      return;
+    }
+
     if (!selectedKindId) {
       toast.error('Bitte wähle ein Kind aus');
       return;
@@ -145,47 +155,41 @@ export function ManuelleEssensspendeZuweisungModal({
       toast.error(`Es sind nur noch ${verfuegbareMenge} Einheiten verfügbar`);
       return;
     }
-    
+
     setIsSubmitting(true);
     const supabase = createClient();
-    
-    try {
-      // Das ausgewählte Kind finden
-      const selectedKind = kinder.find(kind => kind.id === selectedKindId);
-      if (!selectedKind) {
-        throw new Error('Kind nicht gefunden');
-      }
 
-      // Kind-Identifier erstellen
+    try {
+      const selectedKind = kinder.find(kind => kind.id === selectedKindId);
+      if (!selectedKind) throw new Error('Kind nicht gefunden');
+
       const kindIdentifier = `${selectedKind.nachname}, ${selectedKind.vorname}${selectedKind.klasse ? ` (${selectedKind.klasse})` : ''}`;
-      
-      // Prüfen, ob bereits eine Zuweisung für dieses Kind und diese Spende existiert
+
       const { data: existingRueckmeldung, error: checkError } = await supabase
         .from('essensspenden_rueckmeldungen')
         .select('id')
         .eq('kind_identifier', kindIdentifier)
-        .eq('spende_id', bedarf.id)
+        .eq('spende_id', selectedBedarfId)
         .maybeSingle();
-        
+
       if (checkError) throw checkError;
-      
+
       if (existingRueckmeldung) {
         toast.error('Dieses Kind ist bereits für diese Essensspende eingetragen');
         return;
       }
-      
-      // Neue Rückmeldung erstellen
+
       const { error } = await supabase
         .from('essensspenden_rueckmeldungen')
         .insert([{
           kind_identifier: kindIdentifier,
-          spende_id: bedarf.id,
+          spende_id: selectedBedarfId,
           menge: menge,
-          freitext: freitext || null
+          event_id: eventId
         }]);
-        
+
       if (error) throw error;
-      
+
       toast.success('Essensspende wurde erfolgreich zugewiesen');
       onSave();
       onClose();
@@ -201,64 +205,75 @@ export function ManuelleEssensspendeZuweisungModal({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>
-            Kind manuell für "{bedarf?.titel}" zuweisen
-          </DialogTitle>
+          <DialogTitle>Essensspende manuell zuweisen</DialogTitle>
         </DialogHeader>
-        
+
         <div className="mt-4 space-y-4">
+          {/* Spendenart auswählen */}
+          <div className="space-y-2">
+            <Label htmlFor="spendenart">Spendenart</Label>
+            <Select
+              value={selectedBedarfId}
+              onValueChange={(value) => {
+                setSelectedBedarfId(value);
+                setSelectedKindId('');
+                setMenge(1);
+              }}
+              disabled={isLoading}
+            >
+              <SelectTrigger id="spendenart" className="w-full">
+                <SelectValue placeholder="Spendenart auswählen" />
+              </SelectTrigger>
+              <SelectContent>
+                {alleBedarfe.map(b => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.titel} ({b.summeRueckmeldungen}/{b.anzahl_benoetigt})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Klasse */}
           <div className="space-y-2">
             <Label htmlFor="klasse">Klasse auswählen</Label>
-            <Select 
-              value={selectedKlasse} 
+            <Select
+              value={selectedKlasse}
               onValueChange={(value) => {
                 setSelectedKlasse(value);
                 setSelectedKindId('');
               }}
-              disabled={isLoading}
+              disabled={isLoading || !selectedBedarfId}
             >
               <SelectTrigger id="klasse" className="w-full">
                 <SelectValue placeholder="Klasse auswählen" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle Klassen</SelectItem>
-                {isLoading ? (
-                  <SelectItem value="loading" disabled>
-                    Klassen werden geladen...
+                {klassen.map(klasse => (
+                  <SelectItem key={klasse.klasse} value={klasse.klasse}>
+                    {klasse.klasse} ({klasse.count})
                   </SelectItem>
-                ) : klassen.length === 0 ? (
-                  <SelectItem value="empty" disabled>
-                    Keine Klassen gefunden
-                  </SelectItem>
-                ) : (
-                  klassen.map(klasse => (
-                    <SelectItem key={klasse.klasse} value={klasse.klasse}>
-                      {klasse.klasse} ({klasse.count})
-                    </SelectItem>
-                  ))
-                )}
+                ))}
               </SelectContent>
             </Select>
           </div>
-          
+
+          {/* Kind */}
           <div className="space-y-2">
             <Label htmlFor="kind">Kind auswählen</Label>
-            <Select 
-              value={selectedKindId} 
+            <Select
+              value={selectedKindId}
               onValueChange={setSelectedKindId}
-              disabled={isLoading}
+              disabled={isLoading || !selectedBedarfId}
             >
               <SelectTrigger id="kind" className="w-full">
                 <SelectValue placeholder="Kind auswählen" />
               </SelectTrigger>
               <SelectContent>
-                {isLoading ? (
-                  <SelectItem value="loading" disabled>
-                    Kinder werden geladen...
-                  </SelectItem>
-                ) : verfuegbareKinder.length === 0 ? (
+                {verfuegbareKinder.length === 0 ? (
                   <SelectItem value="empty" disabled>
-                    Keine verfügbaren Kinder gefunden
+                    {!selectedBedarfId ? 'Erst Spendenart wählen' : 'Keine verfügbaren Kinder'}
                   </SelectItem>
                 ) : (
                   verfuegbareKinder.map(kind => (
@@ -272,42 +287,34 @@ export function ManuelleEssensspendeZuweisungModal({
             </Select>
           </div>
 
+          {/* Menge */}
           <div className="space-y-2">
             <Label htmlFor="menge">Menge</Label>
             <Input
               id="menge"
               type="number"
               min="1"
-              max={verfuegbareMenge}
+              max={verfuegbareMenge || undefined}
               value={menge}
               onChange={(e) => setMenge(parseInt(e.target.value) || 1)}
-              disabled={isLoading}
+              disabled={isLoading || !selectedBedarfId}
             />
-            <p className="text-sm text-gray-500">
-              Verfügbar: {verfuegbareMenge} von {bedarf.anzahl_benoetigt}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="freitext">Anmerkungen (optional)</Label>
-            <Input
-              id="freitext"
-              value={freitext}
-              onChange={(e) => setFreitext(e.target.value)}
-              disabled={isLoading}
-              placeholder="z.B. Besonderheiten, Allergien, etc."
-            />
+            {selectedBedarf && (
+              <p className="text-sm text-gray-500">
+                Verfügbar: {verfuegbareMenge} von {selectedBedarf.anzahl_benoetigt}
+              </p>
+            )}
           </div>
         </div>
-        
+
         <DialogFooter className="mt-6">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
             Abbrechen
           </Button>
-          <Button 
-            type="button" 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || !selectedKindId || menge <= 0 || menge > verfuegbareMenge}
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting || !selectedBedarfId || !selectedKindId || menge <= 0 || menge > verfuegbareMenge}
           >
             {isSubmitting ? 'Wird zugewiesen...' : 'Zuweisen'}
           </Button>

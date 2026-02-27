@@ -49,7 +49,6 @@ export const loadAnsprechpartnerAndSpenden = async (
   setPdfGenerationMessage?: (message: string | null) => void
 ): Promise<{ ansprechpartner: Ansprechpartner[], spendenBedarf: SpendenBedarf[] }> => {
   if (setPdfGenerationMessage) setPdfGenerationMessage('Lade Ansprechpartner und Spendenbedarf...');
-  console.log('loadAnsprechpartnerAndSpenden: Start', { supabase });
 
   try {
     const { data: ansprechpartnerData, error: ansprechpartnerError } = await supabase
@@ -60,7 +59,6 @@ export const loadAnsprechpartnerAndSpenden = async (
       console.error('loadAnsprechpartnerAndSpenden: Fehler beim Laden der Ansprechpartner:', ansprechpartnerError, ansprechpartnerError?.stack);
       throw new Error(`Fehler beim Laden der Ansprechpartner: ${ansprechpartnerError.message}`);
     }
-    console.log('loadAnsprechpartnerAndSpenden: Ansprechpartner geladen:', ansprechpartnerData);
 
     const { data: spendenBedarfData, error: spendenBedarfError } = await supabase
       .from('essensspenden_bedarf')
@@ -70,7 +68,6 @@ export const loadAnsprechpartnerAndSpenden = async (
       console.error('loadAnsprechpartnerAndSpenden: Fehler beim Laden des Spendenbedarfs:', spendenBedarfError, spendenBedarfError?.stack);
       throw new Error(`Fehler beim Laden des Spendenbedarfs: ${spendenBedarfError.message}`);
     }
-    console.log('loadAnsprechpartnerAndSpenden: Spendenbedarf geladen:', spendenBedarfData);
     if (setPdfGenerationMessage) setPdfGenerationMessage('Ansprechpartner und Spendenbedarf geladen.');
 
     return {
@@ -155,13 +152,12 @@ const generateSingleKindContent = (doc: jsPDF, kind: KindPdfDetails, currentY: n
     const wuenscheBody = kind.wuensche.map(w => [
       w.aufgabe_titel,
       w.zeitfenster_wunsch || '-',
-      w.prioritaet?.toString() || '-',
       w.freitext || '-',
       w.ist_springer ? 'Ja' : 'Nein',
     ]);
     autoTable(doc, {
       startY: yPos,
-      head: [['Aufgabe', 'Zeitfenster', 'Prio', 'Freitext', 'Springer']],
+      head: [['Aufgabe', 'Zeitfenster', 'Freitext', 'Springer']],
       body: wuenscheBody,
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 1.5, halign: 'left' },
@@ -227,7 +223,6 @@ export const generateAllPDFs = async (
   setPdfGenerationMessage?: (message: string | null) => void
 ): Promise<void> => {
   try {
-    console.log('generateAllPDFs: Start', { supabase, alleKlassenPdfsDaten });
     if (!supabase || !alleKlassenPdfsDaten) {
       const msg = 'generateAllPDFs: Supabase client or PDF data is missing.';
       console.error(msg, { supabase, alleKlassenPdfsDaten });
@@ -236,7 +231,6 @@ export const generateAllPDFs = async (
     }
     if (setPdfGenerationMessage) setPdfGenerationMessage('Starte PDF-Generierung für alle Klassen...');
     const { ansprechpartner, spendenBedarf } = await loadAnsprechpartnerAndSpenden(supabase, setPdfGenerationMessage);
-    console.log('generateAllPDFs: Ansprechpartner und SpendenBedarf geladen', { ansprechpartner, spendenBedarf });
 
     const doc = new jsPDF('p', 'mm', 'a4');
     let firstPageForLoop = true;
@@ -245,7 +239,6 @@ export const generateAllPDFs = async (
     for (const klassenName of sortedKlassenNamen) {
       if (setPdfGenerationMessage) setPdfGenerationMessage(`Generiere Daten für Klasse ${klassenName}...`);
       const klassenDaten = alleKlassenPdfsDaten[klassenName];
-      console.log('generateAllPDFs: Klasse', klassenName, klassenDaten);
       if (!firstPageForLoop) {
         doc.addPage();
       }
@@ -318,7 +311,6 @@ export const generateAllPDFs = async (
     addFooter(doc);
     doc.save('Alle_Helferlisten_Vogelschiessen.pdf');
     if (setPdfGenerationMessage) setPdfGenerationMessage('Alle Helfer-PDFs erfolgreich generiert und heruntergeladen.');
-    console.log('generateAllPDFs: PDF erfolgreich generiert und gespeichert.');
 
   } catch (error: any) {
     if (error instanceof Error) {
@@ -510,7 +502,6 @@ export const generateHelferTabellePDF = async (
 export const generatePDF = async (kindId: string) => {
   try {
     const supabase = createClient();
-    console.log(`Generating PDF for kind with ID: ${kindId}`);
     
     // 1. Fetch kind data
     const { data: kind, error: kindError } = await supabase

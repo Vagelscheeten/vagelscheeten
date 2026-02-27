@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Trash2, RefreshCw } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 export function ResetSystem() {
   const [confirmText, setConfirmText] = useState('');
@@ -20,12 +20,12 @@ export function ResetSystem() {
   
   const startReset = () => {
     if (confirmText !== expectedConfirmText) {
-      toast.error('Bitte geben Sie den exakten Bestätigungstext ein.');
+      toast.error('Bitte gib den exakten Bestätigungstext ein.');
       return;
     }
     
     if (!understood) {
-      toast.error('Sie müssen bestätigen, dass Sie die Konsequenzen verstehen.');
+      toast.error('Du musst bestätigen, dass du die Konsequenzen verstehst.');
       return;
     }
     
@@ -145,7 +145,7 @@ export function ResetSystem() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Geben Sie 'RESET VOGELSCHIESSEN' ein um fortzufahren:</label>
+          <label className="text-sm font-medium">Gib 'RESET VOGELSCHIESSEN' ein um fortzufahren:</label>
           <Input
             placeholder="RESET VOGELSCHIESSEN"
             value={confirmText}

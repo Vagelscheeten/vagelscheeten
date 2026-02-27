@@ -1194,9 +1194,12 @@ export default function AuswertungAdmin() {
 
   // UI-Darstellung
   return (
-    <main className="p-4 md:p-6">
+    <main className="p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">📊 Auswertung & Ergebnisse</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Auswertung & Ergebnisse</h1>
+          <p className="text-sm text-slate-500 mt-1">Live-Zwischenstand, Fortschritt und Abschlussauswertung</p>
+        </div>
         <Link href="/admin/auswertung/details" className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium">
           Detailansicht
         </Link>

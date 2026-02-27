@@ -35,7 +35,7 @@ export default function LogModal({ kindId, open, onClose }: { kindId: string; op
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/30 z-50">
       <div className="bg-white rounded shadow-lg p-6 min-w-[400px] max-h-[80vh] overflow-y-auto relative">
         <button className="absolute top-2 right-2 text-gray-400 hover:text-gray-700" onClick={onClose}>&#10005;</button>
         <h3 className="text-lg font-semibold mb-4">Änderungsprotokoll</h3>

@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-export function ImageUpload() {
+interface ImageUploadProps {
+  onUploadComplete?: () => void;
+}
+
+export function ImageUpload({ onUploadComplete }: ImageUploadProps = {}) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -19,7 +23,6 @@ export function ImageUpload() {
       }
 
       // Prüfen, ob Supabase konfiguriert ist
-      console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         setError('Supabase ist nicht korrekt konfiguriert');
         return;
@@ -29,7 +32,6 @@ export function ImageUpload() {
 
       // Hinweis: Der Bucket 'galerie' muss in der Supabase-Konsole erstellt werden
       // mit den richtigen Berechtigungen (RLS-Policies für anonymen Zugriff)
-      console.log('Versuche Upload in Bucket "galerie"...');
       
       // Fehlermeldung anzeigen, wenn der Upload fehlschlägt
       try {
@@ -63,7 +65,6 @@ export function ImageUpload() {
         const fileExt = file.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
 
-        console.log(`Versuche Upload von ${file.name} als ${fileName}...`);
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('galerie')
@@ -78,7 +79,6 @@ export function ImageUpload() {
           continue;
         }
         
-        console.log('Upload erfolgreich:', uploadData);
         uploadedCount++;
       }
       
@@ -89,8 +89,10 @@ export function ImageUpload() {
         // Clear the input
         event.target.value = '';
         
-        // Trigger page reload after successful upload
-        window.location.reload();
+        // Benachrichtige Parent über erfolgreichen Upload
+        if (onUploadComplete) {
+          onUploadComplete();
+        }
       }
     } catch (error) {
       console.error('Upload error:', error);

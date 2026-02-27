@@ -85,30 +85,20 @@ export default function Reporting() {
           value: anzahl as number
         }));
       
-      console.log('Kinder pro Klasse (optimiert):', kinderProKlasseData);
+
       setKinderProKlasse(kinderProKlasseData);
       
-      // Debug: Zeige die tatsächlichen Zahlen
-      console.log('Kinder pro Klasse Map (optimiert):');
-      newKlassenMap.forEach((anzahl, klasse) => {
-        console.log(`Klasse ${klasse}: ${anzahl} Kinder`);
-      });
-      
-      // Berechne Fortschritt pro Klasse - OPTIMIERT
+      // Berechne Fortschritt pro Klasse
       const fortschrittData = Array.from(newKlassenMap.keys())
         .filter(klasse => klasse) // Filtere leere Klassen
         .map(klasse => {
           // Finde alle Kinder dieser Klasse direkt
           const klassenKinder = kinder.filter(k => k.klasse === klasse);
           
-          console.log(`Klasse ${klasse}: ${klassenKinder.length} Kinder gefunden (optimiert)`);
-          
           // Finde die für diese Klasse zugewiesenen Spiele
           // Hier müssen wir die Spielzuweisungen aus der Datenbank berücksichtigen
           // Wir verwenden vorerst eine Hilfsfunktion, um die zugewiesenen Spiele zu ermitteln
           const zugewieseneSpiele = getZugewieseneSpieleFuerKlasse(klasse, spiele);
-          console.log(`Klasse ${klasse}: ${zugewieseneSpiele.length} zugewiesene Spiele`);
-          
           // Maximale Anzahl möglicher Ergebnisse für diese Klasse
           const maxErgebnisse = klassenKinder.length * zugewieseneSpiele.length;
           
@@ -124,8 +114,6 @@ export default function Reporting() {
             abgeschlosseneSpiele += kindSpieleIds.size;
           });
           
-          console.log(`Klasse ${klasse}: ${abgeschlosseneSpiele} von ${maxErgebnisse} Spielen abgeschlossen (optimiert)`);
-          
           const prozent = maxErgebnisse > 0 ? Math.round((abgeschlosseneSpiele / maxErgebnisse) * 100) : 0;
           
           return {
@@ -135,7 +123,6 @@ export default function Reporting() {
           };
         });
       
-      console.log('Fortschritt pro Klasse:', fortschrittData);
       setFortschrittProKlasse(fortschrittData);
       
       // Berechne Top-Performer basierend auf der Punkteberechnung aus der Auswertung
@@ -185,7 +172,6 @@ export default function Reporting() {
         punkte: kind.punkte
       }));
       
-      console.log('Top Performer:', topKinder);
       setTopPerformer(topKinder);
     }
   }, [kinder, spielgruppen, spiele, ergebnisse]);
@@ -200,7 +186,6 @@ export default function Reporting() {
         .select('*');
       
       if (kinderError) throw kinderError;
-      console.log('Geladene Kinder:', kinderData?.length || 0);
       setKinder(kinderData || []);
       
       // Lade Spiele
@@ -210,7 +195,6 @@ export default function Reporting() {
         .order('name');
       
       if (spieleError) throw spieleError;
-      console.log('Geladene Spiele:', spieleData?.length || 0);
       setSpiele(spieleData || []);
       setSpieleOptions(spieleData?.map(spiel => ({
         value: spiel.id,
@@ -224,12 +208,10 @@ export default function Reporting() {
         .order('name');
       
       if (gruppenError) throw gruppenError;
-      console.log('Geladene Spielgruppen:', gruppenData?.length || 0);
       setSpielgruppen(gruppenData || []);
       
       // Extrahiere verfügbare Klassen
       const klassen = [...new Set(gruppenData?.map(g => g.klasse) || [])].sort();
-      console.log('Verfügbare Klassen:', klassen);
       setKlassenOptions(klassen.map(klasse => ({
         value: klasse,
         label: klasse
@@ -256,13 +238,9 @@ export default function Reporting() {
         .select('*');
       
       if (ergebnisseError) throw ergebnisseError;
-      console.log('Geladene Ergebnisse:', ergebnisseData?.length || 0);
-      
       // Berechne Punkte für jedes Ergebnis basierend auf dem Rang
       // Diese Logik sollte mit der Punkteberechnung in der Auswertung übereinstimmen
       const ergebnisseMitPunkten = await berechnePunkteFuerErgebnisse(ergebnisseData || []);
-      console.log('Ergebnisse mit Punkten:', ergebnisseMitPunkten.length);
-      
       setErgebnisse(ergebnisseMitPunkten);
       
       setIsLoading(false);
@@ -391,8 +369,11 @@ export default function Reporting() {
   };
   
   return (
-    <main className="p-4 md:p-6">
-      <h1 className="text-3xl font-bold mb-6">📊 Reporting & Statistiken</h1>
+    <main className="p-4 md:p-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Reporting & Statistiken</h1>
+        <p className="text-sm text-slate-500 mt-1">Dashboard, Teilnehmer- und Spielstatistiken</p>
+      </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6">

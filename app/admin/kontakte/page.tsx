@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -9,7 +10,7 @@ import { AnsprechpartnerListe } from './AnsprechpartnerListe';
 import { AnsprechpartnerForm } from './AnsprechpartnerForm';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Ansprechpartner } from '@/types/ansprechpartner';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 export default function KontakteVerwaltung() {
   const [isLoading, setIsLoading] = useState(true);
@@ -87,17 +88,16 @@ export default function KontakteVerwaltung() {
   };
   
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex items-center mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={() => router.push('/admin')}
-          className="mr-2"
+    <div className="p-4 md:p-8">
+      <div className="mb-6">
+        <Link
+          href="/admin"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3 transition-colors"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" />
+          <ArrowLeft className="h-4 w-4" />
           Zurück
-        </Button>
-        <h1 className="text-2xl font-bold">Ansprechpartner verwalten</h1>
+        </Link>
+        <h1 className="text-2xl font-bold text-slate-900">Ansprechpartner verwalten</h1>
       </div>
       
       <Tabs defaultValue="liste" className="w-full">

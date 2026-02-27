@@ -40,25 +40,23 @@ interface Rueckmeldung {
 interface AufgabenListeProps {
   aufgaben: Aufgabe[];
   rueckmeldungen: Rueckmeldung[];
+  onDataChanged?: () => void;
 }
 
-export function AufgabenListe({ aufgaben, rueckmeldungen }: AufgabenListeProps) {
+export function AufgabenListe({ aufgaben, rueckmeldungen, onDataChanged }: AufgabenListeProps) {
   const handleDeleteRueckmeldung = async (id: string) => {
     const supabase = createClient();
     const { error } = await supabase
       .from('helfer_rueckmeldungen')
       .delete()
       .eq('id', id);
-    
+
     if (error) {
       console.error('Fehler beim Löschen der Rückmeldung:', error);
       toast.error('Die Rückmeldung konnte nicht gelöscht werden.');
     } else {
       toast.success('Die Rückmeldung wurde erfolgreich gelöscht.');
-      // Hier würde normalerweise ein Refresh der Daten erfolgen
-      // Da dies aber über den Parent-Component gesteuert wird, müsste hier
-      // ein Callback aufgerufen werden
-      window.location.reload();
+      if (onDataChanged) onDataChanged();
     }
   };
 

@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 // Typen aus der types.ts-Datei importieren
 import type { ZuteilungMitKindUndAufgabeDetails } from './types';
@@ -42,7 +42,6 @@ interface PDFZuteilungenTabelleProps {
 export function PDFZuteilungenTabelle({ zuteilungen, onVorschau, isLoading }: PDFZuteilungenTabelleProps) {
   const handleGeneratePDF = async (kindId: string, kindName: string) => {
     try {
-      console.log(`Starte PDF-Generierung für Kind-ID: ${kindId}`);
       toast.loading(`PDF für ${kindName} wird generiert...`);
       
       // Prüfe, ob die Kind-ID gültig ist
@@ -103,7 +102,7 @@ export function PDFZuteilungenTabelle({ zuteilungen, onVorschau, isLoading }: PD
       <CardHeader>
         <CardTitle>Gefilterte Helferzuteilungen</CardTitle>
         <CardDescription>
-          Zeigt die aktuell gefilterten Zuteilungen an. Nutzen Sie die Buttons für PDF-Export oder Vorschau.
+          Zeigt die aktuell gefilterten Zuteilungen an. Nutze die Buttons für PDF-Export oder Vorschau.
         </CardDescription>
       </CardHeader>
       <CardContent>
