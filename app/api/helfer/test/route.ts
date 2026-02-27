@@ -52,11 +52,6 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 export async function POST(req: NextRequest) {
-  // Nur in Development erlauben
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Nicht verfügbar in Produktion' }, { status: 403 });
-  }
-
   const supabase = await createClient();
 
   // Auth-Check
