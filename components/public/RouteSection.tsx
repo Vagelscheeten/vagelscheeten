@@ -42,7 +42,7 @@ export function RouteSection() {
               <div>
                 <h3 className="text-xl font-semibold text-gray-800 mb-2">Festumzug durch Melsdorf</h3>
                 <p className="text-gray-700">
-                  Der Umzug startet an der Regenbogenschule und führt über die Köhlerkoppel, die Dorfstraße, Kieler Weg, am Dom, Rothenberg, Schlichtingstraße und Rotenhofer Weg zurück zu der Regenbogenschule.
+                  Der Umzug startet an der Regenbogenschule und führt über die Dorfstraße, Steinkämpe, Birkenweg, Bahnhofstraße und wieder über die Dorfstraße zurück zu der Regenbogenschule.
                   Alle freuen sich über jedes geschmückte Haus entlang der Route!
                 </p>
               </div>
