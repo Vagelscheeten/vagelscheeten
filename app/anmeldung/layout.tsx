@@ -22,7 +22,7 @@ export default function AnmeldungLayout({ children }: { children: React.ReactNod
         <div className="max-w-2xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
           <Link href="/startseite" className="flex items-center gap-2.5 group">
             <Image
-              src="/2025_Logo_transparent.png"
+              src="/Logo%20farbig.png"
               alt="Melsdörper Vagelscheeten"
               width={40}
               height={40}

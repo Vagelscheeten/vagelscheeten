@@ -135,7 +135,7 @@ export default function MainNavigation() {
           {/* ── Logo ────────────────────────────────────────── */}
           <Link href="/startseite" className="flex items-center gap-3 group">
             <Image
-              src="/2025_Logo_transparent.png"
+              src="/Logo%20farbig.png"
               alt="Melsdörper Vagelscheeten"
               width={56}
               height={56}

@@ -41,7 +41,7 @@ export function Footer() {
           <div className="md:col-span-5 flex flex-col gap-5">
             <Link href="/startseite" className="flex items-center gap-4 group w-fit">
               <Image
-                src="/2025_Logo_transparent.png"
+                src="/Logo%20farbig.png"
                 alt="Melsdörper Vagelscheeten"
                 width={64}
                 height={64}
