@@ -24,17 +24,19 @@ export async function listAuthUsers(): Promise<AuthUserBrief[]> {
   const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
   if (error || !data) return [];
 
-  return data.users
-    .filter((u): u is typeof u & { email: string } => typeof u.email === 'string' && u.email.length > 0)
-    .map((u) => ({
+  const users: AuthUserBrief[] = [];
+  for (const u of data.users) {
+    const email = u.email;
+    if (typeof email !== 'string' || email.length === 0) continue;
+    const meta = u.user_metadata as { name?: string; full_name?: string } | null;
+    users.push({
       id: u.id,
-      email: u.email,
-      name:
-        (u.user_metadata as { name?: string } | null)?.name ??
-        (u.user_metadata as { full_name?: string } | null)?.full_name ??
-        null,
-    }))
-    .sort((a, b) => a.email.localeCompare(b.email));
+      email,
+      name: meta?.name ?? meta?.full_name ?? null,
+    });
+  }
+  users.sort((a, b) => a.email.localeCompare(b.email));
+  return users;
 }
 
 export async function createRecipient(input: {

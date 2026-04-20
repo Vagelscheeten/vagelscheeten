@@ -13,6 +13,7 @@ import {
   Loader2,
   Mail,
   Reply,
+  Trash2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { PageShell } from '@/components/admin/PageShell';
@@ -56,6 +57,7 @@ export default function PostfachThreadDetailPage() {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const markedReadRef = useRef(false);
 
   useEffect(() => {
@@ -111,6 +113,28 @@ export default function PostfachThreadDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!confirm('Diesen Thread mit allen Nachrichten und Anhängen unwiderruflich löschen?')) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/postfach/thread/${threadId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        toast.error(`Löschen fehlgeschlagen: ${payload?.error ?? res.statusText}`);
+        return;
+      }
+      toast.success('Thread gelöscht');
+      router.push('/admin/postfach');
+    } catch (err) {
+      console.error(err);
+      toast.error('Löschen fehlgeschlagen');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const latestInbound = [...messages].reverse().find((m) => m.direction === 'inbound');
   const subject = messages[messages.length - 1]?.subject ?? '(kein Betreff)';
 
@@ -123,13 +147,23 @@ export default function PostfachThreadDetailPage() {
         { label: 'Thread' },
       ]}
       actions={
-        <Link
-          href="/admin/postfach"
-          className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md border border-admin-border bg-admin-surface text-[0.85rem] text-admin-ink hover:bg-admin-surface-muted transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Zurück
-        </Link>
+        <>
+          <button
+            onClick={handleDelete}
+            disabled={deleting || loading || !thread}
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md border border-red-200 bg-white text-[0.85rem] text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Löschen
+          </button>
+          <Link
+            href="/admin/postfach"
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md border border-admin-border bg-admin-surface text-[0.85rem] text-admin-ink hover:bg-admin-surface-muted transition-colors"
+          >
+            <ArrowLeft size={14} />
+            Zurück
+          </Link>
+        </>
       }
     >
       {loading ? (
