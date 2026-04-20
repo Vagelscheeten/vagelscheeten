@@ -18,6 +18,8 @@ export async function sendInboundNotification(
   supabaseAdmin: SupabaseClient,
   input: NotifyInput
 ): Promise<void> {
+  const inboxAddress = (process.env.POSTFACH_INBOX_ADDRESS ?? 'orgateam@vagelscheeten.de').toLowerCase();
+
   const { data: recipients, error } = await supabaseAdmin
     .from('postfach_notification_recipients')
     .select('email')
@@ -29,8 +31,14 @@ export async function sendInboundNotification(
   }
   if (!recipients || recipients.length === 0) return;
 
-  const bcc = recipients.map((r) => r.email).filter(Boolean);
-  if (bcc.length === 0) return;
+  // Hartes Loop-Schutz: niemals die Inbox-Adresse selbst benachrichtigen
+  const filtered = recipients
+    .map((r) => r.email?.toLowerCase())
+    .filter((e): e is string => !!e && e !== inboxAddress);
+
+  if (filtered.length === 0) return;
+
+  const [primaryTo, ...rest] = filtered;
 
   const from =
     process.env.POSTFACH_NOTIFICATION_FROM ?? 'Orgateam Vagelscheeten <orgateam@vagelscheeten.de>';
@@ -74,8 +82,8 @@ export async function sendInboundNotification(
     const resend = new Resend(apiKey);
     await resend.emails.send({
       from,
-      to: from, // primäres To = Absender selbst (BCC sieht nur jeder für sich)
-      bcc,
+      to: primaryTo,
+      bcc: rest.length > 0 ? rest : undefined,
       subject,
       text,
       html,

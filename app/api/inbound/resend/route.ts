@@ -50,6 +50,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid-payload' }, { status: 400 });
   }
 
+  // ── Loop-Schutz: keine Mails verarbeiten, die wir selbst versendet haben ──
+  const inboxAddress = (process.env.POSTFACH_INBOX_ADDRESS ?? 'orgateam@vagelscheeten.de').toLowerCase();
+  if (parsed.from_address.toLowerCase() === inboxAddress) {
+    console.warn('[inbound/resend] Self-Mail ignoriert, from === inbox-address');
+    return NextResponse.json({ ok: true, ignored: 'self-mail' });
+  }
+
   const supabase = createAdminClient();
 
   // ── 3. Idempotenz-Check ───────────────────────────────────────────
