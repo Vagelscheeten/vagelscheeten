@@ -181,33 +181,52 @@ export default function Reporting() {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Aktives Event ermitteln — alle folgenden Queries sind darauf gescopt.
+      const { data: activeEvent, error: eventError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('ist_aktiv', true)
+        .maybeSingle();
+
+      if (eventError) throw eventError;
+      if (!activeEvent) {
+        setKinder([]);
+        setSpielgruppen([]);
+        setErgebnisse([]);
+        setIsLoading(false);
+        return;
+      }
+      const eventId = activeEvent.id;
+
       // Lade Kinder
       const { data: kinderData, error: kinderError } = await supabase
         .from('kinder')
-        .select('*');
-      
+        .select('*')
+        .eq('event_id', eventId);
+
       if (kinderError) throw kinderError;
       setKinder(kinderData || []);
-      
+
       // Lade Spiele
       const { data: spieleData, error: spieleError } = await supabase
         .from('spiele')
         .select('*')
         .order('name');
-      
+
       if (spieleError) throw spieleError;
       setSpiele(spieleData || []);
       setSpieleOptions(spieleData?.map(spiel => ({
         value: spiel.id,
         label: spiel.name
       })) || []);
-      
+
       // Lade Spielgruppen
       const { data: gruppenData, error: gruppenError } = await supabase
         .from('spielgruppen')
         .select('*')
+        .eq('event_id', eventId)
         .order('name');
-      
+
       if (gruppenError) throw gruppenError;
       setSpielgruppen(gruppenData || []);
       
@@ -236,7 +255,8 @@ export default function Reporting() {
       // Lade Ergebnisse mit Punkten
       const { data: ergebnisseData, error: ergebnisseError } = await supabase
         .from('ergebnisse')
-        .select('*');
+        .select('*')
+        .eq('event_id', eventId);
       
       if (ergebnisseError) throw ergebnisseError;
       // Berechne Punkte für jedes Ergebnis basierend auf dem Rang
