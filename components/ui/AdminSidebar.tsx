@@ -7,7 +7,7 @@ import {
   Menu, X, LayoutDashboard, Clock, HelpCircle, Crown, Settings,
   CalendarDays, GraduationCap, Gamepad2, UserCheck,
   Image as ImageIcon, Download, BarChart3, FileText, Wrench, ArrowLeft,
-  ChevronDown, UserCog,
+  ChevronDown, UserCog, Inbox,
 } from 'lucide-react';
 
 const adminGroups = [
@@ -30,6 +30,7 @@ const adminGroups = [
       { href: '/admin/klassen', label: 'Klassen', icon: GraduationCap },
       { href: '/admin/gruppen', label: 'Kinder & Gruppen', icon: GraduationCap },
       { href: '/admin/helfer', label: 'Helfer', icon: UserCheck },
+      { href: '/admin/postfach', label: 'Postfach', icon: Inbox },
     ],
   },
   {
