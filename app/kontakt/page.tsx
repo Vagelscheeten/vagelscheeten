@@ -23,18 +23,12 @@ const fallbackAnsprechpartner: Ansprechpartner[] = [
     email: 'schulleitung@regenbogenschule-melsdorf.de', 
     telefon: '04340 / 12345'
   },
-  { 
-    id: '2', 
-    name: 'Herr Thomas Schmidt', 
-    rolle: 'Organisator Vogelschießen', 
-    email: 'vogelschiessen@regenbogenschule-melsdorf.de', 
+  {
+    id: '2',
+    name: 'Herr Thomas Schmidt',
+    rolle: 'Organisator Vogelschießen',
+    email: 'vogelschiessen@regenbogenschule-melsdorf.de',
     telefon: '04340 / 12346'
-  },
-  { 
-    id: '3', 
-    name: 'Förderverein Regenbogenschule', 
-    rolle: 'Sponsoring & Unterstützung', 
-    email: 'foerderverein@regenbogenschule-melsdorf.de'
   }
 ];
 

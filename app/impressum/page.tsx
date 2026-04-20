@@ -9,26 +9,28 @@ export default function Impressum() {
         
         <div className="prose prose-lg max-w-none">
           <h2>Angaben gemäß § 5 TMG:</h2>
-          
+
           <p>
-            Förderverein Regenbogenschule Strohbrück e.V.<br />
-            Mönkbergseck 27<br />
-            24107 Quarnbek
+            Planungsteam Vogelschießen der Regenbogenschule Melsdorf<br />
+            Regenbogenschule Melsdorf<br />
+            Dorfstraße 13<br />
+            24109 Melsdorf
           </p>
-          
-          <h3>Vertreten durch:</h3>
+
+          <h3>Ansprechpartnerin:</h3>
           <p>Johanna Gawlich</p>
-          
+
           <h3>Kontakt:</h3>
           <p>
             E-Mail: <a href="mailto:orgateam@vagelscheeten.de" className="text-primary hover:underline">orgateam@vagelscheeten.de</a>
           </p>
-          
+
           <h3>Inhaltlich verantwortlich gemäß § 55 Abs. 2 RStV:</h3>
           <p>
             Johanna Gawlich<br />
-            Mönkbergseck 27<br />
-            24107 Quarnbek
+            Regenbogenschule Melsdorf<br />
+            Dorfstraße 13<br />
+            24109 Melsdorf
           </p>
           
           <h2>Haftungsausschluss:</h2>

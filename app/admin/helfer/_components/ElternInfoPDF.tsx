@@ -148,7 +148,7 @@ export const ElternInfoPDF = ({ qrCodeDataURL, logoDataURL, eventJahr = 2026 }: 
 
         <Text style={styles.footer}>
           Vielen Dank für Eure Unterstützung!{'\n'}
-          Orga-Team Vagelscheeten · Förderverein Regenbogenschule Melsdorf e.V.
+          Orga-Team Vagelscheeten · Planungsteam der Regenbogenschule Melsdorf
         </Text>
       </Page>
     </Document>

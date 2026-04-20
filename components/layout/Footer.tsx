@@ -138,7 +138,7 @@ export function Footer() {
               marginBottom: 0,
             }}
           >
-            © {new Date().getFullYear()} Förderverein der Regenbogenschule Melsdorf e.V.
+            © {new Date().getFullYear()} Planungsteam der Regenbogenschule Melsdorf
           </p>
           <p
             className="font-hand text-accent/70 text-sm"

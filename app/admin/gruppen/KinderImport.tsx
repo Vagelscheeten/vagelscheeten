@@ -141,18 +141,18 @@ export function KinderImport({ activeEventId, onImportComplete }: KinderImportPr
         
         // Verarbeite die Daten
         const parsedData: Kind[] = jsonData.map((row, index) => {
-          const vorname = row['Vorname'] || row['vorname'] || '';
-          const nachname = row['Nachname'] || row['nachname'] || '';
+          const vorname = String(row['Vorname'] ?? row['vorname'] ?? '');
+          const nachname = String(row['Nachname'] ?? row['nachname'] ?? '');
           let geschlecht: 'Junge' | 'Mädchen' = 'Junge';
-          const geschlechtValue = row['Geschlecht'] || row['geschlecht'] || '';
-          
+          const geschlechtValue = String(row['Geschlecht'] ?? row['geschlecht'] ?? '');
+
           if (geschlechtValue.toLowerCase() === 'junge' || geschlechtValue.toLowerCase() === 'j') {
             geschlecht = 'Junge';
           } else if (geschlechtValue.toLowerCase() === 'mädchen' || geschlechtValue.toLowerCase() === 'maedchen' || geschlechtValue.toLowerCase() === 'm') {
             geschlecht = 'Mädchen';
           }
-          
-          const klasse = row['Klasse'] || row['klasse'] || '';
+
+          const klasse = String(row['Klasse'] ?? row['klasse'] ?? '');
           
           // Validiere die Daten
           const valid = vorname.trim() !== '' && nachname.trim() !== '' && klasse.trim() !== '';

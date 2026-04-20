@@ -50,7 +50,7 @@ export function ElternInfoPDFDownload() {
 }
 
 async function fetchLogoAsDataURL(): Promise<string> {
-  const res = await fetch('/2025_Logo_transparent.png');
+  const res = await fetch('/Logo%20farbig.png');
   const blob = await res.blob();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

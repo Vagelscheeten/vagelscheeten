@@ -54,12 +54,13 @@ type OptionCardProps = {
   onChange: () => void;
   title: string;
   description?: string | null;
+  hint?: string | null;
   accent?: 'green' | 'red' | 'orange';
   inputType?: 'checkbox' | 'radio';
   inputName?: string;
 };
 
-function OptionCard({ checked, onChange, title, description, accent = 'green', inputType = 'checkbox', inputName }: OptionCardProps) {
+function OptionCard({ checked, onChange, title, description, hint, accent = 'green', inputType = 'checkbox', inputName }: OptionCardProps) {
   const accentColor =
     accent === 'red' ? 'var(--color-melsdorf-red)'
     : accent === 'orange' ? 'var(--color-melsdorf-orange)'
@@ -88,6 +89,7 @@ function OptionCard({ checked, onChange, title, description, accent = 'green', i
       <div className="flex-1">
         <div className="font-medium text-ink text-[0.92rem]">{title}</div>
         {description && <div className="text-sm text-ink-soft mt-0.5 leading-snug">{description}</div>}
+        {hint && <div className="text-xs text-ink-muted mt-1 italic leading-snug">{hint}</div>}
       </div>
     </label>
   );
@@ -123,7 +125,7 @@ export default function AnmeldungPage() {
   const [selectedSpenden, setSelectedSpenden] = useState<string[]>([]);
   const [kommentar, setKommentar] = useState('');
   const [istSpringer, setIstSpringer] = useState(false);
-  const [springerZeitfenster, setSpringerZeitfenster] = useState<'vormittag' | 'nachmittag' | 'beides'>('vormittag');
+  const [springerZeitfenster, setSpringerZeitfenster] = useState<'vormittag' | 'nachmittag' | 'beides'>('beides');
   const [geschwister, setGeschwister] = useState<GeschwisterKind[]>([]);
 
   useEffect(() => {
@@ -172,6 +174,7 @@ export default function AnmeldungPage() {
           .from('klassen')
           .select('id, name')
           .eq('event_id', eventData.id)
+          .neq('name', 'Schulis')
           .order('name', { ascending: true });
         setKlassen(klassenData || []);
       } catch (err) {
@@ -645,9 +648,9 @@ export default function AnmeldungPage() {
                     <p className="text-sm font-medium text-ink-soft">Wann seid ihr verfügbar?</p>
                     <div className="flex flex-wrap gap-2">
                       {[
+                        { value: 'beides', label: 'Ganztägig' },
                         { value: 'vormittag', label: 'Vormittag' },
                         { value: 'nachmittag', label: 'Nachmittag' },
-                        { value: 'beides', label: 'Ganztägig' },
                       ].map((opt) => {
                         const active = springerZeitfenster === opt.value;
                         return (
@@ -693,16 +696,23 @@ export default function AnmeldungPage() {
               </p>
 
               <div className="space-y-2">
-                {spenden.map((spende) => (
-                  <OptionCard
-                    key={spende.id}
-                    checked={selectedSpenden.includes(spende.id)}
-                    onChange={() => toggleSpende(spende.id)}
-                    title={spende.titel}
-                    description={spende.beschreibung}
-                    accent="green"
-                  />
-                ))}
+                {spenden.map((spende) => {
+                  const isKaffee = spende.titel.toLowerCase().includes('kaffee');
+                  const hint = isKaffee
+                    ? 'Zu um 14 Uhr in der Kaffee-Bar abgeben'
+                    : 'Abgabe am Tag des Vagelscheetens zwischen 9 und 12 Uhr in der Cafeteria';
+                  return (
+                    <OptionCard
+                      key={spende.id}
+                      checked={selectedSpenden.includes(spende.id)}
+                      onChange={() => toggleSpende(spende.id)}
+                      title={spende.titel}
+                      description={spende.beschreibung}
+                      hint={hint}
+                      accent="green"
+                    />
+                  );
+                })}
               </div>
 
               {spenden.length === 0 && (
@@ -835,9 +845,29 @@ export default function AnmeldungPage() {
           </div>
         </motion.div>
 
-        {/* Footer-Hinweis */}
-        <p className="text-center text-sm text-ink-muted mt-6 leading-relaxed" style={{ marginBottom: 0 }}>
-          Nach dem Absenden erhaltet ihr eine E-Mail zur Bestätigung.<br />
+        {/* Bestätigungs-Warnhinweis */}
+        <div
+          className="mt-6 flex items-start gap-3 p-4 rounded-lg border"
+          style={{
+            borderColor: 'var(--color-melsdorf-orange)',
+            backgroundColor: 'color-mix(in srgb, var(--color-melsdorf-orange) 12%, var(--color-paper-soft))',
+          }}
+        >
+          <AlertCircle
+            size={22}
+            className="shrink-0 mt-0.5"
+            style={{ color: 'var(--color-melsdorf-orange)' }}
+          />
+          <div className="text-sm text-ink leading-relaxed">
+            <strong className="font-semibold">Wichtig:</strong> Nach dem Absenden erhaltet ihr eine E-Mail mit einem Bestätigungslink.{' '}
+            <strong className="font-semibold">
+              Erst wenn ihr diesen Link anklickt, ist eure Anmeldung gültig.
+            </strong>
+          </div>
+        </div>
+
+        {/* Datenschutz-Hinweis */}
+        <p className="text-center text-xs text-ink-muted mt-4 leading-relaxed" style={{ marginBottom: 0 }}>
           Eure Daten werden ausschließlich für die Organisation des Vogelschießens verwendet.
         </p>
       </div>

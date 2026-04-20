@@ -171,7 +171,7 @@ export function SpendenSection({ settings, eventJahr }: SpendenSectionProps) {
             >
               {[
                 { num: '100%', label: 'gehen an die Kinder' },
-                { num: '~120', label: 'Kinder jedes Jahr' },
+                { num: '~140', label: 'Kinder jedes Jahr' },
                 { num: '10', label: 'Spielstationen' },
               ].map((cell, i) => (
                 <div
@@ -244,14 +244,6 @@ export function SpendenSection({ settings, eventJahr }: SpendenSectionProps) {
                 <BankField label="Verwendungszweck" value={verwendungszweck} />
               </div>
 
-              <div className="mt-6 pt-5 border-t border-paper-soft/15 flex items-start gap-2.5">
-                <svg className="w-4 h-4 text-paper-soft/60 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-paper-soft/65 text-xs leading-relaxed" style={{ marginBottom: 0 }}>
-                  Gemeinnütziger Förderverein — Spendenbescheinigung auf Anfrage.
-                </p>
-              </div>
             </div>
           </motion.div>
         </div>
