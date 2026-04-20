@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PageShell } from "@/components/admin";
 
 export default function DashboardPageClient() {
   const router = useRouter();
@@ -21,18 +22,32 @@ export default function DashboardPageClient() {
   }, [router]);
 
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Lade Dashboard...</div>;
+    return (
+      <PageShell title="Dashboard">
+        <div className="text-admin-ink-muted text-sm">Lade Dashboard …</div>
+      </PageShell>
+    );
   }
   if (!user) {
     return null;
   }
 
-  // Dashboard-Inhalt hier:
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Willkommen im Admin-Dashboard!</h1>
-      <p className="text-gray-600">Eingeloggt als: <span className="font-mono">{user.email}</span></p>
-      {/* ...weitere Dashboard-Widgets... */}
-    </div>
+    <PageShell
+      title="Willkommen im Admin-Dashboard"
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Dashboard' }]}
+    >
+      <div className="rounded-lg border border-admin-border bg-admin-surface p-5">
+        <p className="text-admin-ink-soft text-[0.92rem]" style={{ marginBottom: 0 }}>
+          Eingeloggt als{' '}
+          <span
+            className="font-mono text-admin-ink"
+            style={{ fontFamily: 'var(--font-geist-mono), ui-monospace, monospace' }}
+          >
+            {user.email}
+          </span>
+        </p>
+      </div>
+    </PageShell>
   );
 }

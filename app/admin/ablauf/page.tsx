@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Trash2, Edit2, Save, X, Clock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
+import { Button } from '@/components/ui/button';
 
 type AblaufEintrag = {
   id: string;
@@ -211,19 +213,16 @@ export default function AblaufAdmin() {
   };
 
   return (
-    <main className="p-4 md:p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Ablaufplan verwalten</h1>
-          <p className="text-sm text-slate-500 mt-1">Tagesablauf und Seitenüberschriften für die Webseite</p>
-        </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" /> Neuer Eintrag
-        </button>
-      </div>
+    <PageShell
+      title="Ablaufplan verwalten"
+      description="Tagesablauf und Seitenüberschriften für die Webseite."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Ablaufplan' }]}
+      actions={
+        <Button onClick={() => setShowNew(true)} size="sm">
+          <Plus className="mr-1.5 h-4 w-4" /> Neuer Eintrag
+        </Button>
+      }
+    >
 
       {/* ── Section header settings ── */}
       <Card className="mb-6">
@@ -427,6 +426,6 @@ export default function AblaufAdmin() {
           ))}
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }

@@ -7,6 +7,7 @@ import { Loader2, ExternalLink, FlaskConical, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { WorkflowDashboard, WorkflowStats } from './_components/WorkflowDashboard';
 import { ElternInfoPDFDownload } from './_components/ElternInfoPDFDownload';
+import { PageShell, EmptyState } from '@/components/admin';
 
 export default function HelferPage() {
   const [stats, setStats] = useState<WorkflowStats | null>(null);
@@ -112,41 +113,46 @@ export default function HelferPage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin text-gray-400" size={24} />
-      </div>
+      <PageShell title="Helfer-Workflow">
+        <div className="flex justify-center items-center py-16">
+          <Loader2 className="animate-spin text-admin-ink-muted" size={24} />
+        </div>
+      </PageShell>
     );
   }
 
   if (!stats) {
     return (
-      <div className="p-6 text-center text-slate-500">
-        Kein aktives Event gefunden.
-      </div>
+      <PageShell
+        title="Helfer-Workflow"
+        breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Helfer' }]}
+      >
+        <EmptyState
+          title="Kein aktives Event"
+          description="Es ist derzeit kein Event aktiv. Bitte zuerst ein Event aktivieren."
+        />
+      </PageShell>
     );
   }
 
   return (
-    <main className="p-4 md:p-8 max-w-5xl">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Helfer-Workflow</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Geführter 4-Schritte-Prozess: Von den Rückmeldungen bis zur Eltern-Kommunikation
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <PageShell
+      title="Helfer-Workflow"
+      description="Geführter 4-Schritte-Prozess: Von den Rückmeldungen bis zur Eltern-Kommunikation."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Helfer' }]}
+      actions={
+        <>
           <ElternInfoPDFDownload />
           <Link
             href="/admin/helfer/detail"
-            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 border rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 text-sm text-admin-ink-soft hover:text-admin-ink border border-admin-border bg-admin-surface rounded-md px-3 h-9 hover:bg-admin-surface-hover transition-colors whitespace-nowrap"
           >
             <ExternalLink size={14} />
             Detail-Zuteilung
           </Link>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       <WorkflowDashboard stats={stats} onRefresh={ladeStats} />
 
       {/* ── TEST-BEREICH — vor echtem Einsatz entfernen ───────────────── */}
@@ -177,6 +183,6 @@ export default function HelferPage() {
           "Erstellen" fügt ~100 Rückmeldungen + Essensspenden hinzu. "Löschen" entfernt alle Rückmeldungen, Zuteilungen und Essensspenden (Kinder &amp; Klassen bleiben).
         </p>
       </div>
-    </main>
+    </PageShell>
   );
 }

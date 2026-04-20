@@ -7,6 +7,7 @@ import { ResetPasswordDialog } from '@/components/ui/ResetPasswordDialog';
 import { DeleteUserDialog } from '@/components/ui/DeleteUserDialog';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 
 // Vereinfachte Admin-Funktionen, die die Server-API nutzen
 const adminApi = {
@@ -170,12 +171,14 @@ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   }
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Userverwaltung</h1>
-        <Button onClick={() => setShowNewUser(true)}>Neuen Benutzer anlegen</Button>
-      </div>
-      
+    <PageShell
+      title="Userverwaltung"
+      description="Admin-Accounts, Passwörter und Rollen verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Userverwaltung' }]}
+      actions={
+        <Button onClick={() => setShowNewUser(true)} size="sm">Neuen Benutzer anlegen</Button>
+      }
+    >
       {/* Formular für neuen Benutzer */}
       {showNewUser && (
   <div className="border rounded p-4 bg-gray-50 mb-8">
@@ -295,6 +298,6 @@ const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 />
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

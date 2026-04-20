@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Poppins } from "next/font/google";
+import { Geist, Geist_Mono, Inter, Fraunces, Caveat } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
 import "./globals.css";
@@ -20,15 +20,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const poppins = Poppins({
-  variable: "--font-poppins",
-  weight: ["400", "500", "600", "700"],
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  axes: ["opsz", "SOFT"],
+  display: "swap",
+});
+
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -52,7 +60,7 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${inter.variable} antialiased bg-background flex flex-col min-h-screen font-poppins`}
+        className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} ${caveat.variable} ${inter.variable} antialiased bg-background flex flex-col min-h-screen`}
         suppressHydrationWarning
       >
         <MainNavigation />

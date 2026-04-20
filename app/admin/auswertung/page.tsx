@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ArrowDown, ArrowUp, Download, FileText, RefreshCw, CheckCircle, AlertCircle, XCircle, Crown, Loader2 } from 'lucide-react';
+import { PageShell } from '@/components/admin';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { exportSpielPunkteCSV, exportSpielPunktePDF, exportGesamtauswertungPDF, exportGesamtauswertungCSV } from './exportHelpers';
@@ -1194,17 +1195,19 @@ export default function AuswertungAdmin() {
 
   // UI-Darstellung
   return (
-    <main className="p-4 md:p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Auswertung & Ergebnisse</h1>
-          <p className="text-sm text-slate-500 mt-1">Live-Zwischenstand, Fortschritt und Abschlussauswertung</p>
-        </div>
-        <Link href="/admin/auswertung/details" className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium">
+    <PageShell
+      title="Auswertung & Ergebnisse"
+      description="Live-Zwischenstand, Fortschritt und Abschlussauswertung."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Auswertung' }]}
+      actions={
+        <Link
+          href="/admin/auswertung/details"
+          className="inline-flex items-center h-9 px-3.5 rounded-md bg-admin-ink text-white hover:bg-admin-ink/90 text-[0.85rem] font-medium transition-colors"
+        >
           Detailansicht
         </Link>
-      </div>
-      
+      }
+    >
       <Tabs defaultValue="live" value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="live">Live-Zwischenstand</TabsTrigger>
@@ -1653,6 +1656,6 @@ export default function AuswertungAdmin() {
           </div>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageShell>
   );
 }

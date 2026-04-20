@@ -29,48 +29,86 @@ interface AblaufSectionProps {
   sectionSettings?: AblaufSectionSettings;
 }
 
-// Hex colors used as inline styles to reliably set only the left border
+// Brand-Farb-Mapping für Akzente
 const farbeToHex: Record<string, string> = {
-  primary:   '#E7432C', // melsdorf-red
-  secondary: '#F2A03D', // melsdorf-orange
-  tertiary:  '#27AE60', // green
-  accent:    '#F6C91C', // golden
-  green:     '#33665B', // melsdorf-green
+  primary:   '#E7432C',
+  secondary: '#F2A03D',
+  tertiary:  '#27AE60',
+  accent:    '#F6C91C',
+  green:     '#33665B',
 };
 
-const farbeToTimeColor: Record<string, string> = {
-  primary:   'text-melsdorf-red',
-  secondary: 'text-melsdorf-orange',
-  tertiary:  'text-tertiary',
-  accent:    'text-accent-dark',
-  green:     'text-melsdorf-green',
-};
+function TimeLabel({ time, color }: { time: string; color: string }) {
+  return (
+    <span
+      className="font-display font-soft-warm block tabular-nums"
+      style={{
+        fontSize: 'clamp(1.75rem, 3vw, 2.5rem)',
+        fontWeight: 600,
+        color,
+        lineHeight: 1,
+        letterSpacing: '-0.015em',
+      }}
+    >
+      {time}
+    </span>
+  );
+}
 
-const farbeToDotClass: Record<string, string> = {
-  primary:   'bg-melsdorf-red text-white',
-  secondary: 'bg-melsdorf-orange text-white',
-  tertiary:  'bg-tertiary text-white',
-  accent:    'bg-accent text-slate-900',
-  green:     'bg-melsdorf-green text-white',
-};
-
-function EintragCard({ eintrag }: { eintrag: AblaufEintrag }) {
-  const hex = farbeToHex[eintrag.farbe] ?? farbeToHex.secondary;
-  const timeColor = farbeToTimeColor[eintrag.farbe] ?? farbeToTimeColor.secondary;
-
+function EintragCard({
+  eintrag,
+  accentHex,
+  isHighlight,
+}: {
+  eintrag: AblaufEintrag;
+  accentHex: string;
+  isHighlight: boolean;
+}) {
   return (
     <div
-      className="bg-white rounded-2xl shadow-sm border border-slate-100 border-l-4 p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300"
-      style={{ borderLeftColor: hex }}
+      className="relative"
+      style={{
+        background: isHighlight
+          ? `color-mix(in srgb, ${accentHex} 12%, var(--color-paper-soft))`
+          : 'var(--color-paper-soft)',
+        borderRadius: '1rem',
+        padding: '1.25rem 1.5rem',
+        border: `1px solid color-mix(in srgb, ${accentHex} ${isHighlight ? 40 : 15}%, transparent)`,
+        boxShadow: isHighlight
+          ? `0 1px 0 color-mix(in srgb, ${accentHex} 20%, transparent), 0 14px 30px -14px color-mix(in srgb, ${accentHex} 40%, transparent)`
+          : '0 1px 0 rgba(26,20,16,0.04), 0 8px 20px -12px rgba(26,20,16,0.14)',
+      }}
     >
-      <div className={`text-sm font-bold ${timeColor} mb-1`}>{eintrag.uhrzeit}</div>
-      <h4 className="text-base font-semibold text-slate-900 mb-2 leading-snug">{eintrag.titel}</h4>
+      <h4
+        className="font-display text-ink mb-1"
+        style={{
+          fontSize: '1.125rem',
+          fontWeight: 600,
+          lineHeight: 1.25,
+          fontVariationSettings: '"SOFT" 40, "opsz" 48',
+        }}
+      >
+        {eintrag.titel}
+      </h4>
       {eintrag.beschreibung && (
-        <p className="text-slate-500 text-sm leading-relaxed">{eintrag.beschreibung}</p>
+        <p
+          className="text-ink-soft"
+          style={{ fontSize: '0.95rem', lineHeight: 1.55, marginBottom: 0 }}
+        >
+          {eintrag.beschreibung}
+        </p>
       )}
       {eintrag.hinweis && (
-        <div className="mt-3 px-3 py-2 bg-red-50 rounded-lg border border-red-200">
-          <p className="text-red-600 text-sm font-medium">⚠️ {eintrag.hinweis}</p>
+        <div
+          className="mt-3 px-3 py-2 rounded-lg font-hand"
+          style={{
+            background: 'color-mix(in srgb, var(--color-melsdorf-red) 10%, transparent)',
+            color: 'var(--color-melsdorf-red-dark)',
+            fontSize: '1.1rem',
+            lineHeight: 1.3,
+          }}
+        >
+          → {eintrag.hinweis}
         </div>
       )}
     </div>
@@ -80,72 +118,81 @@ function EintragCard({ eintrag }: { eintrag: AblaufEintrag }) {
 export function AblaufSection({ eintraege, eventJahr, sectionSettings }: AblaufSectionProps) {
   if (!eintraege || eintraege.length === 0) return null;
 
-  const badge    = sectionSettings?.badge     ?? `Programm ${eventJahr ?? ''}`;
+  const badge    = sectionSettings?.badge     ?? 'So läuft der Tag';
   const title    = sectionSettings?.titel     ?? 'Ablaufplan';
-  const subtitle = sectionSettings?.untertitel ?? `Unser buntes Programm für einen unvergesslichen Tag des Melsdörper Vagelscheeten${eventJahr ? ` ${eventJahr}` : ''}`;
+  const subtitle = sectionSettings?.untertitel ?? `Unser buntes Programm für einen unvergesslichen Tag${eventJahr ? ` ${eventJahr}` : ''}`;
 
   return (
-    <SectionWrapper id="ablauf" bgColor="bg-white" className="mt-8">
-      <PageHeader badge={badge} title={title} subtitle={subtitle} />
+    <SectionWrapper id="ablauf" bgColor="bg-paper" padding="lg" grain>
+      <PageHeader
+        badge={badge}
+        title={title}
+        subtitle={subtitle}
+        highlightVariant="highlighter"
+      />
 
-      <div className="max-w-4xl mx-auto relative">
-        {/* Timeline vertical line – desktop only */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-px bg-slate-200 z-0 hidden md:block" />
-
+      <div className="max-w-3xl mx-auto relative">
         {eintraege.map((eintrag, index) => {
-          const dotClass = farbeToDotClass[eintrag.farbe] ?? farbeToDotClass.secondary;
+          const accentHex = farbeToHex[eintrag.farbe] ?? farbeToHex.secondary;
           const isLeft = index % 2 === 0;
 
           return (
             <motion.div
               key={eintrag.id}
-              className="mb-10 relative"
-              initial={{ opacity: 0, x: isLeft ? -30 : 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
+              className="relative"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.55, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
             >
-
-              {/* ── Dot (desktop only, centered on line) ── */}
-              <div className="absolute left-1/2 -translate-x-1/2 -top-1 z-10 hidden md:flex">
-                <div className={`w-11 h-11 rounded-full ${dotClass} border-2 border-white shadow-md flex items-center justify-center text-lg`}>
-                  {eintrag.icon || '📌'}
+              {/* Grid: Uhrzeit | Karte */}
+              <div
+                className="grid gap-4 md:gap-8 py-5 md:py-6"
+                style={{
+                  gridTemplateColumns: 'minmax(4.5rem, 7rem) 1fr',
+                }}
+              >
+                <div className={`flex items-start ${isLeft ? 'justify-end' : 'justify-end'} pt-1`}>
+                  <div className="text-right">
+                    <TimeLabel time={eintrag.uhrzeit} color={accentHex} />
+                    {eintrag.icon && (
+                      <span
+                        className="inline-block mt-2 text-2xl"
+                        style={{ filter: 'grayscale(0.05)' }}
+                      >
+                        {eintrag.icon}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className={`${isLeft ? 'md:pl-0' : 'md:pl-6'}`}>
+                  <EintragCard
+                    eintrag={eintrag}
+                    accentHex={accentHex}
+                    isHighlight={eintrag.ist_highlight}
+                  />
                 </div>
               </div>
 
-              {/* ── Mobile: icon + card side by side ── */}
-              <div className="flex items-start gap-3 md:hidden">
-                <div className={`w-10 h-10 rounded-full ${dotClass} flex-shrink-0 flex items-center justify-center text-base shadow-sm mt-0.5`}>
-                  {eintrag.icon || '📌'}
-                </div>
-                <div className="flex-1">
-                  <EintragCard eintrag={eintrag} />
-                </div>
-              </div>
-
-              {/* ── Desktop: alternating left / right ── */}
-              <div className="hidden md:flex items-center">
-                {isLeft ? (
-                  <>
-                    <div className="w-1/2 pr-14 flex justify-end pt-2">
-                      <div className="w-full max-w-xs">
-                        <EintragCard eintrag={eintrag} />
-                      </div>
-                    </div>
-                    <div className="w-1/2 pl-14" />
-                  </>
-                ) : (
-                  <>
-                    <div className="w-1/2 pr-14" />
-                    <div className="w-1/2 pl-14 pt-2">
-                      <div className="w-full max-w-xs">
-                        <EintragCard eintrag={eintrag} />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
+              {/* Kritzel-Verbinder zum nächsten Eintrag */}
+              {index < eintraege.length - 1 && (
+                <svg
+                  aria-hidden
+                  className="absolute left-[3.4rem] md:left-[5.3rem] top-full -translate-y-2 pointer-events-none"
+                  width="28"
+                  height="44"
+                  viewBox="0 0 28 44"
+                  fill="none"
+                >
+                  <path
+                    d={isLeft ? 'M14 2 C 22 14, 6 26, 14 42' : 'M14 2 C 6 14, 22 26, 14 42'}
+                    stroke="color-mix(in srgb, var(--color-ink) 22%, transparent)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="1 5"
+                  />
+                </svg>
+              )}
             </motion.div>
           );
         })}

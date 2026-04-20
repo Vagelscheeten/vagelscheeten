@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { MarkerUnderline } from './decorations/MarkerUnderline';
+import { Polaroid } from './decorations/Polaroid';
+import { StempelBadge } from './decorations/StempelBadge';
+import { PaperBackground } from './decorations/PaperBackground';
 
-// Types
+// ─── Types ────────────────────────────────────────────────────
 type ActiveEvent = {
   id: string;
   name: string;
@@ -22,77 +25,81 @@ type HeroSettings = {
   hero_bild_url?: string;
 };
 
-// ─── Countdown ───────────────────────────────────────────────
-const calcTimeLeft = (target: Date) => {
+type GalleryImage = {
+  id: number;
+  name: string;
+  url: string;
+};
+
+// ─── Countdown ────────────────────────────────────────────────
+const calcDaysLeft = (target: Date) => {
   const diff = target.getTime() - Date.now();
   const isToday = new Date().toDateString() === target.toDateString();
   return {
-    days: Math.max(0, Math.floor(diff / 86_400_000)),
-    hours: Math.max(0, Math.floor((diff % 86_400_000) / 3_600_000)),
-    minutes: Math.max(0, Math.floor((diff % 3_600_000) / 60_000)),
-    seconds: Math.max(0, Math.floor((diff % 60_000) / 1_000)),
+    days: Math.max(0, Math.ceil(diff / 86_400_000)),
     isPast: diff < 0 && !isToday,
     isToday,
   };
 };
 
-const CountdownCard = ({ value, label }: { value: number; label: string }) => (
-  <div className="flex flex-col items-center justify-center bg-white rounded-2xl shadow-sm border border-slate-100 py-4 px-3">
-    <span className="text-3xl lg:text-4xl font-bold text-slate-900">{value}</span>
-    <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide mt-1">
-      {label}
-    </span>
-  </div>
-);
-
-function Countdown({ target, year }: { target: Date; year?: number }) {
-  const [t, setT] = useState(calcTimeLeft(target));
+function CountdownLine({ target, year }: { target: Date; year?: number }) {
+  const [t, setT] = useState(() => calcDaysLeft(target));
 
   useEffect(() => {
-    const id = setInterval(() => setT(calcTimeLeft(target)), 1_000);
-    if (t.isPast) clearInterval(id);
+    const id = setInterval(() => setT(calcDaysLeft(target)), 60_000);
     return () => clearInterval(id);
-  }, [target, t.isPast]);
+  }, [target]);
 
   if (t.isToday)
     return (
-      <p className="text-2xl font-bold text-slate-900">
-        🎉 Heute ist es soweit!
+      <p
+        className="font-display text-melsdorf-red"
+        style={{ fontSize: 'clamp(1.5rem, 2.5vw, 2rem)', fontWeight: 600, lineHeight: 1.1 }}
+      >
+        Heute ist es soweit.
       </p>
     );
 
   if (t.isPast)
     return (
-      <p className="text-lg text-slate-600">
-        Das Vogelschießen {year} ist vorbei — danke an alle!
+      <p className="text-ink-soft" style={{ fontSize: '1.0625rem' }}>
+        Das Vagelscheeten {year} ist vorbei — danke an alle!
       </p>
     );
 
   return (
-    <div className="w-full max-w-sm">
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">
-        Countdown zum Fest
-      </p>
-      <div className="grid grid-cols-4 gap-3">
-        <CountdownCard value={t.days} label="Tage" />
-        <CountdownCard value={t.hours} label="Std" />
-        <CountdownCard value={t.minutes} label="Min" />
-        <CountdownCard value={t.seconds} label="Sek" />
-      </div>
+    <div className="flex items-baseline gap-3 flex-wrap">
+      <span className="font-hand text-ink-muted" style={{ fontSize: '1.15rem' }}>
+        Noch
+      </span>
+      <span
+        className="font-display text-melsdorf-red font-soft-warm tabular-nums"
+        style={{ fontSize: 'clamp(3rem, 6vw, 4.5rem)', fontWeight: 600, lineHeight: 0.9 }}
+      >
+        {t.days}
+      </span>
+      <span
+        className="font-display text-ink"
+        style={{ fontSize: 'clamp(1.25rem, 2vw, 1.75rem)', fontWeight: 500 }}
+      >
+        {t.days === 1 ? 'Tag' : 'Tage'} bis zum Fest
+      </span>
     </div>
   );
 }
 
-// ─── Hero Section ────────────────────────────────────────────
+// ─── Hero ─────────────────────────────────────────────────────
 interface HeroSectionProps {
   event: ActiveEvent | null;
   heroSettings?: HeroSettings;
+  galleryImages?: GalleryImage[];
   onScrollToSpenden?: () => void;
 }
 
 export function HeroSection({
   event,
   heroSettings,
+  galleryImages = [],
   onScrollToSpenden,
 }: HeroSectionProps) {
   const eventDate = event?.datum
@@ -111,159 +118,212 @@ export function HeroSection({
       })
     : 'Samstag, 30. Mai 2026';
 
+  // Stempel: Tag + Monat oben, Jahr unten
+  const stempelTop = event?.datum
+    ? new Date(event.datum).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }).toUpperCase()
+    : '30. MAI';
+  const stempelBottom = String(event?.jahr ?? 2026);
+
+  // Letztes Wort im Titel hervorgehoben
   const words = title.split(' ');
-  const firstWord = words[0];
-  const rest = words.slice(1).join(' ');
+  const mainTitle = words.slice(0, -1).join(' ');
+  const lastWord = words[words.length - 1];
+
+  // Polaroid-Bilder aus Galerie wählen (bis zu 3)
+  const polaroidImages = useMemo(() => {
+    const pool = galleryImages.filter((g) => g.url);
+    if (pool.length === 0 && heroSettings?.hero_bild_url) {
+      return [{ id: 0, name: 'Hero', url: heroSettings.hero_bild_url }];
+    }
+    if (pool.length === 0) {
+      return [{ id: 0, name: 'Hero', url: '/hero.jpg' }];
+    }
+    // Nimm die ersten 3 in stabiler Reihenfolge (deterministisch)
+    return pool.slice(0, 3);
+  }, [galleryImages, heroSettings?.hero_bild_url]);
+
+  const [primary, ...rest] = polaroidImages;
 
   return (
-    <header className="relative pt-16 pb-20 lg:pt-24 lg:pb-28 px-6 bg-gradient-to-b from-melsdorf-beige/30 to-white overflow-hidden">
-      <div className="max-w-7xl mx-auto relative min-h-[500px] lg:min-h-[550px]">
+    <PaperBackground
+      color="var(--color-paper)"
+      grain={0.4}
+      className="overflow-hidden"
+    >
+      <header className="relative pt-20 pb-24 md:pt-28 md:pb-36 px-4 md:px-8">
+        <div className="max-w-7xl mx-auto relative">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-6 items-start">
 
-        {/* ── Image: absolutely positioned right side, BEHIND text (z-0) ── */}
-        <motion.div
-          className="absolute right-0 top-1/2 -translate-y-[55%] w-[53%] z-0 hidden lg:block"
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <div className="relative aspect-[4/3] rounded-3xl shadow-2xl rotate-2 hover:rotate-0 transition-transform duration-500 ease-out bg-white p-3">
-            <div className="relative w-full h-full rounded-2xl overflow-hidden">
-              <Image
-                src={heroSettings?.hero_bild_url || '/hero.jpg'}
-                alt="Melsdörper Vagelscheeten"
-                fill
-                className="object-cover"
-                quality={90}
-                priority
-              />
-            </div>
-          </div>
-        </motion.div>
+            {/* ── Text-Bereich (7 cols) ─────────────────────── */}
+            <div className="md:col-span-7 relative z-10">
 
-        {/* ── Text: sits ABOVE the image (z-10), NO max-width on headline ── */}
-        <div className="relative z-10">
-
-          {/* HEADLINE: 3 lines, NO width constraint so it can overlap image */}
-          <h1
-            className="font-bold leading-[0.95] text-slate-900 tracking-tight mb-8"
-            style={{ fontSize: 'clamp(2.25rem, 6vw, 7rem)' }}
-          >
-            <motion.span
-              className="block"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.65, delay: 0, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {firstWord}
-            </motion.span>
-            <motion.span
-              className="block text-[#F2A03D]"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.65, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {rest}
-            </motion.span>
-            {event && (
-              <motion.span
-                className="block"
-                initial={{ opacity: 0, y: 30 }}
+              {/* Caveat-Einleitung */}
+              <motion.p
+                className="font-hand text-melsdorf-red mb-4 md:mb-6"
+                style={{ fontSize: '1.4rem', letterSpacing: '0.01em' }}
+                initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.65, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.55, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
               >
-                {event.jahr}
-              </motion.span>
-            )}
-          </h1>
+                Für die Kinder der Regenbogenschule —
+              </motion.p>
 
-          {/* Below headline: constrain to left side */}
-          <div className="max-w-md">
-            {/* Date + Location */}
-            <motion.div
-              className="flex flex-col text-slate-600 mb-8 leading-tight -space-y-0.5"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.38, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <p className="flex items-center gap-2 text-base lg:text-lg font-medium">
-                <svg className="w-4 h-4 text-melsdorf-orange shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                {dateFormatted}
-              </p>
-              <p className="flex items-center gap-2 text-base lg:text-lg font-medium">
-                <svg className="w-4 h-4 text-melsdorf-orange shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Regenbogenschule Melsdorf
-              </p>
-            </motion.div>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center mb-10">
-              <motion.a
-                href="#spenden"
-                onClick={(e) => {
-                  if (onScrollToSpenden) {
-                    e.preventDefault();
-                    onScrollToSpenden();
-                  }
+              {/* HEADLINE */}
+              <h1
+                className="font-display text-ink mb-6 md:mb-8"
+                style={{
+                  fontSize: 'clamp(2.75rem, 10vw, 7.5rem)',
+                  fontWeight: 600,
+                  letterSpacing: '-0.025em',
+                  lineHeight: 0.92,
+                  fontVariationSettings: '"SOFT" 60, "opsz" 144',
                 }}
-                className="inline-flex items-center gap-2 rounded-full h-14 px-8 bg-accent hover:bg-melsdorf-orange transition-all text-slate-900 text-base font-bold shadow-lg shadow-orange-200/50 hover:shadow-orange-300 transform hover:-translate-y-0.5"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.52, ease: [0.22, 1, 0.36, 1] }}
               >
-                {ctaText}
-                <span className="text-lg">❤️</span>
-              </motion.a>
+                <motion.span
+                  className="block"
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  {mainTitle}
+                </motion.span>
+                <motion.span
+                  className="block text-melsdorf-orange italic"
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.7, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ fontVariationSettings: '"SOFT" 85, "opsz" 144' }}
+                >
+                  {lastWord}
+                </motion.span>
+              </h1>
+
+              {/* Datum + Ort */}
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.58, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-lg mb-8 md:mb-10"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
               >
+                <p
+                  className="font-display text-ink-soft mb-1.5"
+                  style={{ fontSize: '1.25rem', fontWeight: 500, lineHeight: 1.25 }}
+                >
+                  {dateFormatted}
+                </p>
+                <p
+                  className="text-ink-muted flex items-center gap-2"
+                  style={{ fontSize: '1.0625rem', lineHeight: 1.4 }}
+                >
+                  <span className="inline-block w-6 h-px bg-ink-muted" />
+                  Regenbogenschule Melsdorf
+                </p>
+              </motion.div>
+
+              {/* CTAs */}
+              <motion.div
+                className="flex flex-col sm:flex-row flex-wrap gap-3 mb-10 md:mb-14"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.48, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (onScrollToSpenden) {
+                      e.preventDefault();
+                      onScrollToSpenden();
+                    } else {
+                      window.location.hash = 'spenden';
+                    }
+                  }}
+                  className="group inline-flex items-center justify-center gap-2 rounded-full h-14 px-7 bg-melsdorf-red hover:bg-melsdorf-red-dark text-paper-soft font-semibold transition-all shadow-lg shadow-melsdorf-red/20 hover:-translate-y-0.5"
+                  style={{ fontSize: '1.0625rem' }}
+                >
+                  {ctaText}
+                  <svg className="w-5 h-5 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M5 12h14M13 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
                 <Link
                   href="/anmeldung"
-                  className="inline-flex items-center gap-2 rounded-full h-14 px-8 border-2 border-slate-300 hover:border-melsdorf-orange bg-white/80 hover:bg-white text-slate-900 text-base font-bold transition-all transform hover:-translate-y-0.5"
+                  className="inline-flex items-center justify-center gap-2 rounded-full h-14 px-7 border-2 border-ink/15 bg-paper-soft hover:bg-ink hover:text-paper-soft hover:border-ink text-ink font-semibold transition-all"
+                  style={{ fontSize: '1.0625rem' }}
                 >
-                  Anmeldung
-                  <span className="text-lg">🙋</span>
+                  Zur Anmeldung
                 </Link>
+              </motion.div>
+
+              {/* Countdown-Zeile */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <CountdownLine target={eventDate} year={event?.jahr} />
               </motion.div>
             </div>
 
-            {/* Countdown */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <Countdown target={eventDate} year={event?.jahr} />
-            </motion.div>
+            {/* ── Bild-Bereich (5 cols) — Polaroid-Collage ─── */}
+            <div className="md:col-span-5 relative min-h-[320px] md:min-h-[520px]">
+              {/* Primär-Polaroid */}
+              {primary && (
+                <motion.div
+                  className="absolute left-1/2 md:left-auto md:right-0 top-0 -translate-x-1/2 md:translate-x-0 w-[78%] md:w-[85%] z-10"
+                  initial={{ opacity: 0, y: 30, rotate: -4 }}
+                  animate={{ opacity: 1, y: 0, rotate: 3 }}
+                  transition={{ duration: 0.8, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Polaroid
+                    src={primary.url}
+                    alt={primary.name}
+                    rotate={3}
+                    tape
+                    priority
+                    aspectRatio="landscape"
+                    caption="Erinnerung"
+                    sizes="(min-width: 920px) 42vw, 78vw"
+                  />
+                </motion.div>
+              )}
+
+              {/* Zweites Polaroid (nur Desktop) */}
+              {rest[0] && (
+                <motion.div
+                  className="hidden md:block absolute left-[-6%] top-[58%] w-[52%] z-0"
+                  initial={{ opacity: 0, y: 30, rotate: 2 }}
+                  animate={{ opacity: 1, y: 0, rotate: -7 }}
+                  transition={{ duration: 0.8, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Polaroid
+                    src={rest[0].url}
+                    alt={rest[0].name}
+                    rotate={-7}
+                    aspectRatio="square"
+                    sizes="(min-width: 920px) 25vw, 50vw"
+                  />
+                </motion.div>
+              )}
+
+              {/* Stempel — auf der unteren Kante des Polaroids, dezentes Papier-Fill für Lesbarkeit */}
+              <motion.div
+                className="absolute md:top-[56%] top-[32%] right-[-2%] md:-right-6 z-20"
+                initial={{ opacity: 0, scale: 0.5, rotate: 0 }}
+                animate={{ opacity: 1, scale: 1, rotate: -7 }}
+                transition={{ duration: 0.6, delay: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <StempelBadge
+                  topLine={stempelTop}
+                  bottomLine={stempelBottom}
+                  rotate={-7}
+                  scale={1.05}
+                  paperFill
+                />
+              </motion.div>
+            </div>
           </div>
         </div>
-
-        {/* Mobile: Image below text */}
-        <motion.div
-          className="relative mt-10 lg:hidden"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <div className="relative aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl rotate-1">
-            <Image
-              src={heroSettings?.hero_bild_url || '/hero.jpg'}
-              alt="Melsdörper Vagelscheeten"
-              fill
-              className="object-cover"
-              quality={90}
-              priority
-            />
-          </div>
-        </motion.div>
-
-      </div>
-    </header>
+      </header>
+    </PaperBackground>
   );
 }

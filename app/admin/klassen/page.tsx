@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, Loader2, PlusCircle, Pencil, Trash2, Users, Gamepad2 } from 'lucide-react';
+import { PageShell } from '@/components/admin';
 import { toast } from 'sonner';
 
 type Klasse = Database['public']['Tables']['klassen']['Row'];
@@ -181,15 +182,17 @@ export default function KlassenVerwaltungPage() {
 
   if (loading) {
     return (
-      <main className="p-4 md:p-8 flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-      </main>
+      <PageShell title="Klassen">
+        <div className="flex justify-center items-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-admin-ink-muted" />
+        </div>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <main className="p-4 md:p-8">
+      <PageShell title="Klassen" breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Klassen' }]}>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Fehler</AlertTitle>
@@ -200,19 +203,21 @@ export default function KlassenVerwaltungPage() {
             )}
           </AlertDescription>
         </Alert>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <main className="p-4 md:p-8 space-y-5">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-900">Klassen</h1>
+    <PageShell
+      title="Klassen"
+      description="Klassen des aktiven Events verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Klassen' }]}
+      actions={
         <Button onClick={openAddDialog} size="sm">
-          <PlusCircle className="mr-2 h-4 w-4" /> Neue Klasse
+          <PlusCircle className="mr-1.5 h-4 w-4" /> Neue Klasse
         </Button>
-      </div>
-
+      }
+    >
       {/* Integritätswarnung: kinder.klasse-Werte ohne Klassen-Eintrag */}
       {orphanedNames.length > 0 && (
         <Alert className="border-orange-200 bg-orange-50">
@@ -370,6 +375,6 @@ export default function KlassenVerwaltungPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </PageShell>
   );
 }

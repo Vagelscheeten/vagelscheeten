@@ -13,6 +13,7 @@ import { KlassenTable } from './components/KlassenTable';
 import { FortschrittTable } from './components/FortschrittTable';
 import { Users, Trophy, Activity, Gamepad2, Clock, BarChart3, Loader2 } from 'lucide-react';
 import { SpielStatistik } from './components/SpielStatistik';
+import { PageShell } from '@/components/admin';
 import { TeilnehmerStatistik } from './components/TeilnehmerStatistik';
 
 export default function Reporting() {
@@ -369,12 +370,11 @@ export default function Reporting() {
   };
   
   return (
-    <main className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Reporting & Statistiken</h1>
-        <p className="text-sm text-slate-500 mt-1">Dashboard, Teilnehmer- und Spielstatistiken</p>
-      </div>
-      
+    <PageShell
+      title="Reporting & Statistiken"
+      description="Dashboard, Teilnehmer- und Spielstatistiken."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Reporting' }]}
+    >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
@@ -729,6 +729,6 @@ export default function Reporting() {
           </>
         )}
       </Tabs>
-    </main>
+    </PageShell>
   );
 }

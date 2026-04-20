@@ -40,20 +40,81 @@ type GeschwisterKind = {
   klasse: string;
 };
 
+// ─── Form-Styling-Konstanten ──────────────────────────────────
+const inputBase =
+  'w-full px-3.5 py-2.5 rounded-md bg-paper-soft text-ink placeholder:text-ink-muted border border-ink/12 focus:outline-none focus:border-melsdorf-green focus:ring-2 focus:ring-melsdorf-green/20 transition-all';
+const inputSm =
+  'w-full px-3 py-2 rounded-md bg-paper-soft text-ink placeholder:text-ink-muted border border-ink/12 focus:outline-none focus:border-melsdorf-green focus:ring-2 focus:ring-melsdorf-green/20 text-sm transition-all';
+
+const labelBase = 'block text-[0.82rem] font-semibold text-ink-soft mb-1.5';
+
+// ─── Option-Karten für Auswahlen ──────────────────────────────
+type OptionCardProps = {
+  checked: boolean;
+  onChange: () => void;
+  title: string;
+  description?: string | null;
+  accent?: 'green' | 'red' | 'orange';
+  inputType?: 'checkbox' | 'radio';
+  inputName?: string;
+};
+
+function OptionCard({ checked, onChange, title, description, accent = 'green', inputType = 'checkbox', inputName }: OptionCardProps) {
+  const accentColor =
+    accent === 'red' ? 'var(--color-melsdorf-red)'
+    : accent === 'orange' ? 'var(--color-melsdorf-orange)'
+    : 'var(--color-melsdorf-green)';
+  const accentBg =
+    accent === 'red' ? 'color-mix(in srgb, var(--color-melsdorf-red) 8%, var(--color-paper-soft))'
+    : accent === 'orange' ? 'color-mix(in srgb, var(--color-melsdorf-orange) 10%, var(--color-paper-soft))'
+    : 'color-mix(in srgb, var(--color-melsdorf-green) 8%, var(--color-paper-soft))';
+
+  return (
+    <label
+      className="flex items-start gap-3 p-4 rounded-lg cursor-pointer transition-all border"
+      style={{
+        borderColor: checked ? accentColor : 'color-mix(in srgb, var(--color-ink) 10%, transparent)',
+        backgroundColor: checked ? accentBg : 'var(--color-paper-soft)',
+      }}
+    >
+      <input
+        type={inputType}
+        name={inputName}
+        checked={checked}
+        onChange={onChange}
+        className="mt-1 h-[18px] w-[18px] accent-melsdorf-green"
+        style={{ accentColor }}
+      />
+      <div className="flex-1">
+        <div className="font-medium text-ink text-[0.92rem]">{title}</div>
+        {description && <div className="text-sm text-ink-soft mt-0.5 leading-snug">{description}</div>}
+      </div>
+    </label>
+  );
+}
+
+// ─── Zeitfenster-Label mit farbigem Punkt ─────────────────────
+function ZeitfensterLabel({ label, dotColor }: { label: string; dotColor: string }) {
+  return (
+    <h3 className="text-[0.95rem] font-semibold text-ink mb-3 flex items-center gap-2">
+      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
+      {label}
+    </h3>
+  );
+}
+
 export default function AnmeldungPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Data from Supabase
+
   const [event, setEvent] = useState<Event | null>(null);
   const [aufgaben, setAufgaben] = useState<Aufgabe[]>([]);
   const [spenden, setSpenden] = useState<Spende[]>([]);
   const [klassen, setKlassen] = useState<Klasse[]>([]);
-  
-  // Form data
+
   const [kindVorname, setKindVorname] = useState('');
   const [kindNachname, setKindNachname] = useState('');
   const [kindKlasse, setKindKlasse] = useState('');
@@ -69,21 +130,19 @@ export default function AnmeldungPage() {
     const loadData = async () => {
       try {
         const supabase = createClient();
-        
-        // Get active event
+
         const { data: eventData, error: eventError } = await supabase
           .from('events')
           .select('*')
           .eq('ist_aktiv', true)
           .single();
-        
+
         if (eventError || !eventData) {
           setError('Kein aktives Event gefunden');
           setLoading(false);
           return;
         }
-        
-        // Check deadline
+
         if (eventData.anmeldeschluss) {
           const deadline = new Date(eventData.anmeldeschluss);
           deadline.setHours(23, 59, 59, 999);
@@ -93,35 +152,28 @@ export default function AnmeldungPage() {
             return;
           }
         }
-        
+
         setEvent(eventData);
-        
-        // Get helper tasks
+
         const { data: aufgabenData } = await supabase
           .from('helferaufgaben')
           .select('*')
           .eq('event_id', eventData.id)
           .order('zeitfenster', { ascending: true });
-        
         setAufgaben(aufgabenData || []);
-        
-        // Get food donations
+
         const { data: spendenData } = await supabase
           .from('essensspenden_bedarf')
           .select('*')
           .eq('event_id', eventData.id);
-        
         setSpenden(spendenData || []);
-        
-        // Get klassen for this event
+
         const { data: klassenData } = await supabase
           .from('klassen')
           .select('id, name')
           .eq('event_id', eventData.id)
           .order('name', { ascending: true });
-        
         setKlassen(klassenData || []);
-        
       } catch (err) {
         console.error('Error loading data:', err);
         setError('Fehler beim Laden der Daten');
@@ -129,26 +181,18 @@ export default function AnmeldungPage() {
         setLoading(false);
       }
     };
-    
     loadData();
   }, []);
 
-  const toggleAufgabe = (id: string) => {
-    setSelectedAufgaben(prev => 
-      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
-    );
-  };
-
-  const toggleSpende = (id: string) => {
-    setSelectedSpenden(prev => 
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
-    );
-  };
+  const toggleAufgabe = (id: string) =>
+    setSelectedAufgaben((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
+  const toggleSpende = (id: string) =>
+    setSelectedSpenden((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
 
   const canProceed = () => {
     if (step === 1) {
       const primaryOk = kindVorname.trim() && kindNachname.trim() && kindKlasse && elternEmail.trim();
-      const geschwisterOk = geschwister.every(g => g.vorname.trim() && g.nachname.trim() && g.klasse);
+      const geschwisterOk = geschwister.every((g) => g.vorname.trim() && g.nachname.trim() && g.klasse);
       return primaryOk && geschwisterOk;
     }
     return true;
@@ -158,11 +202,8 @@ export default function AnmeldungPage() {
     if (geschwister.length >= 4) return;
     setGeschwister([...geschwister, { vorname: '', nachname: kindNachname, klasse: '' }]);
   };
-
-  const removeGeschwister = (index: number) => {
+  const removeGeschwister = (index: number) =>
     setGeschwister(geschwister.filter((_, i) => i !== index));
-  };
-
   const updateGeschwister = (index: number, field: keyof GeschwisterKind, value: string) => {
     const updated = [...geschwister];
     updated[index] = { ...updated[index], [field]: value };
@@ -171,10 +212,8 @@ export default function AnmeldungPage() {
 
   const handleSubmit = async () => {
     if (!event) return;
-    
     setSubmitting(true);
     setError(null);
-    
     try {
       const response = await fetch('/api/anmeldung', {
         method: 'POST',
@@ -184,21 +223,16 @@ export default function AnmeldungPage() {
           kind_nachname: kindNachname,
           kind_klasse: kindKlasse,
           eltern_email: elternEmail,
-          helfer_aufgaben: selectedAufgaben.map(id => ({ aufgabe_id: id, prioritaet: 1 })),
-          essensspenden: selectedSpenden.map(id => ({ spende_id: id, menge: 1 })),
+          helfer_aufgaben: selectedAufgaben.map((id) => ({ aufgabe_id: id, prioritaet: 1 })),
+          essensspenden: selectedSpenden.map((id) => ({ spende_id: id, menge: 1 })),
           ist_springer: istSpringer,
           springer_zeitfenster: istSpringer ? springerZeitfenster : null,
           kommentar,
           weitere_kinder: geschwister.length > 0 ? geschwister : undefined,
-        })
+        }),
       });
-      
       const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Fehler beim Absenden');
-      }
-      
+      if (!response.ok) throw new Error(data.error || 'Fehler beim Absenden');
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message);
@@ -207,22 +241,37 @@ export default function AnmeldungPage() {
     }
   };
 
+  // ─── Loading / Error / Submitted ──────────────────────────
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <Loader2 className="h-12 w-12 animate-spin text-tertiary" />
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-ink-muted" />
       </div>
     );
   }
 
   if (error && !event) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md mx-4">
-          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Anmeldung nicht möglich</h1>
-          <p className="text-gray-600">{error}</p>
-          <Link href="/" className="mt-6 inline-block text-tertiary hover:underline">
+      <div className="flex-1 flex items-center justify-center py-12 px-4">
+        <div
+          className="text-center p-8 rounded-2xl max-w-md mx-auto bg-paper-soft"
+          style={{
+            border: '1px solid color-mix(in srgb, var(--color-ink) 8%, transparent)',
+            boxShadow: '0 10px 30px -12px rgba(26,20,16,0.15)',
+          }}
+        >
+          <AlertCircle className="h-14 w-14 text-melsdorf-red mx-auto mb-4" />
+          <h1
+            className="font-display text-ink mb-2"
+            style={{ fontSize: '1.65rem', fontWeight: 600, fontVariationSettings: '"SOFT" 50, "opsz" 96' }}
+          >
+            Anmeldung nicht möglich
+          </h1>
+          <p className="text-ink-soft mb-6" style={{ marginBottom: '1.5rem' }}>{error}</p>
+          <Link
+            href="/startseite"
+            className="inline-flex items-center gap-1.5 h-11 px-5 rounded-full bg-melsdorf-green hover:bg-melsdorf-green-dark text-paper-soft text-sm font-semibold transition-all"
+          >
             Zurück zur Startseite
           </Link>
         </div>
@@ -232,24 +281,47 @@ export default function AnmeldungPage() {
 
   if (submitted) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
+      <div className="flex-1 flex items-center justify-center py-12 px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md mx-4"
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="text-center p-8 rounded-2xl max-w-md mx-auto bg-paper-soft"
+          style={{
+            border: '1px solid color-mix(in srgb, var(--color-ink) 8%, transparent)',
+            boxShadow: '0 14px 40px -14px rgba(26,20,16,0.2)',
+          }}
         >
-          <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Fast geschafft!</h1>
-          <p className="text-gray-600 mb-4">
-            Wir haben eine E-Mail an <strong>{elternEmail}</strong> gesendet.
+          <CheckCircle className="h-16 w-16 text-melsdorf-green mx-auto mb-4" />
+          <p className="font-hand text-melsdorf-red mb-2" style={{ fontSize: '1.35rem', lineHeight: 1 }}>
+            Fast geschafft!
           </p>
-          <p className="text-gray-600">
-            Bitte klicke auf den Link in der E-Mail, um deine Anmeldung zu bestätigen.
+          <h1
+            className="font-display text-ink mb-4"
+            style={{ fontSize: '1.85rem', fontWeight: 600, lineHeight: 1.1, fontVariationSettings: '"SOFT" 55, "opsz" 96' }}
+          >
+            Eine E-Mail ist unterwegs
+          </h1>
+          <p className="text-ink-soft mb-2" style={{ marginBottom: '0.5rem' }}>
+            Wir haben eine Nachricht an <strong className="text-ink">{elternEmail}</strong> geschickt.
           </p>
-          <div className="mt-6 p-4 bg-yellow-50 rounded-lg text-sm text-yellow-800">
-            📧 Prüfe auch deinen Spam-Ordner, falls du keine E-Mail erhältst.
+          <p className="text-ink-soft" style={{ marginBottom: '1.5rem' }}>
+            Bitte klickt dort auf den Bestätigungslink, damit eure Anmeldung gültig wird.
+          </p>
+          <div
+            className="p-3.5 rounded-lg text-sm text-left"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--color-accent) 15%, var(--color-paper))',
+              color: 'var(--color-ink-soft)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+            }}
+          >
+            <strong>Tipp:</strong> Schau auch kurz in deinen Spam-Ordner — manchmal landen Bestätigungs-Mails dort.
           </div>
-          <Link href="/" className="mt-6 inline-block text-tertiary hover:underline">
+          <Link
+            href="/startseite"
+            className="mt-6 inline-flex items-center gap-1.5 h-11 px-5 rounded-full bg-melsdorf-green hover:bg-melsdorf-green-dark text-paper-soft text-sm font-semibold transition-all"
+          >
             Zurück zur Startseite
           </Link>
         </motion.div>
@@ -257,30 +329,43 @@ export default function AnmeldungPage() {
     );
   }
 
-  const vormittagAufgaben = aufgaben.filter(a => a.zeitfenster === 'vormittag');
-  const nachmittagAufgaben = aufgaben.filter(a => a.zeitfenster === 'nachmittag');
+  const vormittagAufgaben = aufgaben.filter((a) => a.zeitfenster === 'vormittag');
+  const nachmittagAufgaben = aufgaben.filter((a) => a.zeitfenster === 'nachmittag');
 
   return (
-    <div className="flex-1 bg-gradient-to-b from-blue-50 to-white py-8 px-4">
+    <div className="flex-1 py-10 md:py-14 px-4">
       <div className="max-w-2xl mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <div className="text-center mb-10">
+          <p className="font-hand text-melsdorf-red mb-2" style={{ fontSize: '1.3rem', lineHeight: 1 }}>
+            Schön, dass ihr dabei seid —
+          </p>
+          <h1
+            className="font-display text-ink mb-3"
+            style={{
+              fontSize: 'clamp(1.85rem, 4vw, 2.4rem)',
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              lineHeight: 1.05,
+              fontVariationSettings: '"SOFT" 60, "opsz" 96',
+            }}
+          >
             Anmeldung {event?.name}
           </h1>
           {event?.datum && (
-            <p className="text-gray-600">
-              {new Date(event.datum).toLocaleDateString('de-DE', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
+            <p className="text-ink-soft" style={{ marginBottom: 0 }}>
+              {new Date(event.datum).toLocaleDateString('de-DE', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
               })}
             </p>
           )}
           {event?.anmeldeschluss && (
-            <p className="text-sm text-orange-600 mt-2">
-              ⏰ Anmeldeschluss: {new Date(event.anmeldeschluss).toLocaleDateString('de-DE')}
+            <p className="text-sm text-melsdorf-red mt-2" style={{ marginBottom: 0 }}>
+              Anmeldeschluss: {new Date(event.anmeldeschluss).toLocaleDateString('de-DE')}
             </p>
           )}
         </div>
@@ -289,132 +374,166 @@ export default function AnmeldungPage() {
         <div className="flex items-center justify-center mb-8">
           {[1, 2, 3, 4].map((s) => (
             <React.Fragment key={s}>
-              <div 
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${
-                  s <= step ? 'bg-tertiary text-white' : 'bg-gray-200 text-gray-500'
-                }`}
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center font-semibold text-sm transition-all tabular-nums"
+                style={{
+                  fontFamily: 'var(--font-geist-mono), ui-monospace, monospace',
+                  backgroundColor: s <= step ? 'var(--color-melsdorf-green)' : 'var(--color-paper-soft)',
+                  color: s <= step ? 'var(--color-paper-soft)' : 'var(--color-ink-muted)',
+                  border: s <= step ? 'none' : '1px solid color-mix(in srgb, var(--color-ink) 15%, transparent)',
+                }}
               >
                 {s}
               </div>
               {s < 4 && (
-                <div className={`w-12 h-1 ${s < step ? 'bg-tertiary' : 'bg-gray-200'}`} />
+                <div
+                  className="w-10 md:w-12 h-px"
+                  style={{
+                    backgroundColor: s < step
+                      ? 'var(--color-melsdorf-green)'
+                      : 'color-mix(in srgb, var(--color-ink) 15%, transparent)',
+                  }}
+                />
               )}
             </React.Fragment>
           ))}
         </div>
 
         {/* Form Card */}
-        <motion.div 
+        <motion.div
           key={step}
-          initial={{ opacity: 0, x: 20 }}
+          initial={{ opacity: 0, x: 16 }}
           animate={{ opacity: 1, x: 0 }}
-          className="bg-white rounded-xl shadow-lg p-6 sm:p-8"
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-2xl bg-paper-soft p-6 sm:p-8"
+          style={{
+            border: '1px solid color-mix(in srgb, var(--color-ink) 8%, transparent)',
+            boxShadow: '0 10px 30px -14px rgba(26,20,16,0.15)',
+          }}
         >
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
-              <AlertCircle size={20} />
-              <span>{error}</span>
+            <div
+              className="mb-6 p-3.5 rounded-lg flex items-center gap-3"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--color-melsdorf-red) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-melsdorf-red) 25%, transparent)',
+                color: 'var(--color-melsdorf-red-dark)',
+              }}
+            >
+              <AlertCircle size={18} className="shrink-0" />
+              <span className="text-sm">{error}</span>
             </div>
           )}
 
-          {/* Step 1: Kind-Daten */}
+          {/* ── Step 1: Kind-Daten ── */}
           {step === 1 && (
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Angaben zum Kind</h2>
-              
-              {/* Kind-Felder */}
+              <h2
+                className="font-display text-ink mb-6"
+                style={{ fontSize: '1.4rem', fontWeight: 600, fontVariationSettings: '"SOFT" 50, "opsz" 48' }}
+              >
+                Angaben zum Kind
+              </h2>
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vorname *</label>
+                  <label className={labelBase}>Vorname *</label>
                   <input
                     type="text"
                     value={kindVorname}
                     onChange={(e) => setKindVorname(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary"
-                    placeholder="z.B. Max"
+                    className={inputBase}
+                    placeholder="z. B. Max"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nachname *</label>
+                  <label className={labelBase}>Nachname *</label>
                   <input
                     type="text"
                     value={kindNachname}
                     onChange={(e) => setKindNachname(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary"
-                    placeholder="z.B. Mustermann"
+                    className={inputBase}
+                    placeholder="z. B. Mustermann"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Klasse *</label>
+                  <label className={labelBase}>Klasse *</label>
                   <select
                     value={kindKlasse}
                     onChange={(e) => setKindKlasse(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary"
+                    className={inputBase}
                   >
-                    <option value="">Bitte wählen...</option>
-                    {klassen.map(k => (
+                    <option value="">Bitte wählen …</option>
+                    {klassen.map((k) => (
                       <option key={k.id} value={k.name}>{k.name}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Geschwisterkind hinzufügen — direkt unter den Kind-Feldern */}
+              {/* Geschwisterkind hinzufügen */}
               {geschwister.length < 4 && (
                 <button
                   type="button"
                   onClick={addGeschwister}
-                  className="mt-4 flex items-center gap-2 text-sm text-tertiary hover:text-tertiary-dark transition-colors"
+                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-melsdorf-green hover:text-melsdorf-green-dark transition-colors"
                 >
-                  <Plus size={18} />
+                  <Plus size={16} />
                   Geschwisterkind hinzufügen
                 </button>
               )}
 
               {/* Geschwisterkinder */}
               {geschwister.length > 0 && (
-                <div className="mt-4 space-y-4">
+                <div className="mt-5 space-y-4">
                   {geschwister.map((g, index) => (
-                    <div key={index} className="bg-gray-50 rounded-lg p-4 relative">
+                    <div
+                      key={index}
+                      className="rounded-lg p-4 relative"
+                      style={{
+                        backgroundColor: 'color-mix(in srgb, var(--color-paper-warm) 50%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--color-ink) 8%, transparent)',
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => removeGeschwister(index)}
-                        className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
+                        className="absolute top-3 right-3 text-ink-muted hover:text-melsdorf-red transition-colors"
                         title="Entfernen"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} />
                       </button>
-                      <p className="text-sm font-medium text-gray-500 mb-3">Geschwisterkind {index + 1}</p>
+                      <p className="text-[0.78rem] font-semibold uppercase tracking-[0.12em] text-ink-muted mb-3">
+                        Geschwisterkind {index + 1}
+                      </p>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <label className="block text-sm text-gray-600 mb-1">Vorname *</label>
+                          <label className="block text-[0.8rem] text-ink-soft mb-1">Vorname *</label>
                           <input
                             type="text"
                             value={g.vorname}
                             onChange={(e) => updateGeschwister(index, 'vorname', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary text-sm"
+                            className={inputSm}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm text-gray-600 mb-1">Nachname *</label>
+                          <label className="block text-[0.8rem] text-ink-soft mb-1">Nachname *</label>
                           <input
                             type="text"
                             value={g.nachname}
                             onChange={(e) => updateGeschwister(index, 'nachname', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary text-sm"
+                            className={inputSm}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm text-gray-600 mb-1">Klasse *</label>
+                          <label className="block text-[0.8rem] text-ink-soft mb-1">Klasse *</label>
                           <select
                             value={g.klasse}
                             onChange={(e) => updateGeschwister(index, 'klasse', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary text-sm"
+                            className={inputSm}
                           >
-                            <option value="">Bitte wählen...</option>
-                            {klassen.map(k => (
+                            <option value="">Bitte wählen …</option>
+                            {klassen.map((k) => (
                               <option key={k.id} value={k.name}>{k.name}</option>
                             ))}
                           </select>
@@ -425,329 +544,289 @@ export default function AnmeldungPage() {
                 </div>
               )}
 
-              {/* E-Mail — nach den Kinder-Feldern */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail der Eltern *</label>
-                  <input
-                    type="email"
-                    value={elternEmail}
-                    onChange={(e) => setElternEmail(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary"
-                    placeholder="z.B. eltern@example.de"
-                  />
-                  <p className="mt-1 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    <strong>Wichtig:</strong> Du erhältst eine E-Mail mit einem Bestätigungslink. Erst wenn du diesen Link anklickst, ist die Anmeldung gültig.
-                  </p>
+              {/* E-Mail */}
+              <div
+                className="mt-6 pt-6"
+                style={{ borderTop: '1px solid color-mix(in srgb, var(--color-ink) 10%, transparent)' }}
+              >
+                <label className={labelBase}>E-Mail der Eltern *</label>
+                <input
+                  type="email"
+                  value={elternEmail}
+                  onChange={(e) => setElternEmail(e.target.value)}
+                  className={inputBase}
+                  placeholder="z. B. eltern@example.de"
+                />
+                <div
+                  className="mt-2 p-3 rounded-md text-sm leading-snug"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--color-accent) 18%, var(--color-paper))',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                    color: 'var(--color-ink-soft)',
+                  }}
+                >
+                  <strong className="text-ink">Wichtig:</strong> Ihr bekommt eine E-Mail mit einem Bestätigungslink. Erst wenn ihr diesen anklickt, ist die Anmeldung gültig.
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step 2: Helfer-Aufgaben */}
+          {/* ── Step 2: Helfer-Aufgaben ── */}
           {step === 2 && (
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Helfer-Aufgaben</h2>
-              <p className="text-gray-600 mb-6">
-                Wähle aus, welche Aufgaben du übernehmen möchtest. Mehrfachauswahl möglich!
+              <h2
+                className="font-display text-ink mb-2"
+                style={{ fontSize: '1.4rem', fontWeight: 600, fontVariationSettings: '"SOFT" 50, "opsz" 48' }}
+              >
+                Helfer-Aufgaben
+              </h2>
+              <p className="text-ink-soft mb-6" style={{ marginBottom: '1.5rem' }}>
+                Wählt aus, welche Aufgaben ihr übernehmen möchtet — Mehrfachauswahl ist möglich.
               </p>
-              
+
               {vormittagAufgaben.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-lg font-medium text-gray-800 mb-3 flex items-center gap-2">
-                    <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
-                    Vormittag
-                  </h3>
+                  <ZeitfensterLabel label="Vormittag" dotColor="var(--color-accent)" />
                   <div className="space-y-2">
-                    {vormittagAufgaben.map(aufgabe => (
-                      <label
+                    {vormittagAufgaben.map((aufgabe) => (
+                      <OptionCard
                         key={aufgabe.id}
-                        className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
-                          selectedAufgaben.includes(aufgabe.id)
-                            ? 'border-tertiary bg-tertiary/5'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAufgaben.includes(aufgabe.id)}
-                          onChange={() => toggleAufgabe(aufgabe.id)}
-                          className="mt-1 h-5 w-5 text-tertiary rounded"
-                        />
-                        <div>
-                          <div className="font-medium text-gray-900">{aufgabe.titel}</div>
-                          {aufgabe.beschreibung && (
-                            <div className="text-sm text-gray-500">{aufgabe.beschreibung}</div>
-                          )}
-                        </div>
-                      </label>
+                        checked={selectedAufgaben.includes(aufgabe.id)}
+                        onChange={() => toggleAufgabe(aufgabe.id)}
+                        title={aufgabe.titel}
+                        description={aufgabe.beschreibung}
+                        accent="green"
+                      />
                     ))}
                   </div>
                 </div>
               )}
-              
+
               {nachmittagAufgaben.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-medium text-gray-800 mb-3 flex items-center gap-2">
-                    <span className="w-3 h-3 bg-orange-400 rounded-full"></span>
-                    Nachmittag
-                  </h3>
+                  <ZeitfensterLabel label="Nachmittag" dotColor="var(--color-melsdorf-orange)" />
                   <div className="space-y-2">
-                    {nachmittagAufgaben.map(aufgabe => (
-                      <label
+                    {nachmittagAufgaben.map((aufgabe) => (
+                      <OptionCard
                         key={aufgabe.id}
-                        className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
-                          selectedAufgaben.includes(aufgabe.id)
-                            ? 'border-tertiary bg-tertiary/5'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAufgaben.includes(aufgabe.id)}
-                          onChange={() => toggleAufgabe(aufgabe.id)}
-                          className="mt-1 h-5 w-5 text-tertiary rounded"
-                        />
-                        <div>
-                          <div className="font-medium text-gray-900">{aufgabe.titel}</div>
-                          {aufgabe.beschreibung && (
-                            <div className="text-sm text-gray-500">{aufgabe.beschreibung}</div>
-                          )}
-                        </div>
-                      </label>
+                        checked={selectedAufgaben.includes(aufgabe.id)}
+                        onChange={() => toggleAufgabe(aufgabe.id)}
+                        title={aufgabe.titel}
+                        description={aufgabe.beschreibung}
+                        accent="orange"
+                      />
                     ))}
                   </div>
                 </div>
               )}
-              
+
               {aufgaben.length === 0 && (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-ink-muted text-center py-8" style={{ marginBottom: 0 }}>
                   Keine Helfer-Aufgaben verfügbar.
                 </p>
               )}
-              
-              {/* Springer Option */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-lg font-medium text-gray-800 mb-3 flex items-center gap-2">
-                  <span className="w-3 h-3 bg-purple-400 rounded-full"></span>
-                  Flexible Hilfe (Springer)
-                </h3>
-                <label
-                  className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
-                    istSpringer
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={istSpringer}
-                    onChange={(e) => setIstSpringer(e.target.checked)}
-                    className="mt-1 h-5 w-5 text-purple-600 rounded"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">Ich bin Springer</div>
-                    <div className="text-sm text-gray-500">Wir teilen dich flexibel für eine Aufgabe ein, wo gerade Hilfe benötigt wird.</div>
-                    
-                    {istSpringer && (
-                      <div className="mt-3 space-y-2">
-                        <p className="text-sm font-medium text-gray-700">Wann bist du verfügbar?</p>
-                        <div className="flex flex-wrap gap-2">
-                          <label className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-all ${
-                            springerZeitfenster === 'vormittag' ? 'border-purple-500 bg-purple-100' : 'border-gray-200'
-                          }`}>
+
+              {/* Springer */}
+              <div
+                className="mt-6 pt-6"
+                style={{ borderTop: '1px solid color-mix(in srgb, var(--color-ink) 10%, transparent)' }}
+              >
+                <ZeitfensterLabel label="Flexible Hilfe (Springer)" dotColor="var(--color-melsdorf-red)" />
+                <OptionCard
+                  checked={istSpringer}
+                  onChange={() => setIstSpringer(!istSpringer)}
+                  title="Ich bin Springer"
+                  description="Wir teilen euch flexibel für eine Aufgabe ein, wo gerade Hilfe benötigt wird."
+                  accent="red"
+                />
+
+                {istSpringer && (
+                  <div className="mt-3 pl-1 space-y-2">
+                    <p className="text-sm font-medium text-ink-soft">Wann seid ihr verfügbar?</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 'vormittag', label: 'Vormittag' },
+                        { value: 'nachmittag', label: 'Nachmittag' },
+                        { value: 'beides', label: 'Ganztägig' },
+                      ].map((opt) => {
+                        const active = springerZeitfenster === opt.value;
+                        return (
+                          <label
+                            key={opt.value}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all text-sm"
+                            style={{
+                              border: `1px solid ${active ? 'var(--color-melsdorf-red)' : 'color-mix(in srgb, var(--color-ink) 12%, transparent)'}`,
+                              backgroundColor: active ? 'color-mix(in srgb, var(--color-melsdorf-red) 10%, var(--color-paper-soft))' : 'var(--color-paper-soft)',
+                              color: active ? 'var(--color-melsdorf-red-dark)' : 'var(--color-ink-soft)',
+                              fontWeight: active ? 600 : 500,
+                            }}
+                          >
                             <input
                               type="radio"
                               name="springerZeit"
-                              checked={springerZeitfenster === 'vormittag'}
-                              onChange={() => setSpringerZeitfenster('vormittag')}
-                              className="text-purple-600"
+                              checked={active}
+                              onChange={() => setSpringerZeitfenster(opt.value as any)}
+                              className="sr-only"
                             />
-                            <span>Vormittag</span>
+                            {opt.label}
                           </label>
-                          <label className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-all ${
-                            springerZeitfenster === 'nachmittag' ? 'border-purple-500 bg-purple-100' : 'border-gray-200'
-                          }`}>
-                            <input
-                              type="radio"
-                              name="springerZeit"
-                              checked={springerZeitfenster === 'nachmittag'}
-                              onChange={() => setSpringerZeitfenster('nachmittag')}
-                              className="text-purple-600"
-                            />
-                            <span>Nachmittag</span>
-                          </label>
-                          <label className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-all ${
-                            springerZeitfenster === 'beides' ? 'border-purple-500 bg-purple-100' : 'border-gray-200'
-                          }`}>
-                            <input
-                              type="radio"
-                              name="springerZeit"
-                              checked={springerZeitfenster === 'beides'}
-                              onChange={() => setSpringerZeitfenster('beides')}
-                              className="text-purple-600"
-                            />
-                            <span>Ganztägig</span>
-                          </label>
-                        </div>
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </div>
-                </label>
+                )}
               </div>
             </div>
           )}
 
-          {/* Step 3: Essensspenden */}
+          {/* ── Step 3: Essensspenden ── */}
           {step === 3 && (
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Essensspenden</h2>
-              <p className="text-gray-600 mb-6">
-                Möchtest du etwas für das Kuchenbuffet mitbringen?
+              <h2
+                className="font-display text-ink mb-2"
+                style={{ fontSize: '1.4rem', fontWeight: 600, fontVariationSettings: '"SOFT" 50, "opsz" 48' }}
+              >
+                Essensspenden
+              </h2>
+              <p className="text-ink-soft mb-6" style={{ marginBottom: '1.5rem' }}>
+                Möchtet ihr etwas für das Kuchenbuffet mitbringen?
               </p>
-              
+
               <div className="space-y-2">
-                {spenden.map(spende => (
-                  <label
+                {spenden.map((spende) => (
+                  <OptionCard
                     key={spende.id}
-                    className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-all ${
-                      selectedSpenden.includes(spende.id)
-                        ? 'border-tertiary bg-tertiary/5'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSpenden.includes(spende.id)}
-                      onChange={() => toggleSpende(spende.id)}
-                      className="mt-1 h-5 w-5 text-tertiary rounded"
-                    />
-                    <div>
-                      <div className="font-medium text-gray-900">{spende.titel}</div>
-                      {spende.beschreibung && (
-                        <div className="text-sm text-gray-500">{spende.beschreibung}</div>
-                      )}
-                    </div>
-                  </label>
+                    checked={selectedSpenden.includes(spende.id)}
+                    onChange={() => toggleSpende(spende.id)}
+                    title={spende.titel}
+                    description={spende.beschreibung}
+                    accent="green"
+                  />
                 ))}
               </div>
-              
+
               {spenden.length === 0 && (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-ink-muted text-center py-8" style={{ marginBottom: 0 }}>
                   Keine Essensspenden-Kategorien verfügbar.
                 </p>
               )}
             </div>
           )}
 
-          {/* Step 4: Zusammenfassung */}
+          {/* ── Step 4: Zusammenfassung ── */}
           {step === 4 && (
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Zusammenfassung</h2>
-              
-              <div className="space-y-6">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-800 mb-2">{geschwister.length > 0 ? 'Kinder' : 'Kind'}</h3>
-                  <p className="text-gray-600">
-                    <strong>{kindVorname} {kindNachname}</strong>, Klasse {kindKlasse}
+              <h2
+                className="font-display text-ink mb-6"
+                style={{ fontSize: '1.4rem', fontWeight: 600, fontVariationSettings: '"SOFT" 50, "opsz" 48' }}
+              >
+                Zusammenfassung
+              </h2>
+
+              <div className="space-y-4">
+                <SummaryBlock label={geschwister.length > 0 ? 'Kinder' : 'Kind'}>
+                  <p className="text-ink-soft" style={{ marginBottom: 0 }}>
+                    <strong className="text-ink">{kindVorname} {kindNachname}</strong>
+                    <span className="text-ink-muted text-sm ml-2">Klasse {kindKlasse}</span>
                   </p>
                   {geschwister.map((g, i) => (
-                    <p key={i} className="text-gray-600 mt-1">
-                      <strong>{g.vorname} {g.nachname}</strong>, Klasse {g.klasse}
+                    <p key={i} className="text-ink-soft mt-1" style={{ marginBottom: 0 }}>
+                      <strong className="text-ink">{g.vorname} {g.nachname}</strong>
+                      <span className="text-ink-muted text-sm ml-2">Klasse {g.klasse}</span>
                     </p>
                   ))}
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-800 mb-2">E-Mail</h3>
-                  <p className="text-gray-600">{elternEmail}</p>
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-800 mb-2">Helfer-Aufgaben</h3>
+                </SummaryBlock>
+
+                <SummaryBlock label="E-Mail">
+                  <p className="text-ink-soft font-mono" style={{ fontFamily: 'var(--font-geist-mono), ui-monospace, monospace', marginBottom: 0 }}>
+                    {elternEmail}
+                  </p>
+                </SummaryBlock>
+
+                <SummaryBlock label="Helfer-Aufgaben">
                   {istSpringer ? (
-                    <p className="text-purple-600">
+                    <p style={{ color: 'var(--color-melsdorf-red-dark)', marginBottom: 0 }}>
                       <strong>Springer ({springerZeitfenster === 'beides' ? 'ganztägig' : springerZeitfenster})</strong>
                     </p>
                   ) : selectedAufgaben.length > 0 ? (
-                    <ul className="text-gray-600 space-y-1">
-                      {selectedAufgaben.map(id => {
-                        const aufgabe = aufgaben.find(a => a.id === id);
+                    <ul className="text-ink-soft space-y-1" style={{ marginBottom: 0 }}>
+                      {selectedAufgaben.map((id) => {
+                        const aufgabe = aufgaben.find((a) => a.id === id);
                         return aufgabe && <li key={id}>• {aufgabe.titel}</li>;
                       })}
                     </ul>
                   ) : (
-                    <p className="text-gray-500 italic">Keine ausgewählt</p>
+                    <p className="text-ink-muted italic" style={{ marginBottom: 0 }}>Keine ausgewählt</p>
                   )}
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-800 mb-2">Essensspenden</h3>
+                </SummaryBlock>
+
+                <SummaryBlock label="Essensspenden">
                   {selectedSpenden.length > 0 ? (
-                    <ul className="text-gray-600 space-y-1">
-                      {selectedSpenden.map(id => {
-                        const spende = spenden.find(s => s.id === id);
+                    <ul className="text-ink-soft space-y-1" style={{ marginBottom: 0 }}>
+                      {selectedSpenden.map((id) => {
+                        const spende = spenden.find((s) => s.id === id);
                         return spende && <li key={id}>• {spende.titel}</li>;
                       })}
                     </ul>
                   ) : (
-                    <p className="text-gray-500 italic">Keine ausgewählt</p>
+                    <p className="text-ink-muted italic" style={{ marginBottom: 0 }}>Keine ausgewählt</p>
                   )}
-                </div>
-                
+                </SummaryBlock>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Anmerkungen (optional)
-                  </label>
+                  <label className={labelBase}>Anmerkungen (optional)</label>
                   <textarea
                     value={kommentar}
                     onChange={(e) => setKommentar(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-tertiary focus:border-tertiary"
-                    placeholder="z.B. Zeitliche Einschränkungen, Fragen, etc."
+                    className={inputBase}
+                    placeholder="z. B. zeitliche Einschränkungen, Fragen, Hinweise …"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-6 border-t">
+          {/* Navigation */}
+          <div
+            className="flex justify-between mt-8 pt-6"
+            style={{ borderTop: '1px solid color-mix(in srgb, var(--color-ink) 10%, transparent)' }}
+          >
             {step > 1 ? (
               <button
                 onClick={() => { setStep(step - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className="flex items-center gap-2 px-6 py-3 text-gray-600 hover:text-gray-800 transition-colors"
+                className="inline-flex items-center gap-1.5 h-11 px-4 text-ink-soft hover:text-ink transition-colors text-[0.92rem] font-medium"
               >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={18} />
                 Zurück
               </button>
             ) : (
               <div />
             )}
-            
+
             {step < 4 ? (
               <button
                 onClick={() => { setStep(step + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 disabled={!canProceed()}
-                className="flex items-center gap-2 px-6 py-3 bg-tertiary text-white rounded-lg hover:bg-tertiary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1.5 h-11 px-6 rounded-full bg-melsdorf-green hover:bg-melsdorf-green-dark text-paper-soft text-[0.92rem] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
               >
                 Weiter
-                <ChevronRight size={20} />
+                <ChevronRight size={18} />
               </button>
             ) : (
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 h-11 px-6 rounded-full bg-melsdorf-red hover:bg-melsdorf-red-dark text-paper-soft text-[0.92rem] font-semibold transition-all disabled:opacity-40 shadow-md"
               >
                 {submitting ? (
                   <>
-                    <Loader2 size={20} className="animate-spin" />
-                    Wird gesendet...
+                    <Loader2 size={16} className="animate-spin" />
+                    Wird gesendet …
                   </>
                 ) : (
                   <>
-                    <Send size={20} />
+                    <Send size={16} />
                     Anmeldung absenden
                   </>
                 )}
@@ -756,12 +835,30 @@ export default function AnmeldungPage() {
           </div>
         </motion.div>
 
-        {/* Footer info */}
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Nach dem Absenden erhältst du eine E-Mail zur Bestätigung.<br />
-          Deine Daten werden nur für die Organisation des Vogelschießens verwendet.
+        {/* Footer-Hinweis */}
+        <p className="text-center text-sm text-ink-muted mt-6 leading-relaxed" style={{ marginBottom: 0 }}>
+          Nach dem Absenden erhaltet ihr eine E-Mail zur Bestätigung.<br />
+          Eure Daten werden ausschließlich für die Organisation des Vogelschießens verwendet.
         </p>
       </div>
+    </div>
+  );
+}
+
+// ─── Zusammenfassungs-Block ───────────────────────────────────
+function SummaryBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-lg p-4"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-paper-warm) 40%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--color-ink) 7%, transparent)',
+      }}
+    >
+      <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-ink-muted mb-2">
+        {label}
+      </h3>
+      {children}
     </div>
   );
 }

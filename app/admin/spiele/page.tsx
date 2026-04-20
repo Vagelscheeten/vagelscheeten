@@ -6,6 +6,7 @@ import { Database } from '@/lib/database.types';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Loader2, Pencil, PlusCircle, Trash2 } from "lucide-react";
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 import {
   Table,
   TableBody,
@@ -433,34 +434,33 @@ export default function SpieleVerwaltung() {
 
   if (isLoading) {
     return (
-      <main className="p-6">
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2 text-muted-foreground">Lade Spieldaten...</span>
+      <PageShell title="Spiele Verwaltung">
+        <div className="flex justify-center items-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-admin-ink-muted" />
+          <span className="ml-2 text-admin-ink-soft text-sm">Lade Spieldaten …</span>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <main className="p-6">
+      <PageShell title="Spiele Verwaltung" breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Spiele' }]}>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Fehler</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <main className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Spiele Verwaltung</h1>
-        <p className="text-sm text-slate-500 mt-1">Spiele anlegen und Klassen zuweisen</p>
-      </div>
-
+    <PageShell
+      title="Spiele Verwaltung"
+      description="Spiele anlegen und Klassen zuweisen."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Spiele' }]}
+    >
       <Tabs defaultValue="zuweisen" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="verwalten">Spiele Verwalten</TabsTrigger>
@@ -913,6 +913,6 @@ export default function SpieleVerwaltung() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-    </main>
+    </PageShell>
   );
 }

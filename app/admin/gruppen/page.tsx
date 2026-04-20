@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingIndicator from '@/components/ui/LoadingIndicator';
@@ -11,6 +10,8 @@ import { GruppenVerwaltungNeu } from './GruppenVerwaltungNeu';
 import { KinderImport } from './KinderImport';
 import KinderVerwaltung from './KinderVerwaltung';
 import { GruppenPDFGenerator } from './GruppenPDFGenerator';
+import { PageShell, StatusBadge, EmptyState } from '@/components/admin';
+import { Users } from 'lucide-react';
 
 type Event = {
   id: string;
@@ -114,73 +115,99 @@ export default function GruppenPage() {
 
   if (isLoading) {
     return (
-      <main className="p-6 flex justify-center items-center h-64">
-        <LoadingIndicator />
-      </main>
+      <PageShell title="Kinder & Gruppen">
+        <div className="flex justify-center py-12">
+          <LoadingIndicator />
+        </div>
+      </PageShell>
     );
   }
 
   if (!activeEvent) {
     return (
-      <main className="p-6">
-        <p className="text-red-500">
-          Kein aktives Event gefunden. Bitte erstelle zuerst ein Event im Admin-Bereich.
-        </p>
-      </main>
+      <PageShell
+        title="Kinder & Gruppen"
+        description="Kinder importieren und Spielgruppen verwalten."
+      >
+        <EmptyState
+          title="Kein aktives Event"
+          description="Es ist derzeit kein Event aktiv. Lege ein neues Event an oder aktiviere einen bestehenden Jahrgang."
+        />
+      </PageShell>
     );
   }
 
-  return (
-    <main className="p-4 md:p-8 space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Kinder &amp; Gruppen</h1>
-        <p className="text-sm text-slate-500 mt-1">Kinder importieren und Spielgruppen verwalten</p>
-      </div>
+  const totalKinder = alleKinder.length;
+  const totalGruppen = spielgruppen.length;
 
+  return (
+    <PageShell
+      title="Kinder & Gruppen"
+      description="Kinder importieren und Spielgruppen verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Kinder & Gruppen' }]}
+      meta={
+        <>
+          <span className="inline-flex items-center gap-1.5">
+            <Users size={11} className="text-admin-ink-muted" />
+            <span className="tabular-nums">{totalKinder}</span> Kinder
+          </span>
+          <span className="text-admin-border-strong">·</span>
+          <span className="tabular-nums">{totalGruppen}</span> Gruppen
+          <span className="text-admin-border-strong">·</span>
+          <span className="tabular-nums">{klassen.length}</span> Klassen
+        </>
+      }
+    >
       <Tabs defaultValue="import" className="w-full">
-        <TabsList className="mb-4">
+        <TabsList className="mb-6">
           <TabsTrigger value="gruppen">Gruppenverwaltung</TabsTrigger>
           <TabsTrigger value="import">Kinder verwalten</TabsTrigger>
         </TabsList>
 
         {klassen.length === 0 && (
-          <div className="my-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p className="text-yellow-800 text-sm">
-              Noch keine Kinder erfasst. Bitte importiere zuerst Kinder im Tab „Kinder verwalten".
-            </p>
+          <div className="mb-6">
+            <EmptyState
+              title="Noch keine Kinder erfasst"
+              description="Bitte importiere zuerst Kinder im Tab „Kinder verwalten“."
+            />
           </div>
         )}
 
         <TabsContent value="gruppen">
-          <Card className="mb-6">
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <label htmlFor="klasse-select" className="font-medium text-sm">Klasse:</label>
-                  <Select value={selectedKlasse} onValueChange={setSelectedKlasse} disabled={klassen.length === 0}>
-                    <SelectTrigger className="w-[180px]" id="klasse-select">
-                      <SelectValue placeholder={klassen.length > 0 ? "Klasse auswählen" : "Keine Klassen"} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      {klassen.map((klasse) => {
-                        const count = alleKinder.filter(k => k.klasse === klasse).length;
-                        return (
-                          <SelectItem key={klasse} value={klasse}>{klasse} ({count} Kinder)</SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
+          <div className="mb-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 rounded-lg border border-admin-border bg-admin-surface">
+            <div className="flex items-center gap-3">
+              <label htmlFor="klasse-select" className="text-[0.85rem] font-medium text-admin-ink-soft">
+                Klasse:
+              </label>
+              <Select value={selectedKlasse} onValueChange={setSelectedKlasse} disabled={klassen.length === 0}>
+                <SelectTrigger className="w-[200px]" id="klasse-select">
+                  <SelectValue placeholder={klassen.length > 0 ? 'Klasse auswählen' : 'Keine Klassen'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {klassen.map((klasse) => {
+                    const count = alleKinder.filter((k) => k.klasse === klasse).length;
+                    return (
+                      <SelectItem key={klasse} value={klasse}>
+                        {klasse} ({count} Kinder)
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {selectedKlasse && (
+                <StatusBadge variant="info" size="sm">
+                  {alleKinder.filter((k) => k.klasse === selectedKlasse).length} Kinder
+                </StatusBadge>
+              )}
+            </div>
 
-                {selectedKlasse && (
-                  <GruppenPDFGenerator
-                    activeEventId={activeEvent.id}
-                    selectedKlasseName={selectedKlasse}
-                  />
-                )}
-              </div>
-            </CardContent>
-          </Card>
+            {selectedKlasse && (
+              <GruppenPDFGenerator
+                activeEventId={activeEvent.id}
+                selectedKlasseName={selectedKlasse}
+              />
+            )}
+          </div>
 
           {selectedKlasse ? (
             <GruppenVerwaltungNeu
@@ -188,9 +215,11 @@ export default function GruppenPage() {
               selectedKlasseName={selectedKlasse}
             />
           ) : (
-            <p className="text-slate-500 text-sm p-4">
-              Bitte wähle eine Klasse aus, um die Gruppenverwaltung zu nutzen.
-            </p>
+            <EmptyState
+              title="Keine Klasse ausgewählt"
+              description="Bitte wähle oben eine Klasse aus, um die Gruppenverwaltung zu nutzen."
+              compact
+            />
           )}
         </TabsContent>
 
@@ -203,7 +232,7 @@ export default function GruppenPage() {
 
             <KinderVerwaltung
               alleKinderDesEvents={alleKinder}
-              spielgruppenDieserKlasse={spielgruppen.filter(g => g.klasse === selectedKlasse)}
+              spielgruppenDieserKlasse={spielgruppen.filter((g) => g.klasse === selectedKlasse)}
               kinderZuordnungen={kinderZuordnungen}
               selectedKlasseName={selectedKlasse}
               activeEventId={activeEvent.id}
@@ -213,6 +242,6 @@ export default function GruppenPage() {
           </div>
         </TabsContent>
       </Tabs>
-    </main>
+    </PageShell>
   );
 }

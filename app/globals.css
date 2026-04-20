@@ -6,26 +6,39 @@
   --breakpoint-md: 920px;
 
   /* Fonts */
-  --font-poppins: var(--font-poppins);
+  --font-fraunces: var(--font-fraunces);
   --font-inter: var(--font-inter);
-  --font-sans: var(--font-poppins), var(--font-inter), sans-serif;
+  --font-caveat: var(--font-caveat);
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-hand: var(--font-caveat), ui-sans-serif, system-ui, sans-serif;
+  /* Legacy alias — viele Admin-/Leiter-Komponenten referenzieren noch --font-poppins */
+  --font-poppins: var(--font-inter);
 
-  /* Colors */
-  --color-border: #DDDDDD;
-  --color-input: #E2E8F0;
-  --color-ring: #111;
-  --color-background: #F9F9F9;
-  --color-foreground: #2E2E2E;
+  /* Paper / Ink — Basis des „Schulheft-Editorial“ */
+  --color-paper: #FAF4E7;
+  --color-paper-soft: #FFFDF8;
+  --color-paper-warm: #F5EBD4;
+  --color-ink: #1A1410;
+  --color-ink-soft: #4A3F36;
+  --color-ink-muted: #8A7A6A;
 
-  --color-primary: #111;
+  /* Base shadcn-style tokens (für bestehenden Admin-Bereich weiterhin) */
+  --color-border: #E8DFCD;
+  --color-input: #E8DFCD;
+  --color-ring: #1A1410;
+  --color-background: #FAF4E7;
+  --color-foreground: #1A1410;
+
+  --color-primary: #1A1410;
   --color-primary-dark: #000;
-  --color-primary-light: #222;
-  --color-primary-foreground: #fff;
+  --color-primary-light: #2E2E2E;
+  --color-primary-foreground: #FFFDF8;
 
-  --color-secondary: #111;
-  --color-secondary-dark: #000;
-  --color-secondary-light: #222;
-  --color-secondary-foreground: #fff;
+  --color-secondary: #33665B;
+  --color-secondary-dark: #28524A;
+  --color-secondary-light: #4A8577;
+  --color-secondary-foreground: #FFFDF8;
 
   --color-tertiary: #27AE60;
   --color-tertiary-dark: #1F8B4C;
@@ -38,108 +51,137 @@
   --color-destructive: #E7432C;
   --color-destructive-foreground: #fff;
 
-  --color-muted: #F1F5F9;
-  --color-muted-foreground: #64748B;
+  --color-muted: #F5EBD4;
+  --color-muted-foreground: #8A7A6A;
 
-  --color-popover: #FFFFFF;
-  --color-popover-foreground: #0F172A;
+  --color-popover: #FFFDF8;
+  --color-popover-foreground: #1A1410;
 
-  --color-card: #FFFFFF;
-  --color-card-foreground: #0F172A;
+  --color-card: #FFFDF8;
+  --color-card-foreground: #1A1410;
 
-  --color-neutral: #2E2E2E;
-  --color-error: #E74C3C;
+  --color-neutral: #1A1410;
+  --color-error: #E7432C;
 
-  /* Melsdorf Palette */
+  /* Melsdorf Brand */
   --color-melsdorf-orange: #F2A03D;
+  --color-melsdorf-orange-dark: #D88524;
   --color-melsdorf-red: #E7432C;
+  --color-melsdorf-red-dark: #C2331E;
   --color-melsdorf-green: #33665B;
+  --color-melsdorf-green-dark: #244940;
   --color-melsdorf-beige: #F2E4C2;
 
-  /* Pastel Colors */
+  /* Pastel Colors (legacy — falls noch in Admin/Leiter referenziert) */
   --color-pastel-blue: #CAF0F8;
   --color-pastel-green: #D9F2B4;
   --color-pastel-yellow: #FFF1A8;
   --color-pastel-orange: #FFD8BE;
   --color-pastel-pink: #FFCAD4;
 
+  /* ── Admin-Tokens ── separate Palette, warm statt slate-kalt ── */
+  --color-admin-bg:            #F7F5F0;
+  --color-admin-surface:       #FFFFFF;
+  --color-admin-surface-muted: #FBFAF6;
+  --color-admin-surface-hover: #F2EFE7;
+  --color-admin-border:        #E8E4DA;
+  --color-admin-border-strong: #D5CFC2;
+  --color-admin-ink:           #171512;
+  --color-admin-ink-soft:      #4E4A42;
+  --color-admin-ink-muted:     #8B857A;
+  /* semantische Status */
+  --color-admin-success:       #1F8B4C;
+  --color-admin-success-bg:    #E4F3E9;
+  --color-admin-warn:           #B87410;
+  --color-admin-warn-bg:        #FBF1D8;
+  --color-admin-danger:         #C2331E;
+  --color-admin-danger-bg:      #FCE4DE;
+  --color-admin-info:           #2E6F8E;
+  --color-admin-info-bg:        #E1EEF6;
+  /* operativer Marken-Akzent */
+  --color-admin-accent:         #D88524;
+  --color-admin-accent-bg:      #FCEEDA;
+
   /* Radius */
-  --radius: 1rem;
+  --radius: 0.75rem;
+  --radius-card: 1.25rem;
 }
 
-/* Utility Classes & Animations */
-@layer utilities {
-  .animate-fade-in-right {
-    animation: fadeInRight 0.3s ease-out forwards;
+/* ─── Base ──────────────────────────────────────────────────── */
+@layer base {
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    width: 100%;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+    color: var(--color-ink);
+    font-feature-settings: "ss01", "ss03";
+  }
+
+  h1 {
+    font-size: clamp(2.25rem, 4.5vw, 3.75rem);
+    line-height: 1.02;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 1.25rem;
+    font-variation-settings: "SOFT" 40, "opsz" 144;
+  }
+
+  h2 {
+    font-size: clamp(1.875rem, 3.5vw, 3rem);
+    line-height: 1.08;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 1rem;
+    font-variation-settings: "SOFT" 50, "opsz" 96;
+  }
+
+  h3 {
+    font-size: 1.5rem;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.75rem;
+    font-variation-settings: "SOFT" 50, "opsz" 48;
+  }
+
+  h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  p {
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    margin-bottom: 1.25rem;
+    color: var(--color-ink-soft);
+  }
+
+  a {
+    transition: color 0.2s ease;
+    color: var(--color-melsdorf-green);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--color-melsdorf-orange);
+  }
+
+  ::selection {
+    background-color: var(--color-accent);
+    color: var(--color-ink);
   }
 }
 
-@keyframes fadeInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* Base Styles */
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-poppins), var(--font-inter), sans-serif;
-  width: 100%;
-  overflow-x: hidden;
-}
-
-/* Typography map to theme fonts */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-poppins), sans-serif;
-}
-
-h1 {
-  font-size: 2.5rem;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  margin-bottom: 1.5rem;
-}
-
-h2 {
-  font-size: 2rem;
-  line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  margin-bottom: 1.25rem;
-}
-
-h3 {
-  font-size: 1.5rem;
-  line-height: 1.4;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  margin-bottom: 1rem;
-}
-
-p {
-  font-size: 1.125rem;
-  line-height: 1.6;
-  margin-bottom: 1.5rem;
-}
-
-a {
-  transition: all 0.3s ease-in-out;
-  color: var(--color-melsdorf-green); /* Warm brand color for links */
-  text-decoration: none;
-}
-
-a:hover {
-  filter: brightness(0.9);
-}
-
-/* Container */
+/* ─── Container ─────────────────────────────────────────────── */
 .container-main {
   width: 100%;
   max-width: 1280px;
@@ -156,7 +198,122 @@ a:hover {
   }
 }
 
-/* Component Classes */
+/* ─── Utilities ─────────────────────────────────────────────── */
+@layer utilities {
+  .font-display {
+    font-family: var(--font-fraunces), ui-serif, Georgia, serif;
+  }
+  .font-hand {
+    font-family: var(--font-caveat), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Variable-Font Axis-Presets für Fraunces */
+  .font-soft-warm {
+    font-variation-settings: "SOFT" 90, "opsz" 144;
+  }
+  .font-soft-display {
+    font-variation-settings: "SOFT" 60, "opsz" 144;
+  }
+  .font-soft-editorial {
+    font-variation-settings: "SOFT" 30, "opsz" 96;
+  }
+  .font-soft-serious {
+    font-variation-settings: "SOFT" 0, "opsz" 24;
+  }
+
+  /* Papier-Textur — subtiler Rausch-Layer */
+  .paper-grain {
+    position: relative;
+    isolation: isolate;
+  }
+  .paper-grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08 0 0 0 0 0.06 0 0 0 0 0.04 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: multiply;
+  }
+
+  /* Animations */
+  .animate-fade-in-right {
+    animation: fadeInRight 0.3s ease-out forwards;
+  }
+  .animate-marker-draw {
+    animation: markerDraw 0.9s ease-out forwards;
+  }
+  .animate-wiggle-slow {
+    animation: wiggle 7s ease-in-out infinite;
+  }
+
+  /* Marker-Highlight — gelber Filzstift unter einem Wort */
+  .marker-highlight {
+    background-image: linear-gradient(
+      180deg,
+      transparent 58%,
+      color-mix(in srgb, var(--color-accent) 75%, transparent) 58%,
+      color-mix(in srgb, var(--color-accent) 75%, transparent) 92%,
+      transparent 92%
+    );
+    background-size: 100% 100%;
+    padding: 0 0.1em;
+  }
+
+  /* Handgezogene Unterstreichung via Background-SVG */
+  .hand-underline {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><path d='M2 8 Q 50 2 100 6 T 198 6' fill='none' stroke='%23E7432C' stroke-width='3' stroke-linecap='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 100% 0.45em;
+    padding-bottom: 0.15em;
+  }
+
+  /* Stempel-Rotation */
+  .stempel-tilt {
+    transform: rotate(-6deg);
+  }
+
+  /* Full-bleed: break out of a centered container (e.g. .container-main) */
+  .full-bleed {
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+    width: 100vw;
+  }
+
+  /* Ruler lines (Schulheft) */
+  .ruled-paper {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 2.25rem,
+      color-mix(in srgb, var(--color-melsdorf-green) 12%, transparent) 2.25rem,
+      color-mix(in srgb, var(--color-melsdorf-green) 12%, transparent) calc(2.25rem + 1px)
+    );
+  }
+}
+
+/* ─── Keyframes ─────────────────────────────────────────────── */
+@keyframes fadeInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes markerDraw {
+  from { background-size: 0% 100%; }
+  to   { background-size: 100% 100%; }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-2deg); }
+  50%      { transform: rotate(2deg); }
+}
+
+/* ─── Components ────────────────────────────────────────────── */
 @layer components {
   /* Buttons */
   .btn {
@@ -193,22 +350,48 @@ a:hover {
   /* Cards */
   .card {
     @apply bg-white flex flex-col h-full transition-all duration-300;
-    border-radius: var(--radius);
+    border-radius: var(--radius-card);
     padding: 1.5rem;
-    border: 1px solid rgba(0,0,0,0.03);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0,0,0,0.04);
+    box-shadow: 0 1px 0 rgba(26, 20, 16, 0.04), 0 8px 24px -12px rgba(26, 20, 16, 0.12);
   }
 
   .card:hover {
     @apply -translate-y-1;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 0 rgba(26, 20, 16, 0.04), 0 16px 40px -16px rgba(26, 20, 16, 0.18);
+  }
+
+  /* Paper-Card — warmer cream card with a subtle hand-drawn feel */
+  .card-paper {
+    background: var(--color-paper-soft);
+    border-radius: var(--radius-card);
+    padding: 1.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-ink) 6%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--color-ink) 4%, transparent),
+      0 10px 28px -16px color-mix(in srgb, var(--color-ink) 18%, transparent);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
 
   .polaroid {
-    @apply bg-white p-4 pb-8 rounded shadow-lg transform -rotate-2 transition-all duration-300;
+    @apply bg-white p-3 pb-6 rounded-md shadow-lg transform -rotate-2 transition-all duration-300;
+    box-shadow:
+      0 2px 4px rgba(26, 20, 16, 0.08),
+      0 10px 30px -10px rgba(26, 20, 16, 0.25);
   }
-  
+
   .polaroid:hover {
-    @apply rotate-0 scale-105 shadow-xl;
+    @apply rotate-0 scale-105;
+    box-shadow:
+      0 4px 8px rgba(26, 20, 16, 0.1),
+      0 20px 50px -15px rgba(26, 20, 16, 0.35);
+  }
+
+  /* Tape — Washi-Tape-Look für Collagen */
+  .tape {
+    position: absolute;
+    background: color-mix(in srgb, var(--color-accent) 80%, transparent);
+    box-shadow: 0 2px 4px rgba(26, 20, 16, 0.1);
+    z-index: 2;
   }
 }

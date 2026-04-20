@@ -3,6 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { SectionWrapper } from './SectionWrapper';
+import { PageHeader } from './PageHeader';
 
 type EinladungSettings = {
   badge?: string;
@@ -18,8 +19,8 @@ interface EinladungSectionProps {
 }
 
 const defaults: EinladungSettings = {
-  badge: '🎉 Herzlich eingeladen',
-  titel: 'Schön, wenn ihr dabei seid!',
+  badge: 'Auch für Sie',
+  titel: 'Eltern, Omas, Opas & Freunde — kommen Sie vorbei!',
   text1: 'Wir laden alle Melsdorfer*innen und Freund*innen der Regenbogenschule herzlich ein, mit uns einen fröhlichen Nachmittag auf der Schulwiese zu verbringen.',
   text2: 'Gemeinsam genießen wir ein Picknick mit Kaffee und Kuchen unter freiem Himmel.',
   mitbringen: [
@@ -27,88 +28,166 @@ const defaults: EinladungSettings = {
     'Kaffeebecher, Geschirr, Besteck',
     'Picknickdecke oder Sitzgelegenheit',
   ],
-  fussnote: 'Für Kaffee und Kuchen ist gesorgt – wir freuen uns auf euch!',
+  fussnote: 'Für Kaffee und Kuchen ist gesorgt — wir freuen uns auf euch!',
 };
+
+function ChecklistItem({ text, delay }: { text: string; delay: number }) {
+  return (
+    <motion.li
+      className="flex items-start gap-3"
+      initial={{ opacity: 0, x: -12 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {/* Handgezeichneter Haken */}
+      <svg
+        aria-hidden
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        className="flex-shrink-0 mt-1"
+      >
+        <path
+          d="M4 12 Q 8 16 10 18 Q 14 12 20 5"
+          fill="none"
+          stroke="var(--color-tertiary)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="text-ink-soft" style={{ fontSize: '1.0625rem', lineHeight: 1.55 }}>
+        {text}
+      </span>
+    </motion.li>
+  );
+}
+
+function InfoCard({
+  kicker,
+  title,
+  children,
+  accent,
+  delay,
+}: {
+  kicker: string;
+  title: string;
+  children: React.ReactNode;
+  accent: string;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      className="relative h-full flex flex-col"
+      style={{
+        background: 'var(--color-paper-soft)',
+        border: '1px solid color-mix(in srgb, var(--color-ink) 8%, transparent)',
+        borderRadius: '1.25rem',
+        padding: '1.75rem',
+        boxShadow: '0 1px 0 rgba(26,20,16,0.04), 0 10px 28px -16px rgba(26,20,16,0.18)',
+      }}
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <span
+        className="font-hand mb-2"
+        style={{ fontSize: '1.2rem', color: accent, lineHeight: 1 }}
+      >
+        {kicker}
+      </span>
+      <h3
+        className="font-display text-ink mb-4"
+        style={{
+          fontSize: '1.5rem',
+          fontWeight: 600,
+          lineHeight: 1.15,
+          fontVariationSettings: '"SOFT" 50, "opsz" 48',
+        }}
+      >
+        {title}
+      </h3>
+      <div className="flex-grow">{children}</div>
+    </motion.div>
+  );
+}
 
 export function EinladungSection({ settings }: EinladungSectionProps) {
   const s = settings
     ? { ...defaults, ...settings, mitbringen: settings.mitbringen?.length ? settings.mitbringen : defaults.mitbringen }
     : defaults;
 
-  // Split title at last word for accent coloring
-  const titleWords = s.titel.split(' ');
-  const titleMain = titleWords.slice(0, -1).join(' ');
-  const titleLast = titleWords[titleWords.length - 1];
-
   return (
-    <SectionWrapper id="einladung" bgColor="bg-gradient-to-br from-pastel-yellow/60 to-melsdorf-beige/40">
-      <div className="max-w-5xl mx-auto">
+    <SectionWrapper id="einladung" bgColor="bg-paper-soft" padding="lg">
+      <PageHeader
+        badge={s.badge ?? defaults.badge}
+        title={s.titel}
+        subtitle={`${s.text1} ${s.text2 ?? ''}`}
+        highlightVariant="underline"
+        highlightWordIndex={0}
+      />
 
-        {/* ── Header ── */}
-        <div className="text-center mb-12">
-          {s.badge && (
-            <span className="inline-block px-4 py-1.5 bg-white/80 backdrop-blur-sm rounded-full text-sm font-semibold text-melsdorf-orange shadow-sm mb-5">
-              {s.badge}
-            </span>
-          )}
-          <h2
-            className="font-bold leading-tight text-slate-900 mb-6"
-            style={{ fontSize: 'clamp(2rem, 4vw, 3rem)', fontFamily: 'var(--font-poppins)' }}
-          >
-            {titleMain}{' '}
-            <span className="text-melsdorf-orange">{titleLast}</span>
-          </h2>
-          <p className="text-slate-700 max-w-2xl mx-auto leading-relaxed mb-3">{s.text1}</p>
-          {s.text2 && (
-            <p className="text-slate-700 max-w-2xl mx-auto leading-relaxed">{s.text2}</p>
-          )}
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto">
 
-        {/* ── Content grid ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <InfoCard
+          kicker="Wann"
+          title="Nachmittag-Programm"
+          accent="var(--color-melsdorf-orange-dark)"
+          delay={0.08}
+        >
+          <p className="text-ink-soft" style={{ fontSize: '1rem', lineHeight: 1.6, marginBottom: 0 }}>
+            Während die Kinder vormittags auf den Spielstationen sind, starten wir am <strong className="text-ink">Nachmittag</strong> mit dem gemeinsamen Picknick, der Krönung und dem Festumzug durchs Dorf.
+          </p>
+        </InfoCard>
 
-          {/* Mitbringen card */}
-          <motion.div
-            className="bg-white rounded-3xl shadow-sm p-4 sm:p-7 border border-white/80"
-            initial={{ opacity: 0, x: -24 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-full bg-melsdorf-orange/15 flex items-center justify-center text-xl flex-shrink-0">
-                🎒
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Bitte mitbringen</h3>
-            </div>
-            <ul className="space-y-3">
-              {s.mitbringen.map((item, i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <span className="mt-0.5 w-5 h-5 rounded-full bg-tertiary/15 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </span>
-                  <span className="text-slate-700 text-sm leading-relaxed">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </motion.div>
+        <InfoCard
+          kicker="Wo"
+          title="Auf der Schulwiese"
+          accent="var(--color-melsdorf-green)"
+          delay={0.16}
+        >
+          <p className="text-ink-soft" style={{ fontSize: '1rem', lineHeight: 1.6, marginBottom: 0 }}>
+            Die Regenbogenschule Melsdorf öffnet Tore und Wiese. Parkmöglichkeiten finden Sie am Dorfgemeinschaftshaus — wir empfehlen den Weg zu Fuß.
+          </p>
+        </InfoCard>
 
-          {/* Fußnote / Highlight card */}
-          <motion.div
-            className="bg-melsdorf-orange rounded-3xl shadow-sm p-4 sm:p-7 flex flex-col justify-between"
-            initial={{ opacity: 0, x: 24 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.55, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="text-4xl mb-4">☀️</div>
-            <p className="text-white text-lg font-semibold leading-relaxed">{s.fussnote}</p>
-          </motion.div>
-
-        </div>
+        <InfoCard
+          kicker="Mitbringen"
+          title="Picknick-Checkliste"
+          accent="var(--color-melsdorf-red)"
+          delay={0.24}
+        >
+          <ul className="space-y-2.5">
+            {s.mitbringen.map((item, i) => (
+              <ChecklistItem key={i} text={item} delay={0.3 + i * 0.06} />
+            ))}
+          </ul>
+        </InfoCard>
       </div>
+
+      {/* Fußnote — warme, handgeschriebene Nachricht */}
+      <motion.div
+        className="mt-14 max-w-3xl mx-auto text-center"
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.55, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <p
+          className="font-display text-ink-soft italic"
+          style={{
+            fontSize: 'clamp(1.35rem, 2vw, 1.65rem)',
+            fontWeight: 500,
+            lineHeight: 1.4,
+            fontVariationSettings: '"SOFT" 70, "opsz" 96',
+            marginBottom: 0,
+          }}
+        >
+          „{s.fussnote}"
+        </p>
+      </motion.div>
     </SectionWrapper>
   );
 }

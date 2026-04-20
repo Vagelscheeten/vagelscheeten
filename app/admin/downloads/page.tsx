@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from "@/components/ui/button";
 import { Trash2, Upload, FileText, AlertCircle, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 
 export default function DownloadsAdmin() {
   const [files, setFiles] = useState<any[]>([]);
@@ -186,12 +187,11 @@ export default function DownloadsAdmin() {
   };
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Download-Verwaltung</h1>
-        <p className="text-sm text-slate-500 mt-1">Dateien für den öffentlichen Download-Bereich verwalten</p>
-      </div>
-      
+    <PageShell
+      title="Download-Verwaltung"
+      description="Dateien für den öffentlichen Download-Bereich verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Downloads' }]}
+    >
       {/* Upload-Formular */}
       <div className="bg-white shadow rounded-lg p-6 mb-8">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
@@ -353,6 +353,6 @@ export default function DownloadsAdmin() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { ImageUpload } from '@/components/ImageUpload';
 import { Image as ImageIcon, Trash2, ArrowLeft, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { PageShell } from '@/components/admin';
 
 // Typ für ein Galeriebild
 type GalleryImage = {
@@ -223,7 +224,11 @@ export default function AdminGallery() {
   };
   
   return (
-    <div className="p-8 relative">
+    <PageShell
+      title="Galerie verwalten"
+      description="Bilder für die öffentliche Galerie hochladen und organisieren."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Galerie' }]}
+    >
       {/* Benachrichtigungs-Modal */}
       {notification && (
         <div className={`fixed top-6 right-6 z-50 flex items-center p-4 mb-4 shadow-lg rounded-lg ${notification.type === 'success' ? 'bg-green-50 border-l-4 border-green-500' : 'bg-red-50 border-l-4 border-red-500'} transition-all duration-300 transform animate-fade-in-right`}>
@@ -247,15 +252,7 @@ export default function AdminGallery() {
           </div>
         </div>
       )}
-      <div className="mb-6">
-        <Link href="/admin" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3 transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-          Zurück
-        </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Galerie verwalten</h1>
-      </div>
-      
-      <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+      <div className="bg-admin-surface rounded-lg border border-admin-border p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4 flex items-center">
           <ImageIcon className="mr-2 h-5 w-5" />
           Neue Bilder hochladen
@@ -356,6 +353,6 @@ export default function AdminGallery() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

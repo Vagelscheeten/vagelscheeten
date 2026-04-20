@@ -11,7 +11,6 @@ import {
   GalerieSection,
   KontaktSection,
   DownloadsSection,
-  WaveDivider,
 } from '@/components/public';
 import type { AblaufSectionSettings } from '@/components/public/AblaufSection';
 
@@ -100,10 +99,11 @@ export function StartseiteClient({
   const downloadLabels = (settings.downloads_labels ?? {}) as Record<string, string>;
 
   return (
-    <div className="w-full bg-white">
+    <div className="w-full bg-paper full-bleed -mt-6">
       <HeroSection
         event={activeEvent}
         heroSettings={heroSettings}
+        galleryImages={galleryImages}
       />
 
       <AblaufSection
@@ -112,41 +112,20 @@ export function StartseiteClient({
         sectionSettings={ablaufSettings}
       />
 
-      {/* white → light yellow (Ablauf ends white, Einladung starts yellow) */}
-      <WaveDivider fromColor="#ffffff" toColor="#FFF7CB" height={70} />
-
       <EinladungSection settings={einladungSettings} />
-
-      {/* beige → very light green (Einladung ends beige-ish, Route starts green-ish) */}
-      <WaveDivider fromColor="#FAF4E7" toColor="#FBFEF8" height={60} flip />
 
       <RouteSection />
 
-      {/* light blue → pastel green (Route ends blue-ish, Spiele starts green) */}
-      <WaveDivider fromColor="#F4FCFE" toColor="#F4FBE9" height={70} />
-
       <SpieleSection games={games} />
-
-      {/* pastel green → dark slate (Spenden) — dramatic! */}
-      <WaveDivider fromColor="#F4FBE9" toColor="#33665B" height={90} flip />
 
       <SpendenSection
         settings={spendenSettings}
         eventJahr={activeEvent?.jahr}
       />
 
-      {/* dark slate → white (Galerie) — dramatic! */}
-      <WaveDivider fromColor="#33665B" toColor="#ffffff" height={90} />
-
       <GalerieSection images={galleryImages} />
 
-      {/* near-white → warm beige (Galerie ends slate-50, Kontakt is beige) */}
-      <WaveDivider fromColor="#F8FAFC" toColor="#FAF4E7" height={60} flip />
-
       <KontaktSection />
-
-      {/* beige → very light blue (Downloads starts pale blue) */}
-      <WaveDivider fromColor="#FAF4E7" toColor="#FAFEFE" height={60} />
 
       <DownloadsSection files={downloadFiles} labels={downloadLabels} />
     </div>

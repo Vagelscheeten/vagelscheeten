@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronRight, Calendar, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -252,12 +253,11 @@ export default function HistorieAdmin() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="p-4 md:p-8 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Historie</h1>
-        <p className="text-sm text-slate-500 mt-1">Königspaare vergangener Vagelscheeten-Events</p>
-      </div>
-
+    <PageShell
+      title="Historie"
+      description="Königspaare vergangener Vagelscheeten-Events."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Historie' }]}
+    >
       <Tabs defaultValue="auto">
         <TabsList className="mb-6">
           <TabsTrigger value="auto">Aus Events (automatisch)</TabsTrigger>
@@ -500,6 +500,6 @@ export default function HistorieAdmin() {
           )}
         </TabsContent>
       </Tabs>
-    </main>
+    </PageShell>
   );
 }

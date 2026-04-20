@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { PageShell } from '@/components/admin';
 import { AnsprechpartnerListe } from './AnsprechpartnerListe';
 import { AnsprechpartnerForm } from './AnsprechpartnerForm';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,18 +89,11 @@ export default function KontakteVerwaltung() {
   };
   
   return (
-    <div className="p-4 md:p-8">
-      <div className="mb-6">
-        <Link
-          href="/admin"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Zurück
-        </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Ansprechpartner verwalten</h1>
-      </div>
-      
+    <PageShell
+      title="Ansprechpartner verwalten"
+      description="Kontaktpersonen für die verschiedenen Bereiche des Events."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Ansprechpartner' }]}
+    >
       <Tabs defaultValue="liste" className="w-full">
         <TabsList>
           <TabsTrigger value="liste">Ansprechpartner</TabsTrigger>
@@ -116,13 +110,13 @@ export default function KontakteVerwaltung() {
         </TabsContent>
         
         <TabsContent value="neu">
-          <AnsprechpartnerForm 
+          <AnsprechpartnerForm
             ansprechpartner={selectedAnsprechpartner}
             onCancel={handleCancel}
             onSuccess={handleSuccess}
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

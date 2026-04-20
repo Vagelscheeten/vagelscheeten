@@ -33,15 +33,24 @@ export default function AdminLayout({
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen w-full">
-        <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
+      <div
+        className="flex items-center justify-center h-screen w-full"
+        style={{ backgroundColor: 'var(--color-admin-bg)' }}
+      >
+        <Loader2
+          className="h-10 w-10 animate-spin"
+          style={{ color: 'var(--color-admin-ink-muted)' }}
+        />
       </div>
     );
   }
-  
+
   // Nur rendern, wenn authentifiziert
   return isAuthenticated ? (
-    <div className="lg:pl-60 transition-all duration-300">
+    <div
+      className="full-bleed -mt-6 lg:pl-60 transition-all duration-300 min-h-screen text-admin-ink"
+      style={{ backgroundColor: 'var(--color-admin-bg)' }}
+    >
       {children}
     </div>
   ) : null;

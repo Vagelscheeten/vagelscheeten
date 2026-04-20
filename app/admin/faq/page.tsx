@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Trash2, Edit2, Save, X, HelpCircle, FolderOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 
 type FaqKategorie = {
   id: string;
@@ -115,16 +116,16 @@ export default function FaqAdmin() {
   };
 
   return (
-    <main className="p-4 md:p-8">
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">FAQ verwalten</h1>
-          <p className="text-sm text-slate-500 mt-1">Häufig gestellte Fragen nach Kategorien organisieren</p>
-        </div>
-        <Button onClick={() => setShowNewKategorie(true)} className="shrink-0">
-          <Plus className="w-4 h-4 mr-2" /> Neue Kategorie
+    <PageShell
+      title="FAQ verwalten"
+      description="Häufig gestellte Fragen nach Kategorien organisieren."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'FAQ' }]}
+      actions={
+        <Button onClick={() => setShowNewKategorie(true)} size="sm">
+          <Plus className="w-4 h-4 mr-1.5" /> Neue Kategorie
         </Button>
-      </div>
+      }
+    >
 
       {/* ── FAQ-Header-Einstellungen ── */}
       <Card className="mb-8">
@@ -282,6 +283,6 @@ export default function FaqAdmin() {
           })}
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }

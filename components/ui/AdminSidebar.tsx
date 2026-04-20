@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import {
   Menu, X, LayoutDashboard, Clock, HelpCircle, Crown, Settings,
   CalendarDays, GraduationCap, Gamepad2, UserCheck,
-  Image, Download, BarChart3, FileText, Wrench, ArrowLeft,
+  Image as ImageIcon, Download, BarChart3, FileText, Wrench, ArrowLeft,
   ChevronDown, UserCog,
 } from 'lucide-react';
 
@@ -17,7 +17,7 @@ const adminGroups = [
       { href: '/admin/ablauf', label: 'Ablaufplan', icon: Clock },
       { href: '/admin/faq', label: 'FAQ', icon: HelpCircle },
       { href: '/admin/historie', label: 'Historie', icon: Crown },
-      { href: '/admin/galerie', label: 'Galerie', icon: Image },
+      { href: '/admin/galerie', label: 'Galerie', icon: ImageIcon },
       { href: '/admin/downloads', label: 'Downloads', icon: Download },
       { href: '/admin/einstellungen', label: 'Seiteneinstellungen', icon: Settings },
     ],
@@ -45,7 +45,6 @@ const adminGroups = [
 export default function AdminSidebar() {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Alle Gruppen standardmäßig aufgeklappt
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(adminGroups.map(g => g.title))
   );
@@ -86,21 +85,28 @@ export default function AdminSidebar() {
     return pathname === href || pathname.startsWith(href + '/');
   };
 
+  const handleMobileClose = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
   return (
     <>
       {/* Mobile toggle */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="sidebar-toggle fixed top-4 left-4 z-50 bg-white text-slate-700 p-2 rounded-lg shadow-md border border-slate-200 lg:hidden"
+        className="sidebar-toggle fixed top-4 left-4 z-50 bg-admin-surface text-admin-ink p-2 rounded-md shadow-sm border border-admin-border lg:hidden hover:bg-admin-surface-hover transition-colors"
         aria-label={sidebarOpen ? 'Menü schließen' : 'Menü öffnen'}
       >
-        {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+        {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
       </button>
 
       {/* Overlay */}
       {sidebarOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/30 z-30 backdrop-blur-sm"
+          className="lg:hidden fixed inset-0 z-30 backdrop-blur-sm"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-admin-ink) 30%, transparent)' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -110,73 +116,83 @@ export default function AdminSidebar() {
         className={`
           fixed top-0 left-0 h-screen z-40
           w-60 flex flex-col
-          bg-white border-r border-slate-100
+          bg-admin-surface border-r border-admin-border
           transition-transform duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
         `}
       >
         {/* Brand header */}
-        <div className="h-14 flex items-center px-5 shrink-0 border-b border-slate-100">
+        <div className="h-14 flex items-center px-5 shrink-0 border-b border-admin-border">
           <span
-            className="font-bold text-base text-slate-800"
-            style={{ fontFamily: 'var(--font-poppins)' }}
+            className="font-semibold text-[0.95rem] text-admin-ink tracking-[-0.01em]"
+            style={{ fontFamily: 'var(--font-inter)' }}
           >
-            Vagel<span className="text-[#F2A03D]">scheeten</span>
+            Vagel<span className="text-admin-accent">scheeten</span>
           </span>
-          <span className="ml-auto text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+          <span
+            className="ml-auto text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-admin-ink-muted"
+            style={{ fontFamily: 'var(--font-geist-mono), ui-monospace, monospace' }}
+          >
             Admin
           </span>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className="flex-1 overflow-y-auto py-3 px-2.5">
 
           {/* Dashboard */}
           <Link
             href="/admin"
-            className={`
-              flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 mb-1
-              ${isActive('/admin')
-                ? 'bg-orange-50 text-[#F2A03D] border-l-2 border-[#F2A03D] rounded-l-none pl-[10px]'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }
-            `}
-            onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
+            onClick={handleMobileClose}
+            className="relative group block"
           >
-            <LayoutDashboard
-              size={17}
-              className={isActive('/admin') ? 'text-[#F2A03D]' : 'text-slate-400'}
-            />
-            <span>Übersicht</span>
+            {(() => {
+              const active = isActive('/admin');
+              return (
+                <div
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[0.88rem] font-medium transition-all mb-1 ${
+                    active
+                      ? 'text-admin-accent bg-admin-accent-bg'
+                      : 'text-admin-ink-soft hover:text-admin-ink hover:bg-admin-surface-hover'
+                  }`}
+                >
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
+                      style={{ backgroundColor: 'var(--color-admin-accent)' }}
+                    />
+                  )}
+                  <LayoutDashboard size={16} />
+                  <span>Übersicht</span>
+                </div>
+              );
+            })()}
           </Link>
 
-          {/* Collapsible groups */}
           {adminGroups.map((group) => {
             const isExpanded = expandedGroups.has(group.title);
-            // Gruppe aufklappen wenn ein Item aktiv ist
-            const hasActive = group.items.some(i => isActive(i.href));
-
             return (
               <div key={group.title} className="mt-5">
-                {/* Klickbarer Gruppen-Header */}
                 <button
                   onClick={() => toggleGroup(group.title)}
-                  className="w-full flex items-center justify-between px-3 mb-1 group"
+                  className="w-full flex items-center justify-between px-2.5 mb-1 group"
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 group-hover:text-slate-600 transition-colors">
+                  <span
+                    className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-admin-ink-muted group-hover:text-admin-ink-soft transition-colors"
+                  >
                     {group.title}
                   </span>
                   <ChevronDown
                     size={11}
-                    className={`text-slate-300 group-hover:text-slate-500 transition-all duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
+                    className={`text-admin-ink-muted/60 group-hover:text-admin-ink-muted transition-all duration-200 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}
                   />
                 </button>
 
-                {/* Items — animiertes Ein-/Ausklappen */}
                 <div
                   className={`space-y-0.5 overflow-hidden transition-all duration-200 ${
-                    isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                    isExpanded ? 'max-h-[420px] opacity-100' : 'max-h-0 opacity-0'
                   }`}
                 >
                   {group.items.map((item) => {
@@ -186,20 +202,26 @@ export default function AdminSidebar() {
                       <Link
                         key={item.href}
                         href={item.href}
-                        className={`
-                          flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150
-                          ${active
-                            ? 'bg-orange-50 text-[#F2A03D] border-l-2 border-[#F2A03D] rounded-l-none pl-[10px]'
-                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                          }
-                        `}
-                        onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
+                        onClick={handleMobileClose}
+                        className="relative block"
                       >
-                        <Icon
-                          size={16}
-                          className={active ? 'text-[#F2A03D]' : 'text-slate-400'}
-                        />
-                        <span>{item.label}</span>
+                        <div
+                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[0.88rem] font-medium transition-all ${
+                            active
+                              ? 'text-admin-accent bg-admin-accent-bg'
+                              : 'text-admin-ink-soft hover:text-admin-ink hover:bg-admin-surface-hover'
+                          }`}
+                        >
+                          {active && (
+                            <span
+                              aria-hidden
+                              className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
+                              style={{ backgroundColor: 'var(--color-admin-accent)' }}
+                            />
+                          )}
+                          <Icon size={14} className="shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </div>
                       </Link>
                     );
                   })}
@@ -210,30 +232,27 @@ export default function AdminSidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="shrink-0 px-4 pt-3 pb-4 border-t border-slate-100 space-y-1">
-          {/* Userverwaltung — systemseitig, getrennt vom Event-Bereich */}
+        <div className="shrink-0 px-3 pt-2.5 pb-3 border-t border-admin-border space-y-0.5">
           <Link
             href="/admin/user"
-            className={`flex items-center gap-2 text-xs rounded-md px-2 py-1.5 transition-colors ${
+            onClick={handleMobileClose}
+            className={`flex items-center gap-2 text-[0.78rem] rounded-md px-2 py-1.5 transition-colors ${
               isActive('/admin/user')
-                ? 'text-[#F2A03D] bg-orange-50 font-medium'
-                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                ? 'text-admin-accent bg-admin-accent-bg font-medium'
+                : 'text-admin-ink-muted hover:text-admin-ink hover:bg-admin-surface-hover'
             }`}
-            onClick={() => window.innerWidth < 1024 && setSidebarOpen(false)}
           >
-            <UserCog size={13} />
+            <UserCog size={12} />
             Userverwaltung
           </Link>
 
-          {/* Trennlinie */}
-          <div className="border-t border-slate-100 my-1" />
+          <div className="border-t border-admin-border my-1" />
 
-          {/* Zur Webseite */}
           <Link
             href="/startseite"
-            className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-700 transition-colors px-2 py-1"
+            className="flex items-center gap-2 text-[0.78rem] text-admin-ink-muted hover:text-admin-ink transition-colors px-2 py-1"
           >
-            <ArrowLeft size={13} />
+            <ArrowLeft size={12} />
             Zur Webseite
           </Link>
         </div>

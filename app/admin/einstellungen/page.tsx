@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Save, Settings, Loader2, Upload, Trash2, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/admin';
 
 type SettingsMap = Record<string, Record<string, string | string[]>>;
 
@@ -206,19 +207,20 @@ export default function EinstellungenAdmin() {
 
   if (loading) {
     return (
-      <main className="p-8 flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-      </main>
+      <PageShell title="Seiteneinstellungen">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-admin-ink-muted" />
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <main className="p-4 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Seiteneinstellungen</h1>
-        <p className="text-sm text-slate-500 mt-1">Globale Texte und Inhalte der öffentlichen Webseite verwalten</p>
-      </div>
-
+    <PageShell
+      title="Seiteneinstellungen"
+      description="Globale Texte und Inhalte der öffentlichen Webseite verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Seiteneinstellungen' }]}
+    >
       <div className="space-y-8">
         {/* Hero-Bild Upload */}
         <Card>
@@ -351,6 +353,6 @@ export default function EinstellungenAdmin() {
           );
         })}
       </div>
-    </main>
+    </PageShell>
   );
 }

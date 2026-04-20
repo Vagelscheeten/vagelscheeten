@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useEvent, EventProvider } from '@/context/EventContext';
 import { createClient } from '@/lib/supabase/client';
 import { Calendar, Plus, Check, Archive, Loader2, AlertCircle, Trash2, Edit2, Save, X } from 'lucide-react';
+import { PageShell } from '@/components/admin';
+import { Button } from '@/components/ui/button';
 
 function EventsPageContent() {
   const { allEvents, activeEvent, refreshEvents, loading } = useEvent();
@@ -262,27 +264,25 @@ function EventsPageContent() {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
+      <PageShell title="Event-Verwaltung">
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-admin-ink-muted" />
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Event-Verwaltung</h1>
-          <p className="text-sm text-slate-500 mt-1">Verwalte Vogelschießen-Events nach Jahren</p>
-        </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-tertiary text-white rounded-lg hover:bg-tertiary-dark transition-colors"
-        >
-          <Plus size={20} />
-          Neues Event erstellen
-        </button>
-      </div>
+    <PageShell
+      title="Event-Verwaltung"
+      description="Vogelschießen-Events nach Jahren verwalten."
+      breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Events' }]}
+      actions={
+        <Button onClick={() => setIsCreating(true)} size="sm">
+          <Plus className="mr-1.5 h-4 w-4" /> Neues Event
+        </Button>
+      }
+    >
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
@@ -515,7 +515,7 @@ function EventsPageContent() {
           <li>• Spiele, Sponsoren und Galerie-Bilder sind global und für alle Events verfügbar.</li>
         </ul>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
