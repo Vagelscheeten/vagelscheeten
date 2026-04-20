@@ -160,6 +160,84 @@ function parseReferences(value: string | string[] | null | undefined): string[] 
 }
 
 /**
+ * Ruft den vollständigen Inhalt einer empfangenen Mail (text, html, attachments)
+ * über die Resend-Receiving-API ab. Der Webhook-Payload selbst enthält nur
+ * Metadaten, der Body muss separat geladen werden.
+ */
+export async function fetchReceivedEmailContent(
+  emailId: string,
+  apiKey: string
+): Promise<{
+  text: string | null;
+  html: string | null;
+  attachments: Array<{
+    id: string;
+    filename: string;
+    content_type: string | null;
+    content_disposition: string | null;
+  }>;
+} | null> {
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      console.error(`[resend-inbound] Content-Fetch fehlgeschlagen: ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as {
+      text?: string | null;
+      html?: string | null;
+      attachments?: Array<{
+        id: string;
+        filename?: string | null;
+        content_type?: string | null;
+        content_disposition?: string | null;
+      }>;
+    };
+    return {
+      text: data.text ?? null,
+      html: data.html ?? null,
+      attachments: (data.attachments ?? []).map((a) => ({
+        id: a.id,
+        filename: a.filename ?? 'attachment',
+        content_type: a.content_type ?? null,
+        content_disposition: a.content_disposition ?? null,
+      })),
+    };
+  } catch (err) {
+    console.error('[resend-inbound] Content-Fetch-Exception:', err);
+    return null;
+  }
+}
+
+/**
+ * Holt eine signierte Download-URL für einen Anhang einer empfangenen Mail.
+ * Die URL ist ca. 1 Stunde gültig.
+ */
+export async function fetchAttachmentDownloadUrl(
+  emailId: string,
+  attachmentId: string,
+  apiKey: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://api.resend.com/emails/receiving/${emailId}/attachments/${attachmentId}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    if (!res.ok) {
+      console.error(`[resend-inbound] Attachment-URL-Fetch fehlgeschlagen: ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as { download_url?: string };
+    return data.download_url ?? null;
+  } catch (err) {
+    console.error('[resend-inbound] Attachment-URL-Exception:', err);
+    return null;
+  }
+}
+
+/**
  * Parst "Max Müller <max@example.com>" oder "max@example.com" in strukturierte Form.
  */
 export function parseAddress(raw: string | null | undefined): {

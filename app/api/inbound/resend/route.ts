@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { parseInboundPayload } from '@/lib/postfach/resend-inbound';
+import {
+  parseInboundPayload,
+  fetchReceivedEmailContent,
+  fetchAttachmentDownloadUrl,
+} from '@/lib/postfach/resend-inbound';
 import { resolveThread } from '@/lib/postfach/threading';
 import { resolveAttachmentBuffer, uploadAttachment } from '@/lib/postfach/storage';
 import { sendInboundNotification } from '@/lib/postfach/notify';
@@ -55,6 +59,25 @@ export async function POST(req: NextRequest) {
   if (parsed.from_address.toLowerCase() === inboxAddress) {
     console.warn('[inbound/resend] Self-Mail ignoriert, from === inbox-address');
     return NextResponse.json({ ok: true, ignored: 'self-mail' });
+  }
+
+  // ── Body + Attachment-Metadaten über Resend-Content-API laden ──────
+  // Der Webhook-Payload enthält nur Metadaten, der eigentliche Inhalt
+  // muss separat abgerufen werden.
+  const apiKey = process.env.RESEND_API_KEY;
+  let attachmentMetadata: Array<{
+    id: string;
+    filename: string;
+    content_type: string | null;
+    content_disposition: string | null;
+  }> = [];
+  if (apiKey && parsed.event_id) {
+    const content = await fetchReceivedEmailContent(parsed.event_id, apiKey);
+    if (content) {
+      parsed.body_text = content.text ?? parsed.body_text;
+      parsed.body_html = content.html ?? parsed.body_html;
+      attachmentMetadata = content.attachments;
+    }
   }
 
   const supabase = createAdminClient();
@@ -123,31 +146,35 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 6. Attachments persistieren ───────────────────────────────────
-  for (const att of parsed.attachments) {
-    try {
-      const resolved = await resolveAttachmentBuffer(att.content_base64, att.url);
-      if (!resolved) {
-        console.warn(`[inbound/resend] Attachment übersprungen (Cap überschritten): ${att.filename}`);
-        continue;
+  // Download-URLs per Resend-API holen und dann Binary laden.
+  if (apiKey) {
+    for (const meta of attachmentMetadata) {
+      try {
+        const downloadUrl = await fetchAttachmentDownloadUrl(parsed.event_id, meta.id, apiKey);
+        if (!downloadUrl) continue;
+        const resolved = await resolveAttachmentBuffer(null, downloadUrl);
+        if (!resolved) {
+          console.warn(`[inbound/resend] Attachment übersprungen (Cap überschritten): ${meta.filename}`);
+          continue;
+        }
+        const storagePath = await uploadAttachment(
+          supabase,
+          emailRow.id,
+          meta.filename,
+          meta.content_type,
+          resolved.buffer
+        );
+        await supabase.from('email_attachments').insert({
+          email_id: emailRow.id,
+          filename: meta.filename,
+          content_type: meta.content_type,
+          size_bytes: resolved.size,
+          storage_path: storagePath,
+          is_inline: (meta.content_disposition ?? '').toLowerCase() === 'inline',
+        });
+      } catch (err) {
+        console.error(`[inbound/resend] Attachment-Fehler (${meta.filename}):`, err);
       }
-      const storagePath = await uploadAttachment(
-        supabase,
-        emailRow.id,
-        att.filename,
-        att.content_type,
-        resolved.buffer
-      );
-      await supabase.from('email_attachments').insert({
-        email_id: emailRow.id,
-        filename: att.filename,
-        content_type: att.content_type,
-        size_bytes: resolved.size,
-        storage_path: storagePath,
-        is_inline: att.is_inline,
-        content_id: att.content_id,
-      });
-    } catch (err) {
-      console.error(`[inbound/resend] Attachment-Fehler (${att.filename}):`, err);
     }
   }
 
