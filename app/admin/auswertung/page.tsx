@@ -116,6 +116,9 @@ export default function AuswertungAdmin() {
   const [selectedGruppeId, setSelectedGruppeId] = useState<string>('');
   const [filteredGruppen, setFilteredGruppen] = useState<Spielgruppe[]>([]);
   
+  // Aktives Event (Scoping-Quelle für alle Queries)
+  const [activeEvent, setActiveEvent] = useState<{ id: string; jahr: number } | null>(null);
+
   // State und Berechnete Daten
   const [isLoading, setIsLoading] = useState(true);
   const [matrixDaten, setMatrixDaten] = useState<GruppeSpielStatus[]>([]);
@@ -170,45 +173,73 @@ export default function AuswertungAdmin() {
     setIsLoading(true);
     
     try {
+      // Aktives Event ermitteln — Quelle für das Event-Scoping aller Queries
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('id, jahr')
+        .eq('ist_aktiv', true)
+        .maybeSingle();
+
+      if (eventError) throw eventError;
+      if (!eventData) {
+        setActiveEvent(null);
+        setSpiele([]);
+        setSpielgruppen([]);
+        setKinder([]);
+        setKinderSpielgruppenZuordnungen([]);
+        setErgebnisse([]);
+        setIsLoading(false);
+        return;
+      }
+      setActiveEvent(eventData);
+      const eventId = eventData.id;
+
       // Lade Spiele
       const { data: spieleData, error: spieleError } = await supabase
         .from('spiele')
         .select('*')
         .order('name');
-      
+
       if (spieleError) throw spieleError;
       setSpiele(spieleData || []);
-      
-      // Lade Spielgruppen
+
+      // Lade Spielgruppen des aktiven Events
       const { data: gruppenData, error: gruppenError } = await supabase
         .from('spielgruppen')
         .select('*')
+        .eq('event_id', eventId)
         .order('name');
-      
+
       if (gruppenError) throw gruppenError;
       setSpielgruppen(gruppenData || []);
-      
-      // Lade Kinder
+
+      // Lade Kinder des aktiven Events
       const { data: kinderData, error: kinderError } = await supabase
         .from('kinder')
-        .select('*');
-      
+        .select('*')
+        .eq('event_id', eventId);
+
       if (kinderError) throw kinderError;
       setKinder(kinderData || []);
-      
-      // Lade Kinder-Spielgruppen-Zuordnungen
-      const { data: zuordnungData, error: zuordnungError } = await supabase
-        .from('kind_spielgruppe_zuordnung')
-        .select('*');
-      
+
+      // Lade Kinder-Spielgruppen-Zuordnungen (nur für Gruppen des aktiven Events)
+      const gruppenIds = (gruppenData ?? []).map((g) => g.id);
+      const { data: zuordnungData, error: zuordnungError } = gruppenIds.length > 0
+        ? await supabase
+            .from('kind_spielgruppe_zuordnung')
+            .select('*')
+            .in('spielgruppe_id', gruppenIds)
+        : { data: [], error: null };
+
       if (zuordnungError) throw zuordnungError;
       setKinderSpielgruppenZuordnungen(zuordnungData || []);
-      
-      // Lade alle Ergebnisse für Matrix und Statistik
+
+      // Lade Ergebnisse des aktiven Events für Matrix und Statistik
       const { data: ergebnisseData, error: ergebnisseError } = await supabase
         .from('ergebnisse')
-        .select('*');
-      
+        .select('*')
+        .eq('event_id', eventId);
+
       if (ergebnisseError) throw ergebnisseError;
       setErgebnisse(ergebnisseData || []);
       
@@ -811,55 +842,80 @@ export default function AuswertungAdmin() {
       let gruppenData = spielgruppen;
       
       if (spieleData.length === 0 || kinderData.length === 0 || ergebnisseData.length === 0) {
+        // Aktives Event ermitteln — alle Fallback-Queries sind darauf gescopt
+        let eventId = activeEvent?.id;
+        if (!eventId) {
+          const { data: ev } = await supabase
+            .from('events')
+            .select('id, jahr')
+            .eq('ist_aktiv', true)
+            .maybeSingle();
+          if (ev) {
+            setActiveEvent(ev);
+            eventId = ev.id;
+          }
+        }
+        if (!eventId) {
+          setIsLoadingGesamtauswertung(false);
+          return;
+        }
+
         // Lade Spiele, falls noch nicht geladen
         if (spieleData.length === 0) {
           const { data: neueSpiele, error: spieleError } = await supabase
             .from('spiele')
             .select('*')
             .order('name');
-          
+
           if (spieleError) throw spieleError;
           spieleData = neueSpiele || [];
         }
-        
+
         // Lade Kinder, falls noch nicht geladen
         if (kinderData.length === 0) {
           const { data: neueKinder, error: kinderError } = await supabase
             .from('kinder')
-            .select('*');
-          
+            .select('*')
+            .eq('event_id', eventId);
+
           if (kinderError) throw kinderError;
           kinderData = neueKinder || [];
         }
-        
+
         // Lade Ergebnisse, falls noch nicht geladen
         if (ergebnisseData.length === 0) {
           const { data: neueErgebnisse, error: ergebnisseError } = await supabase
             .from('ergebnisse')
-            .select('*');
-          
+            .select('*')
+            .eq('event_id', eventId);
+
           if (ergebnisseError) throw ergebnisseError;
           ergebnisseData = neueErgebnisse || [];
         }
-        
-        // Lade Zuordnungen, falls noch nicht geladen
-        if (zuordnungData.length === 0) {
-          const { data: neueZuordnungen, error: zuordnungError } = await supabase
-            .from('kind_spielgruppe_zuordnung')
-            .select('*');
-          
-          if (zuordnungError) throw zuordnungError;
-          zuordnungData = neueZuordnungen || [];
-        }
-        
-        // Lade Spielgruppen, falls noch nicht geladen
+
+        // Lade Spielgruppen (vor Zuordnungen, damit wir die IDs haben)
         if (gruppenData.length === 0) {
           const { data: neueGruppen, error: gruppenError } = await supabase
             .from('spielgruppen')
-            .select('*');
-          
+            .select('*')
+            .eq('event_id', eventId);
+
           if (gruppenError) throw gruppenError;
           gruppenData = neueGruppen || [];
+        }
+
+        // Lade Zuordnungen (nur für Gruppen des aktiven Events)
+        if (zuordnungData.length === 0) {
+          const gruppenIds = gruppenData.map((g) => g.id);
+          if (gruppenIds.length > 0) {
+            const { data: neueZuordnungen, error: zuordnungError } = await supabase
+              .from('kind_spielgruppe_zuordnung')
+              .select('*')
+              .in('spielgruppe_id', gruppenIds);
+
+            if (zuordnungError) throw zuordnungError;
+            zuordnungData = neueZuordnungen || [];
+          }
         }
       }
       
@@ -1432,7 +1488,7 @@ export default function AuswertungAdmin() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Abschlussauswertung Vogelschießen 2025</CardTitle>
+                  <CardTitle>Abschlussauswertung Vogelschießen {activeEvent?.jahr ?? ''}</CardTitle>
                   <CardDescription>Gesamtrangliste nach Klassen mit Königspaaren</CardDescription>
                 </div>
               </div>

@@ -292,35 +292,56 @@ export async function exportGesamtauswertungCSV(klasseFilter?: string | null, nu
  */
 export async function exportGesamtauswertungPDF(klasseFilter?: string | null, nurVollstaendig?: boolean) {
   const supabase = createClient();
-  
+
   try {
+    // Aktives Event laden — Jahr für den Titel und Kinder-Filter für die RPC-Daten
+    const { data: activeEvent } = await supabase
+      .from('events')
+      .select('id, jahr')
+      .eq('ist_aktiv', true)
+      .maybeSingle();
+    const eventJahr = activeEvent?.jahr ?? new Date().getFullYear();
+
+    // Kind-IDs des aktiven Events (zum Filtern des RPC-Ergebnisses)
+    let eventKinderIds: Set<string> | null = null;
+    if (activeEvent?.id) {
+      const { data: kinderData } = await supabase
+        .from('kinder')
+        .select('id')
+        .eq('event_id', activeEvent.id);
+      eventKinderIds = new Set((kinderData ?? []).map((k) => k.id));
+    }
+
     // Gesamtpunkte pro Kind berechnen
     const { data, error } = await supabase.rpc('berechne_gesamtpunkte_pro_kind');
-      
+
     if (error) {
       console.error('Fehler beim Abrufen der Gesamtpunkte:', error);
       throw error;
     }
-    
+
     if (!data || data.length === 0) {
       throw new Error('Keine Daten zum Exportieren vorhanden');
     }
-    
-    // Daten filtern, wenn nötig
+
+    // Daten filtern — zuerst auf Kinder des aktiven Events, dann optional weitere Filter
     let filteredData = data;
+    if (eventKinderIds) {
+      filteredData = filteredData.filter((item: any) => eventKinderIds!.has(item.kind_id));
+    }
     if (klasseFilter) {
       filteredData = filteredData.filter(item => item.klasse === klasseFilter);
     }
     if (nurVollstaendig) {
       filteredData = filteredData.filter(item => item.status === 'vollständig');
     }
-    
+
     // PDF erstellen
     const pdf = new jsPDF();
-    
+
     // Titel für das Dokument
     pdf.setFontSize(18);
-    pdf.text('Vogelschießen 2025 – Abschlussauswertung', 14, 20);
+    pdf.text(`Vogelschießen ${eventJahr} – Abschlussauswertung`, 14, 20);
     
     // Datum hinzufügen
     pdf.setFontSize(10);
