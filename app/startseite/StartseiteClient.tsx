@@ -88,11 +88,20 @@ export function StartseiteClient({
   } | undefined;
 
   const einladungSettings = settings.einladung as {
+    badge?: string;
     titel: string;
     text1: string;
     text2: string;
     mitbringen: string[];
     fussnote: string;
+    card1_kicker?: string;
+    card1_titel?: string;
+    card1_text?: string;
+    card2_kicker?: string;
+    card2_titel?: string;
+    card2_text?: string;
+    card3_kicker?: string;
+    card3_titel?: string;
   } | undefined;
 
   const ablaufSettings = settings.ablauf as AblaufSectionSettings | undefined;

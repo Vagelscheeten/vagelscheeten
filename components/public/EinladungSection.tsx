@@ -12,13 +12,21 @@ type EinladungSettings = {
   text2: string;
   mitbringen: string[];
   fussnote: string;
+  card1_kicker?: string;
+  card1_titel?: string;
+  card1_text?: string;
+  card2_kicker?: string;
+  card2_titel?: string;
+  card2_text?: string;
+  card3_kicker?: string;
+  card3_titel?: string;
 };
 
 interface EinladungSectionProps {
-  settings?: EinladungSettings;
+  settings?: Partial<EinladungSettings>;
 }
 
-const defaults: EinladungSettings = {
+const defaults: Required<EinladungSettings> = {
   badge: 'Auch für Sie',
   titel: 'Eltern, Omas, Opas & Freunde — kommen Sie vorbei!',
   text1: 'Wir laden alle Melsdorfer*innen und Freund*innen der Regenbogenschule herzlich ein, mit uns einen fröhlichen Nachmittag auf der Schulwiese zu verbringen.',
@@ -29,6 +37,14 @@ const defaults: EinladungSettings = {
     'Picknickdecke oder Sitzgelegenheit',
   ],
   fussnote: 'Für Kaffee und Kuchen ist gesorgt — wir freuen uns auf euch!',
+  card1_kicker: 'Wann',
+  card1_titel: 'Nachmittag-Programm',
+  card1_text: 'Während die Kinder vormittags auf den Spielstationen sind, starten wir am Nachmittag mit dem gemeinsamen Picknick, der Krönung und dem Festumzug durchs Dorf.',
+  card2_kicker: 'Wo',
+  card2_titel: 'Auf der Schulwiese',
+  card2_text: 'Die Regenbogenschule Melsdorf öffnet Tore und Wiese. Parkmöglichkeiten finden Sie am Dorfgemeinschaftshaus — wir empfehlen den Weg zu Fuß.',
+  card3_kicker: 'Mitbringen',
+  card3_titel: 'Picknick-Checkliste',
 };
 
 function ChecklistItem({ text, delay }: { text: string; delay: number }) {
@@ -115,14 +131,16 @@ function InfoCard({
 }
 
 export function EinladungSection({ settings }: EinladungSectionProps) {
-  const s = settings
-    ? { ...defaults, ...settings, mitbringen: settings.mitbringen?.length ? settings.mitbringen : defaults.mitbringen }
-    : defaults;
+  const s: Required<EinladungSettings> = {
+    ...defaults,
+    ...settings,
+    mitbringen: settings?.mitbringen?.length ? settings.mitbringen : defaults.mitbringen,
+  };
 
   return (
     <SectionWrapper id="einladung" bgColor="bg-paper-soft" padding="lg">
       <PageHeader
-        badge={s.badge ?? defaults.badge}
+        badge={s.badge}
         title={s.titel}
         subtitle={`${s.text1} ${s.text2 ?? ''}`}
         highlightVariant="underline"
@@ -132,30 +150,30 @@ export function EinladungSection({ settings }: EinladungSectionProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto">
 
         <InfoCard
-          kicker="Wann"
-          title="Nachmittag-Programm"
+          kicker={s.card1_kicker}
+          title={s.card1_titel}
           accent="var(--color-melsdorf-orange-dark)"
           delay={0.08}
         >
           <p className="text-ink-soft" style={{ fontSize: '1rem', lineHeight: 1.6, marginBottom: 0 }}>
-            Während die Kinder vormittags auf den Spielstationen sind, starten wir am <strong className="text-ink">Nachmittag</strong> mit dem gemeinsamen Picknick, der Krönung und dem Festumzug durchs Dorf.
+            {s.card1_text}
           </p>
         </InfoCard>
 
         <InfoCard
-          kicker="Wo"
-          title="Auf der Schulwiese"
+          kicker={s.card2_kicker}
+          title={s.card2_titel}
           accent="var(--color-melsdorf-green)"
           delay={0.16}
         >
           <p className="text-ink-soft" style={{ fontSize: '1rem', lineHeight: 1.6, marginBottom: 0 }}>
-            Die Regenbogenschule Melsdorf öffnet Tore und Wiese. Parkmöglichkeiten finden Sie am Dorfgemeinschaftshaus — wir empfehlen den Weg zu Fuß.
+            {s.card2_text}
           </p>
         </InfoCard>
 
         <InfoCard
-          kicker="Mitbringen"
-          title="Picknick-Checkliste"
+          kicker={s.card3_kicker}
+          title={s.card3_titel}
           accent="var(--color-melsdorf-red)"
           delay={0.24}
         >
