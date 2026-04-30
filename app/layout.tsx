@@ -40,8 +40,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Vogelschießen 2025 - Regenbogenschule",
-  description: "Das Vogelschießen der Regenbogenschule - Ein Fest für Kinder, Eltern und Besucher",
+  title: "Vogelschießen der Regenbogenschule Melsdorf",
+  description: "Das Vogelschießen der Regenbogenschule Melsdorf - Ein Fest für Kinder, Eltern und Besucher",
 };
 
 export default function RootLayout({
