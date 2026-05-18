@@ -384,6 +384,7 @@ export type Database = {
           id: string
           ist_aktiv: boolean
           jahr: number
+          mitbringliste_pdf_filename: string | null
           name: string
         }
         Insert: {
@@ -394,6 +395,7 @@ export type Database = {
           id?: string
           ist_aktiv?: boolean
           jahr: number
+          mitbringliste_pdf_filename?: string | null
           name: string
         }
         Update: {
@@ -404,9 +406,48 @@ export type Database = {
           id?: string
           ist_aktiv?: boolean
           jahr?: number
+          mitbringliste_pdf_filename?: string | null
           name?: string
         }
         Relationships: []
+      }
+      mitbringliste_eintraege: {
+        Row: {
+          erstellt_am: string | null
+          event_id: string
+          id: string
+          inhalt: string
+          kategorie: string
+          sortierung: number
+          zielgruppe: string
+        }
+        Insert: {
+          erstellt_am?: string | null
+          event_id: string
+          id?: string
+          inhalt: string
+          kategorie: string
+          sortierung?: number
+          zielgruppe: string
+        }
+        Update: {
+          erstellt_am?: string | null
+          event_id?: string
+          id?: string
+          inhalt?: string
+          kategorie?: string
+          sortierung?: number
+          zielgruppe?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mitbringliste_eintraege_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       externe_helfer: {
         Row: {

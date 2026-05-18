@@ -6,7 +6,7 @@ import {
   Users, Layers, HandHeart, CalendarDays,
   Clock, HelpCircle, Crown, Image as ImageIcon, Download, Settings,
   Gamepad2, UserCheck, BarChart3, FileText, Wrench, GraduationCap,
-  ArrowUpRight,
+  ArrowUpRight, ListChecks,
 } from 'lucide-react';
 import { PageShell, StatCard, StatusBadge, EmptyState } from '@/components/admin';
 
@@ -51,6 +51,7 @@ const quickActionGroups = [
     title: 'Inhalte der Webseite',
     items: [
       { href: '/admin/ablauf',         label: 'Ablaufplan',         icon: Clock,      desc: 'Zeitplan des Festes' },
+      { href: '/admin/mitbringliste',  label: 'Mitbringliste',      icon: ListChecks, desc: 'Was am Festtag mitgebracht wird' },
       { href: '/admin/faq',            label: 'FAQ',                icon: HelpCircle, desc: 'Häufige Fragen' },
       { href: '/admin/historie',       label: 'Historie',           icon: Crown,      desc: 'Königspaare vergangener Jahre' },
       { href: '/admin/galerie',        label: 'Galerie',            icon: ImageIcon,  desc: 'Bilder hochladen' },

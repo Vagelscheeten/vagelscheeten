@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send } from 'lucide-react';
+import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Phase4KommunizierenProps {
@@ -15,6 +16,11 @@ interface BenachrichtigungsStats {
   zuSenden: number;
   bereitsGesendet: number;
   ohneEmail: number;
+}
+
+interface MitbringStatus {
+  anzahlEintraege: number;
+  hatPdf: boolean;
 }
 
 interface VorschauEmail {
@@ -30,6 +36,7 @@ interface VorschauEmail {
 export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenProps) {
   const [stats, setStats] = useState<BenachrichtigungsStats | null>(null);
   const [vorschau, setVorschau] = useState<VorschauEmail | null>(null);
+  const [mitbringStatus, setMitbringStatus] = useState<MitbringStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -58,6 +65,23 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
       zuSenden: mitEmail.length,
       bereitsGesendet,
       ohneEmail: ohneEmail.length,
+    });
+
+    // Mitbringliste-Status laden (Warnung wenn leer oder PDF fehlt)
+    const [eintragRes, eventRes] = await Promise.all([
+      supabase
+        .from('mitbringliste_eintraege')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId),
+      supabase
+        .from('events')
+        .select('mitbringliste_pdf_filename')
+        .eq('id', eventId)
+        .single(),
+    ]);
+    setMitbringStatus({
+      anzahlEintraege: eintragRes.count || 0,
+      hatPdf: !!eventRes.data?.mitbringliste_pdf_filename,
     });
 
     // Vorschau mit erstem zugewiesenen Helfer
@@ -183,6 +207,30 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
         <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-500" />
         <span>Manuell hinzugefügte und externe Helfer werden nicht per E-Mail benachrichtigt — bitte direkt kontaktieren.</span>
       </div>
+
+      {/* Warnung: Mitbringliste nicht vollständig konfiguriert */}
+      {mitbringStatus && (mitbringStatus.anzahlEintraege === 0 || !mitbringStatus.hatPdf) && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex gap-2 text-sm text-amber-900">
+          <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+          <div className="flex-1">
+            <div className="font-semibold mb-0.5">Mitbringliste nicht vollständig konfiguriert</div>
+            <ul className="list-disc list-inside space-y-0.5">
+              {mitbringStatus.anzahlEintraege === 0 && (
+                <li>Keine Listeneinträge gepflegt — der entsprechende Abschnitt in der E-Mail entfällt.</li>
+              )}
+              {!mitbringStatus.hatPdf && (
+                <li>Kein PDF verknüpft — der Download-Link in der E-Mail entfällt.</li>
+              )}
+            </ul>
+            <Link
+              href="/admin/mitbringliste"
+              className="inline-flex items-center gap-1 mt-1.5 text-amber-900 hover:text-amber-950 underline"
+            >
+              Jetzt konfigurieren <ExternalLink size={11} />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* E-Mail Vorschau */}
       {vorschau && (

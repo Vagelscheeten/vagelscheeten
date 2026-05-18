@@ -12,13 +12,107 @@ const supabaseAdmin = createSupabaseClient(
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const ABSENDER = process.env.HELFER_EMAIL_FROM || 'Orgateam Vagelscheeten <orgateam@vagelscheeten.de>';
-const FEST_DATUM = process.env.FEST_DATUM || 'beim Melsdörper Vagelscheeten';
+const FEST_DATUM = process.env.FEST_DATUM || 'Melsdörper Vagelscheeten';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.vagelscheeten.de';
+const STARTSEITE_URL = `${BASE_URL.replace(/\/$/, '')}/startseite`;
 
 function formatZeitfenster(z: string): string {
   if (z === 'vormittag') return 'Vormittags';
   if (z === 'nachmittag') return 'Nachmittags';
   if (z === 'beides') return 'Ganztägig';
   return z;
+}
+
+interface MitbringEintrag {
+  kategorie: string;
+  zielgruppe: string;
+  inhalt: string;
+  sortierung: number;
+}
+
+interface AblaufEintrag {
+  uhrzeit: string;
+  titel: string;
+  beschreibung: string | null;
+  ist_highlight: boolean | null;
+}
+
+const KATEGORIE_LABEL: Record<string, string> = {
+  vormittag: 'Spiele am Vormittag',
+  nachmittag: 'Fest am Nachmittag',
+};
+
+function renderMitbringliste(eintraege: MitbringEintrag[], pdfUrl: string | null): string {
+  if (eintraege.length === 0 && !pdfUrl) return '';
+
+  const gruppen: Record<string, MitbringEintrag[]> = {};
+  for (const e of eintraege) {
+    if (!gruppen[e.kategorie]) gruppen[e.kategorie] = [];
+    gruppen[e.kategorie].push(e);
+  }
+
+  const kategorienReihenfolge = ['vormittag', 'nachmittag'];
+  const gruppenHtml = kategorienReihenfolge
+    .filter((k) => gruppen[k]?.length > 0)
+    .map((k) => {
+      const rows = gruppen[k]
+        .map(
+          (e) => `
+            <tr>
+              <td style="padding: 4px 12px 4px 0; color: #64748b; vertical-align: top; white-space: nowrap; font-weight: 600;">${escapeHtml(e.zielgruppe)}</td>
+              <td style="padding: 4px 0; vertical-align: top;">${escapeHtml(e.inhalt)}</td>
+            </tr>`,
+        )
+        .join('');
+      return `
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 13px; font-weight: 600; color: #F2A03D; margin-bottom: 6px;">${escapeHtml(KATEGORIE_LABEL[k] || k)}</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">${rows}</table>
+        </div>`;
+    })
+    .join('');
+
+  const pdfBlock = pdfUrl
+    ? `<p style="margin: 12px 0 0; font-size: 14px;">
+        <a href="${pdfUrl}" style="color: #2563eb; text-decoration: underline;">Mitbringliste als PDF herunterladen</a> &mdash; zum Ausdrucken oder Speichern.
+      </p>`
+    : '';
+
+  return `
+    <h3 style="color: #F2A03D; margin: 28px 0 8px;">Mitbringliste</h3>
+    <p style="margin: 0 0 12px; font-size: 14px;">Folgendes ist am Festtag von allen mitzubringen:</p>
+    <div style="background: #fff; border: 1px solid #e2e8f0; padding: 16px 20px; border-radius: 8px;">
+      ${gruppenHtml}
+    </div>
+    ${pdfBlock}
+  `;
+}
+
+function renderAblauf(eintraege: AblaufEintrag[]): string {
+  if (eintraege.length === 0) return '';
+
+  const rows = eintraege
+    .map(
+      (e) => `
+        <tr>
+          <td style="padding: 4px 12px 4px 0; color: #64748b; vertical-align: top; white-space: nowrap; font-weight: 600;">${escapeHtml(e.uhrzeit)}</td>
+          <td style="padding: 4px 0; vertical-align: top;">
+            <span style="${e.ist_highlight ? 'font-weight: 600;' : ''}">${escapeHtml(e.titel)}</span>
+            ${e.beschreibung ? `<br><span style="font-size: 13px; color: #64748b;">${escapeHtml(e.beschreibung)}</span>` : ''}
+          </td>
+        </tr>`,
+    )
+    .join('');
+
+  return `
+    <h3 style="color: #F2A03D; margin: 28px 0 8px;">Ablaufplan</h3>
+    <div style="background: #fff; border: 1px solid #e2e8f0; padding: 16px 20px; border-radius: 8px;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">${rows}</table>
+    </div>
+    <p style="margin: 12px 0 0; font-size: 14px;">
+      Aktueller Stand jederzeit unter <a href="${STARTSEITE_URL}" style="color: #2563eb; text-decoration: underline;">vagelscheeten.de</a> &mdash; falls sich kurzfristig etwas ändert.
+    </p>
+  `;
 }
 
 export async function POST(req: NextRequest) {
@@ -87,6 +181,38 @@ export async function POST(req: NextRequest) {
       kinderMap[`${k.vorname}_${k.nachname}`] = k;
     });
 
+    // Mitbringliste-Einträge laden (für alle gleich, daher vor der Schleife)
+    const { data: mitbringEintraege } = await supabaseAdmin
+      .from('mitbringliste_eintraege')
+      .select('kategorie, zielgruppe, inhalt, sortierung')
+      .eq('event_id', eventId)
+      .order('kategorie')
+      .order('sortierung');
+
+    // Tagesablauf laden
+    const { data: ablaufEintraege } = await supabaseAdmin
+      .from('ablauf_eintraege')
+      .select('uhrzeit, titel, beschreibung, ist_highlight')
+      .eq('event_id', eventId)
+      .order('sortierung');
+
+    // PDF-URL für Mitbringliste (falls verknüpft)
+    const { data: eventData } = await supabaseAdmin
+      .from('events')
+      .select('mitbringliste_pdf_filename')
+      .eq('id', eventId)
+      .single();
+    const mitbringPdfUrl = eventData?.mitbringliste_pdf_filename
+      ? supabaseAdmin.storage.from('downloads').getPublicUrl(eventData.mitbringliste_pdf_filename).data.publicUrl
+      : null;
+
+    // Mitbringliste-HTML einmal vorab rendern (gleich für alle Empfänger)
+    const mitbringHtml = renderMitbringliste(
+      (mitbringEintraege || []) as MitbringEintrag[],
+      mitbringPdfUrl,
+    );
+    const ablaufHtml = renderAblauf((ablaufEintraege || []) as AblaufEintrag[]);
+
     let gesendet = 0;
     let fehler = 0;
 
@@ -134,11 +260,11 @@ export async function POST(req: NextRequest) {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-    <h2 style="color: #F2A03D;">Helfer-Zuteilung ${FEST_DATUM}</h2>
+    <h2 style="color: #F2A03D;">Helfer-Zuteilung beim ${FEST_DATUM}</h2>
 
     <p>Hallo!</p>
 
-    <p>Vielen Dank für die Anmeldung als Helfer zum ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map(k => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
+    <p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map(k => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
 
     <p>Folgende Aufgabe wurde zugeteilt:</p>
 
@@ -160,16 +286,21 @@ export async function POST(req: NextRequest) {
         </tr>` : ''}
         ${kindEssensspenden.length > 0 ? `
         <tr>
-          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Essensspende:</td>
-          <td style="padding: 8px 0;">${kindEssensspenden.map(e => {
-            const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-            return `${e.menge}&times; ${escapeHtml(spende?.titel || 'Essensspende')}`;
-          }).join(', ')}</td>
+          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td>
+          <td style="padding: 8px 0;">
+            <ul style="margin: 0; padding-left: 18px;">${kindEssensspenden.map(e => {
+              const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+              return `<li>${e.menge}&times; ${escapeHtml(spende?.titel || 'Essensspende')}</li>`;
+            }).join('')}</ul>
+          </td>
         </tr>` : ''}
       </table>
     </div>
 
-    <p>Vielen Dank für die Unterstützung!</p>
+    ${mitbringHtml}
+    ${ablaufHtml}
+
+    <p style="margin-top: 28px;">Vielen Dank für die Unterstützung!</p>
 
     <p style="font-size: 14px;">Bei Fragen: <a href="mailto:orgateam@vagelscheeten.de" style="color: #2563eb;">orgateam@vagelscheeten.de</a></p>
 
@@ -184,7 +315,7 @@ export async function POST(req: NextRequest) {
         await resend.emails.send({
           from: ABSENDER,
           to: [anmeldung.eltern_email],
-          subject: `Helfer-Zuteilung ${FEST_DATUM} (${weitereKinder.length > 0 ? `Familie ${anmeldung.kind_nachname}` : kindName})`,
+          subject: `Helfer-Zuteilung beim ${FEST_DATUM} (${weitereKinder.length > 0 ? `Familie ${anmeldung.kind_nachname}` : kindName})`,
           html: htmlBody,
         });
 

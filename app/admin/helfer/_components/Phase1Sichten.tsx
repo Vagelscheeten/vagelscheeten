@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import {
   Loader2, Sparkles, AlertTriangle, CheckCircle,
-  Eye, Trash2, X, MessageSquare, Link2, UserX, Search,
-  PlusCircle, EyeOff, RotateCcw,
+  Eye, Trash2, X, MessageSquare, Link2, Search,
+  PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -69,7 +69,7 @@ interface Phase1SichtenProps {
   onRefresh: () => void;
 }
 
-type TabId = 'rueckmeldungen' | 'nichtZugeordnet' | 'ausstehend';
+type TabId = 'rueckmeldungen' | 'nichtZugeordnet';
 
 /** Parses "Nachname, Vorname (Klasse)" or "Nachname, Vorname (Klasse) + ..." → { vorname, nachname, klasse } (primary child only) */
 function parseKindNameExtern(name: string): { vorname: string; nachname: string; klasse: string | null } | null {
@@ -467,7 +467,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   const [essensspenden, setEssensspenden] = useState<Essensspende[]>([]);
   const [spendenByKind, setSpendenByKind] = useState<Record<string, string[]>>({});
   const [alleKinder, setAlleKinder] = useState<Kind[]>([]);
-  const [ignorierteKindIds, setIgnorierteKindIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [kiLoading, setKiLoading] = useState(false);
   const [kiHinweise, setKiHinweise] = useState<KiHinweis[]>([]);
@@ -477,15 +476,13 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   const [filterAufgabe, setFilterAufgabe] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<TabId>('rueckmeldungen');
   const [zuordnenItem, setZuordnenItem] = useState<Rueckmeldung | null>(null);
-  const [manuellItem, setManuellItem] = useState<Kind | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [showIgnoriert, setShowIgnoriert] = useState(false);
 
   const ladeDaten = useCallback(async () => {
     setIsLoading(true);
     const supabase = createClient();
 
-    const [rueckRes, aufgabenRes, kinderRes, ignoriertRes, spendenRes, spendenRueckRes] = await Promise.all([
+    const [rueckRes, aufgabenRes, kinderRes, spendenRes, spendenRueckRes] = await Promise.all([
       supabase
         .from('helfer_rueckmeldungen')
         .select(`
@@ -506,10 +503,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
         .select('id, vorname, nachname, klasse')
         .eq('event_id', eventId)
         .order('nachname'),
-      supabase
-        .from('kinder_ignoriert')
-        .select('kind_id')
-        .eq('event_id', eventId),
       supabase
         .from('essensspenden_bedarf')
         .select('id, titel, beschreibung')
@@ -560,10 +553,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
       }
       setSpendenByKind(byKind);
     }
-    if (!ignoriertRes.error) {
-      setIgnorierteKindIds(new Set((ignoriertRes.data || []).map(r => r.kind_id)));
-    }
-
     setIsLoading(false);
   }, [eventId]);
 
@@ -572,25 +561,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   // ── Derived data ─────────────────────────────────────────────────────────
 
   const nichtZugeordnet = rueckmeldungen.filter(r => !r.kind_id);
-
-  const klassenInRueckmeldungen = new Set<string>();
-  rueckmeldungen.forEach(r => {
-    const p = parseKindNameExtern(r.kind_name_extern || '');
-    if (p?.klasse) klassenInRueckmeldungen.add(p.klasse);
-    if (r.kind?.klasse) klassenInRueckmeldungen.add(r.kind.klasse);
-  });
-
-  const verknuepfteKindIds = new Set(rueckmeldungen.map(r => r.kind_id).filter(Boolean));
-
-  const ausstehendAlle = alleKinder.filter(k =>
-    k.klasse && klassenInRueckmeldungen.has(k.klasse) && !verknuepfteKindIds.has(k.id)
-  ).sort((a, b) => {
-    const kl = (a.klasse || '').localeCompare(b.klasse || '');
-    return kl !== 0 ? kl : a.nachname.localeCompare(b.nachname);
-  });
-
-  const ausstehendAktiv = ausstehendAlle.filter(k => !ignorierteKindIds.has(k.id));
-  const ausstehendIgnoriert = ausstehendAlle.filter(k => ignorierteKindIds.has(k.id));
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -605,38 +575,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
       setDeleteIds(null);
       ladeDaten();
       onRefresh();
-    }
-  };
-
-  const handleIgnorieren = async (kind: Kind) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('kinder_ignoriert')
-      .insert({ kind_id: kind.id, event_id: eventId });
-    if (error) {
-      toast.error('Fehler beim Abhaken');
-    } else {
-      toast.success(`${kind.nachname}, ${kind.vorname} abgehakt`);
-      setIgnorierteKindIds(prev => new Set([...prev, kind.id]));
-    }
-  };
-
-  const handleIgnoriertEntfernen = async (kind: Kind) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('kinder_ignoriert')
-      .delete()
-      .eq('kind_id', kind.id)
-      .eq('event_id', eventId);
-    if (error) {
-      toast.error('Fehler beim Reaktivieren');
-    } else {
-      toast.success(`${kind.nachname}, ${kind.vorname} wieder aktiviert`);
-      setIgnorierteKindIds(prev => {
-        const next = new Set(prev);
-        next.delete(kind.id);
-        return next;
-      });
     }
   };
 
@@ -829,8 +767,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
             label="Rückmeldungen" count={rueckmeldungen.length} />
           <TabButton id="nichtZugeordnet" active={activeTab === 'nichtZugeordnet'} onClick={() => setActiveTab('nichtZugeordnet')}
             label="Nicht zugeordnet" count={nichtZugeordnet.length} countColor="orange" />
-          <TabButton id="ausstehend" active={activeTab === 'ausstehend'} onClick={() => setActiveTab('ausstehend')}
-            label="Ausstehend" count={ausstehendAktiv.length} countColor="red" />
         </nav>
       </div>
 
@@ -1071,132 +1007,6 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
             </div>
           )}
         </>
-      )}
-
-      {/* ── Tab: Ausstehend ─────────────────────────────────────────────── */}
-      {activeTab === 'ausstehend' && (
-        <>
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">Kinder ohne Rückmeldung</h3>
-            <p className="text-xs text-slate-400">Nur Klassen aus Rückmeldungen · {ausstehendAktiv.length} offen</p>
-          </div>
-
-          {klassenInRueckmeldungen.size === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-sm">Noch keine Rückmeldungen vorhanden.</div>
-          ) : ausstehendAktiv.length === 0 && ausstehendIgnoriert.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-sm">
-              <CheckCircle size={32} className="mx-auto mb-2 text-green-400" />
-              Alle Kinder aus den erfassten Klassen haben eine Rückmeldung.
-            </div>
-          ) : (
-            <>
-              {ausstehendAktiv.length > 0 && (
-                <div className="bg-white rounded-xl border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50">
-                        <th className="text-left px-4 py-3 font-medium text-slate-500">Name</th>
-                        <th className="text-left px-4 py-3 font-medium text-slate-500">Klasse</th>
-                        <th className="px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {ausstehendAktiv.map(k => (
-                        <tr key={k.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-800">
-                            <span className="flex items-center gap-1.5">
-                              <UserX size={13} className="text-slate-300 shrink-0" />
-                              {k.nachname}, {k.vorname}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 text-xs">{k.klasse || '—'}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => setManuellItem(k)}
-                                className="inline-flex items-center gap-1.5 text-xs bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-                              >
-                                <PlusCircle size={12} /> Rückmeldung erfassen
-                              </button>
-                              <button
-                                onClick={() => handleIgnorieren(k)}
-                                className="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors font-medium"
-                                title="Nicht mehr warten — kein Bedarf"
-                              >
-                                <EyeOff size={12} /> Abhaken
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {ausstehendAktiv.length === 0 && (
-                <div className="text-center py-8 text-slate-400 text-sm">
-                  <CheckCircle size={28} className="mx-auto mb-2 text-green-400" />
-                  Alle aktiven Kinder haben eine Rückmeldung oder wurden abgehakt.
-                </div>
-              )}
-
-              {/* Ignorierte anzeigen */}
-              {ausstehendIgnoriert.length > 0 && (
-                <div className="mt-2">
-                  <button
-                    onClick={() => setShowIgnoriert(v => !v)}
-                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    <EyeOff size={12} />
-                    {showIgnoriert ? 'Abgehakte ausblenden' : `${ausstehendIgnoriert.length} abgehakt${ausstehendIgnoriert.length !== 1 ? 'e' : 'es'} Kind anzeigen`}
-                  </button>
-
-                  {showIgnoriert && (
-                    <div className="mt-2 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
-                      <table className="w-full text-sm">
-                        <tbody className="divide-y divide-slate-100">
-                          {ausstehendIgnoriert.map(k => (
-                            <tr key={k.id} className="opacity-50 hover:opacity-80 transition-opacity">
-                              <td className="px-4 py-2.5 font-medium text-slate-600">
-                                <span className="flex items-center gap-1.5">
-                                  <EyeOff size={12} className="text-slate-300 shrink-0" />
-                                  {k.nachname}, {k.vorname}
-                                </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-slate-400 text-xs">{k.klasse || '—'}</td>
-                              <td className="px-4 py-2.5 text-right">
-                                <button
-                                  onClick={() => handleIgnoriertEntfernen(k)}
-                                  className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-200 transition-colors"
-                                  title="Wieder aktivieren"
-                                >
-                                  <RotateCcw size={11} /> Reaktivieren
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {/* ── Manuelle Rückmeldung Modal ───────────────────────────────────── */}
-      {manuellItem && (
-        <ManuelleRueckmeldungModal
-          kind={manuellItem}
-          aufgaben={aufgaben}
-          essensspenden={essensspenden}
-          eventId={eventId}
-          onClose={() => setManuellItem(null)}
-          onSaved={() => { ladeDaten(); onRefresh(); }}
-        />
       )}
 
       {/* ── Zuordnungs-Modal ─────────────────────────────────────────────── */}
