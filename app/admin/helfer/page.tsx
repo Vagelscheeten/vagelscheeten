@@ -3,16 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, ExternalLink, FlaskConical, Trash2 } from 'lucide-react';
+import { Loader2, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { WorkflowDashboard, WorkflowStats } from './_components/WorkflowDashboard';
 import { ElternInfoPDFDownload } from './_components/ElternInfoPDFDownload';
 import { PageShell, EmptyState } from '@/components/admin';
+import type { AnmeldungLite, KindLite } from '@/lib/helfer-utils';
 
 export default function HelferPage() {
   const [stats, setStats] = useState<WorkflowStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [testLoading, setTestLoading] = useState<'reset' | 'seed' | null>(null);
 
   const ladeStats = useCallback(async () => {
     const supabase = createClient();
@@ -31,7 +31,7 @@ export default function HelferPage() {
 
     const eventId = event.id;
 
-    const [rueckRes, zuteilRes, aufgabenRes, benachrichtigtRes, zuBenachrichtigenRes, essensspendenRes, eventRes] = await Promise.all([
+    const [rueckRes, zuteilRes, aufgabenRes, benachrichtigtRes, zuBenachrichtigenRes, essensspendenRes, eventRes, kinderRes, anmeldungenRes] = await Promise.all([
       supabase
         .from('helfer_rueckmeldungen')
         .select('id', { count: 'exact', head: true })
@@ -67,6 +67,17 @@ export default function HelferPage() {
         .select('essensspenden_verteilt_am')
         .eq('id', eventId)
         .single(),
+      supabase
+        .from('kinder')
+        .select('id, vorname, nachname, klasse, geschlecht')
+        .eq('event_id', eventId)
+        .neq('klasse', 'Schulis') // Schulis sind Kindergarten-Kinder, deren Eltern keine Aufgaben übernehmen
+        .order('klasse')
+        .order('nachname'),
+      supabase
+        .from('anmeldungen')
+        .select('id, eltern_email, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, erstellt_am')
+        .eq('event_id', eventId),
     ]);
 
     setStats({
@@ -78,38 +89,14 @@ export default function HelferPage() {
       aufgaben: aufgabenRes.data || [],
       anzahlEssensspendenRueckmeldungen: essensspendenRes.count || 0,
       essensspendenVerteilt: !!(eventRes.data?.essensspenden_verteilt_am),
+      kinder: (kinderRes.data || []) as KindLite[],
+      anmeldungen: (anmeldungenRes.data || []) as AnmeldungLite[],
     });
 
     setIsLoading(false);
   }, []);
 
   useEffect(() => { ladeStats(); }, [ladeStats]);
-
-  const handleTest = async (action: 'reset' | 'seed') => {
-    if (!stats?.eventId) return;
-    setTestLoading(action);
-    try {
-      const res = await fetch('/api/helfer/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, eventId: stats.eventId }),
-      });
-      const data = await res.json();
-      if (data.erfolg) {
-        toast.success(action === 'reset'
-          ? 'Testdaten gelöscht'
-          : `${data.rueckmeldungen} Rückmeldungen (${data.davonSpringer || 0} Springer, ${data.davonFreitext || 0} Freitext)`
-        );
-        await ladeStats();
-      } else {
-        toast.error(data.error || 'Fehler');
-      }
-    } catch {
-      toast.error('Fehler');
-    } finally {
-      setTestLoading(null);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -138,7 +125,7 @@ export default function HelferPage() {
   return (
     <PageShell
       title="Helfer-Workflow"
-      description="Geführter 4-Schritte-Prozess: Von den Rückmeldungen bis zur Eltern-Kommunikation."
+      description="Geführter 5-Schritte-Prozess: Von der Rückmeldungs-Übersicht bis zur Eltern-Kommunikation."
       breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Helfer' }]}
       actions={
         <>
@@ -154,35 +141,6 @@ export default function HelferPage() {
       }
     >
       <WorkflowDashboard stats={stats} onRefresh={ladeStats} />
-
-      {/* ── TEST-BEREICH — vor echtem Einsatz entfernen ───────────────── */}
-      <div className="mt-10 border-2 border-dashed border-amber-300 rounded-xl p-4 bg-amber-50">
-        <div className="flex items-center gap-2 mb-3">
-          <FlaskConical size={16} className="text-amber-600" />
-          <span className="text-sm font-semibold text-amber-800">Testbereich — vor echtem Einsatz entfernen</span>
-        </div>
-        <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => handleTest('seed')}
-            disabled={testLoading !== null}
-            className="flex items-center gap-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {testLoading === 'seed' ? <Loader2 size={14} className="animate-spin" /> : <FlaskConical size={14} />}
-            Test-Rückmeldungen erstellen
-          </button>
-          <button
-            onClick={() => handleTest('reset')}
-            disabled={testLoading !== null}
-            className="flex items-center gap-2 text-sm font-medium bg-white hover:bg-red-50 text-red-600 border border-red-200 hover:border-red-400 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {testLoading === 'reset' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            Test-Einträge löschen
-          </button>
-        </div>
-        <p className="text-xs text-amber-700 mt-2">
-          "Erstellen" fügt ~100 Rückmeldungen + Essensspenden hinzu. "Löschen" entfernt alle Rückmeldungen, Zuteilungen und Essensspenden (Kinder &amp; Klassen bleiben).
-        </p>
-      </div>
     </PageShell>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   CheckCircle2, ArrowRight, Lock, ChevronDown, ChevronRight,
-  ExternalLink, ClipboardList, Utensils, Wrench, Search,
+  ExternalLink, ClipboardList, Utensils, Wrench, Search, Inbox,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Phase1Sichten } from './Phase1Sichten';
@@ -12,6 +12,8 @@ import { Phase3Pruefen } from './Phase3Pruefen';
 import { Phase4Kommunizieren } from './Phase4Kommunizieren';
 import { Phase5Nachpflegen } from './Phase5Nachpflegen';
 import { PhaseEssensspenden } from './PhaseEssensspenden';
+import { Schritt1Rueckmeldungen } from './Schritt1Rueckmeldungen';
+import { buildAnmeldungsIndex, findAnmeldungForKind, type AnmeldungLite, type KindLite } from '@/lib/helfer-utils';
 
 export interface WorkflowStats {
   anzahlRueckmeldungen: number;
@@ -22,6 +24,8 @@ export interface WorkflowStats {
   eventId: string;
   anzahlEssensspendenRueckmeldungen: number;
   essensspendenVerteilt: boolean;
+  kinder: KindLite[];
+  anmeldungen: AnmeldungLite[];
 }
 
 type SchrittStatus = 'done' | 'current' | 'locked';
@@ -35,9 +39,37 @@ interface Schritt {
   status: (s: WorkflowStats) => SchrittStatus;
 }
 
+function anteileFehlend(s: WorkflowStats): { fehlend: number; gesamt: number } {
+  const gesamt = s.kinder.length;
+  if (gesamt === 0) return { fehlend: 0, gesamt: 0 };
+  const idx = buildAnmeldungsIndex(s.anmeldungen);
+  let fehlend = 0;
+  for (const k of s.kinder) {
+    if (!findAnmeldungForKind(k, idx)) fehlend++;
+  }
+  return { fehlend, gesamt };
+}
+
 const SCHRITTE: Schritt[] = [
   {
     nr: 1,
+    titel: 'Rückmeldungen prüfen',
+    beschreibung: 'Wer hat zurückgemeldet, wer fehlt noch? Kommentare ansehen, fehlende Rückmeldungen einfordern.',
+    summaryDone: (s) => {
+      const { fehlend, gesamt } = anteileFehlend(s);
+      return gesamt === 0
+        ? 'Keine Kinder im Event'
+        : `${gesamt - fehlend} von ${gesamt} Kindern haben zurückgemeldet${fehlend > 0 ? ` · ${fehlend} fehlen noch` : ''}`;
+    },
+    icon: Inbox,
+    status: (s) => {
+      const { fehlend, gesamt } = anteileFehlend(s);
+      if (gesamt > 0 && fehlend / gesamt < 0.1 && s.anzahlZuteilungen > 0) return 'done';
+      return 'current';
+    },
+  },
+  {
+    nr: 2,
     titel: 'Helfer sichten & zuteilen',
     beschreibung: 'Rückmeldungen ansehen, dann Auto-Zuteilung starten.',
     summaryDone: (s) =>
@@ -49,7 +81,7 @@ const SCHRITTE: Schritt[] = [
     },
   },
   {
-    nr: 2,
+    nr: 3,
     titel: 'Essensspenden verteilen',
     beschreibung: 'Wer bringt was? Angebote bestätigen, Überschuss umbuchen.',
     summaryDone: (s) =>
@@ -62,7 +94,7 @@ const SCHRITTE: Schritt[] = [
     },
   },
   {
-    nr: 3,
+    nr: 4,
     titel: 'Prüfen & Benachrichtigen',
     beschreibung: 'Zuteilungen kontrollieren, Lücken schließen, Eltern per E-Mail informieren.',
     summaryDone: (s) =>
@@ -75,7 +107,7 @@ const SCHRITTE: Schritt[] = [
     },
   },
   {
-    nr: 4,
+    nr: 5,
     titel: 'Nachpflegen',
     beschreibung: 'Kurzfristige Änderungen, Absagen, Korrekturen — jederzeit.',
     summaryDone: () => 'Laufend aktiv',
@@ -95,7 +127,7 @@ interface WorkflowDashboardProps {
 export function WorkflowDashboard({ stats, onRefresh }: WorkflowDashboardProps) {
   const aktuellerSchritt = SCHRITTE.find(
     (s) => s.status(stats) === 'current'
-  )?.nr ?? 4;
+  )?.nr ?? 5;
 
   const [offeneSchritte, setOffeneSchritte] = useState<Set<number>>(
     () => new Set([aktuellerSchritt])
@@ -205,17 +237,20 @@ export function WorkflowDashboard({ stats, onRefresh }: WorkflowDashboardProps) 
             {isOffen && status !== 'locked' && (
               <div className="border-t border-slate-100">
                 {schritt.nr === 1 && (
-                  <SchrittSichtenZuteilen stats={stats} onRefresh={onRefresh} />
+                  <Schritt1Rueckmeldungen kinder={stats.kinder} anmeldungen={stats.anmeldungen} onRefresh={onRefresh} />
                 )}
                 {schritt.nr === 2 && (
+                  <SchrittSichtenZuteilen stats={stats} onRefresh={onRefresh} />
+                )}
+                {schritt.nr === 3 && (
                   <div className="px-5 py-5">
                     <PhaseEssensspenden eventId={stats.eventId} onRefresh={onRefresh} />
                   </div>
                 )}
-                {schritt.nr === 3 && (
+                {schritt.nr === 4 && (
                   <SchrittPruefenBenachrichtigen stats={stats} onRefresh={onRefresh} />
                 )}
-                {schritt.nr === 4 && (
+                {schritt.nr === 5 && (
                   <div className="px-5 py-5">
                     <Phase5Nachpflegen eventId={stats.eventId} onRefresh={onRefresh} />
                   </div>
@@ -315,16 +350,19 @@ function StatusBanner({ stats, aktuellerSchritt, fortschrittProzent }: {
   aktuellerSchritt: number;
   fortschrittProzent: number;
 }) {
+  const { fehlend, gesamt } = anteileFehlend(stats);
   const nachricht = (() => {
-    if (stats.anzahlRueckmeldungen === 0)
-      return 'Warte auf Rückmeldungen der Eltern. Sobald der Stichtag erreicht ist, hier starten.';
+    if (stats.anzahlRueckmeldungen === 0 && gesamt > 0)
+      return `Noch keine Rückmeldungen. Prüfe in Schritt 1, welche Familien bereits Essensspenden gemeldet haben oder ob alle ${gesamt} Kinder noch fehlen.`;
+    if (gesamt > 0 && fehlend / gesamt >= 0.1 && stats.anzahlZuteilungen === 0)
+      return `${fehlend} von ${gesamt} Kindern haben noch nicht zurückgemeldet. In Schritt 1 fehlende Rückmeldungen identifizieren und einfordern, bevor die Zuteilung startet.`;
     if (stats.anzahlZuteilungen === 0)
-      return `${stats.anzahlRueckmeldungen} Rückmeldung${stats.anzahlRueckmeldungen !== 1 ? 'en' : ''} eingegangen. Jetzt sichten und danach die Auto-Zuteilung starten — Schritt 1 ist dann fertig.`;
+      return `${stats.anzahlRueckmeldungen} Rückmeldung${stats.anzahlRueckmeldungen !== 1 ? 'en' : ''} eingegangen. Jetzt sichten und danach die Auto-Zuteilung starten — Schritt 2 ist dann fertig.`;
     if (!stats.essensspendenVerteilt)
-      return `${stats.anzahlZuteilungen} Zuteilungen erstellt. Jetzt Essensspenden verteilen (Auto-Verteilen klicken) — Schritt 2 ist dann fertig.`;
+      return `${stats.anzahlZuteilungen} Zuteilungen erstellt. Jetzt Essensspenden verteilen (Auto-Verteilen klicken) — Schritt 3 ist dann fertig.`;
     if (stats.anzahlBenachrichtigt === 0)
-      return `Essensspenden verteilt. Jetzt Zuteilungen prüfen, dann Eltern benachrichtigen — Schritt 3 ist dann fertig.`;
-    return `Alle ${stats.anzahlBenachrichtigt} Eltern benachrichtigt. Bei Änderungen: Schritt 4 nutzen.`;
+      return `Essensspenden verteilt. Jetzt Zuteilungen prüfen, dann Eltern benachrichtigen — Schritt 4 ist dann fertig.`;
+    return `Alle ${stats.anzahlBenachrichtigt} Eltern benachrichtigt. Bei Änderungen: Schritt 5 nutzen.`;
   })();
 
   const isComplete = fortschrittProzent === 100;
