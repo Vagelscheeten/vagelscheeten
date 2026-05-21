@@ -151,6 +151,7 @@ export interface AnmeldungLite {
   kommentar: string | null;
   verifiziert: boolean | null;
   verifiziert_am: string | null;
+  benachrichtigt_am: string | null;
   erstellt_am: string | null;
 }
 
@@ -198,15 +199,29 @@ export function buildMatchKey(vorname: string, nachname: string, klasse: string 
   return `${normalizeName(vorname)}|${normalizeName(nachname)}|${normalizeKlasse(klasse)}`;
 }
 
+// Welche Anmeldung soll bei mehreren Treffern für dasselbe Kind den Status liefern?
+// 1) Verifizierte schlägt unverifizierte.
+// 2) Bei gleichem Verifiziert-Status: neuere (verifiziert_am, sonst erstellt_am).
+function isAnmeldungBesser(neu: AnmeldungLite, alt: AnmeldungLite): boolean {
+  const neuV = !!neu.verifiziert;
+  const altV = !!alt.verifiziert;
+  if (neuV !== altV) return neuV;
+  const neuTs = neu.verifiziert_am || neu.erstellt_am || '';
+  const altTs = alt.verifiziert_am || alt.erstellt_am || '';
+  return neuTs > altTs;
+}
+
 function addIndexEntry(idx: Map<string, AnmeldungLite>, vorname: string, nachname: string, klasse: string | null | undefined, a: AnmeldungLite) {
   const fullKey = buildMatchKey(vorname, nachname, klasse);
-  if (!idx.has(fullKey)) idx.set(fullKey, a);
+  const existingFull = idx.get(fullKey);
+  if (!existingFull || isAnmeldungBesser(a, existingFull)) idx.set(fullKey, a);
   // Fallback: erster Vorname (z.B. "Hedi Liv" → "Hedi"). Fängt Doppelnamen ab,
   // wenn nur der Rufname in der Anmeldung eingegeben wurde.
   const fw = firstWord(vorname);
   if (fw && normalizeName(fw) !== normalizeName(vorname)) {
     const firstKey = buildMatchKey(fw, nachname, klasse);
-    if (!idx.has(firstKey)) idx.set(firstKey, a);
+    const existingFirst = idx.get(firstKey);
+    if (!existingFirst || isAnmeldungBesser(a, existingFirst)) idx.set(firstKey, a);
   }
 }
 
@@ -274,6 +289,41 @@ export interface AnmeldungsKindEintrag {
   klasse: string;
   istHaupt: boolean;
   matched: KindLite | null;
+}
+
+// Liefert alle Anmeldungen, die zu einem gegebenen Kind matchen (Haupt- ODER Geschwistereintrag).
+export function findAllAnmeldungenForKind(kind: KindLite, anmeldungen: AnmeldungLite[]): AnmeldungLite[] {
+  const treffer: AnmeldungLite[] = [];
+  for (const a of anmeldungen) {
+    const eintraege: { vorname: string; nachname: string; klasse: string | null | undefined }[] = [
+      { vorname: a.kind_vorname, nachname: a.kind_nachname, klasse: a.kind_klasse },
+    ];
+    const weitere = Array.isArray(a.weitere_kinder_json) ? a.weitere_kinder_json : [];
+    for (const w of weitere) {
+      if (!w?.vorname || !w?.nachname) continue;
+      eintraege.push({ vorname: w.vorname, nachname: w.nachname, klasse: w.klasse });
+    }
+    const passt = eintraege.some((e) => {
+      if (
+        normalizeName(e.vorname) === normalizeName(kind.vorname)
+        && normalizeName(e.nachname) === normalizeName(kind.nachname)
+        && normalizeKlasse(e.klasse) === normalizeKlasse(kind.klasse)
+      ) return true;
+      // first-word fallback in beide Richtungen
+      const eFirst = firstWord(e.vorname);
+      const kFirst = firstWord(kind.vorname);
+      if (
+        normalizeName(e.nachname) === normalizeName(kind.nachname)
+        && normalizeKlasse(e.klasse) === normalizeKlasse(kind.klasse)
+        && (normalizeName(eFirst) === normalizeName(kind.vorname)
+          || normalizeName(e.vorname) === normalizeName(kFirst)
+          || normalizeName(eFirst) === normalizeName(kFirst))
+      ) return true;
+      return false;
+    });
+    if (passt) treffer.push(a);
+  }
+  return treffer;
 }
 
 export function listAnmeldungsKinder(a: AnmeldungLite, idx: Map<string, KindLite>): AnmeldungsKindEintrag[] {

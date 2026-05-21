@@ -76,7 +76,7 @@ export default function HelferPage() {
         .order('nachname'),
       supabase
         .from('anmeldungen')
-        .select('id, eltern_email, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, erstellt_am')
+        .select('id, eltern_email, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, benachrichtigt_am, erstellt_am')
         .eq('event_id', eventId),
     ]);
 

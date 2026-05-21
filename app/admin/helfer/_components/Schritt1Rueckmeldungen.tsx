@@ -11,6 +11,7 @@ import {
   buildAnmeldungsIndex,
   buildKinderIndex,
   deriveStatus,
+  findAllAnmeldungenForKind,
   findAnmeldungForKind,
   listAnmeldungsKinder,
   normalizeName,
@@ -69,6 +70,24 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, onRefresh }: Props
 
   // Anmeldungen, deren Kind-Einträge nicht (alle) auf die aktuelle Klassenliste matchen.
   const kinderIdx = useMemo(() => buildKinderIndex(kinder), [kinder]);
+
+  // Kinder mit mehreren Anmeldungen (Doppel-Anmeldungen, ggf. mit Tippfehler-E-Mails).
+  const mehrfachAnmeldungen = useMemo(() => {
+    return kinder
+      .map((k) => ({
+        kind: k,
+        anmeldungen: findAllAnmeldungenForKind(k, anmeldungen)
+          .slice()
+          .sort((a, b) => (a.erstellt_am || '').localeCompare(b.erstellt_am || '')),
+      }))
+      .filter((row) => row.anmeldungen.length > 1)
+      .sort((a, b) => {
+        if (a.kind.klasse !== b.kind.klasse) {
+          return (a.kind.klasse || '').localeCompare(b.kind.klasse || '', 'de');
+        }
+        return a.kind.nachname.localeCompare(b.kind.nachname, 'de');
+      });
+  }, [kinder, anmeldungen]);
 
   // Map kind.id → andere Geschwister-Kinder (gleiche Anmeldung, müssen aber selbst in der Klassenliste sein).
   const geschwisterMap = useMemo(() => {
@@ -295,6 +314,12 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, onRefresh }: Props
       <AnmeldungenMitUnbekannten
         eintraege={problemAnmeldungen}
         kinder={kinder}
+        onRefresh={onRefresh}
+      />
+
+      {/* Sektion: Kinder mit Mehrfach-Anmeldungen */}
+      <KinderMitMehrfachAnmeldungen
+        eintraege={mehrfachAnmeldungen}
         onRefresh={onRefresh}
       />
 
@@ -1004,6 +1029,143 @@ function EintragZuKindVerknuepfenModal({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function KinderMitMehrfachAnmeldungen({
+  eintraege,
+  onRefresh,
+}: {
+  eintraege: { kind: KindLite; anmeldungen: AnmeldungLite[] }[];
+  onRefresh: () => void;
+}) {
+  const istLeer = eintraege.length === 0;
+  const [offen, setOffen] = useState(!istLeer);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+
+  const loescheAnmeldungen = async (ids: string[], successMsg: string) => {
+    setLoadingKey(ids.join(','));
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('anmeldungen').delete().in('id', ids);
+      if (error) throw error;
+      toast.success(successMsg);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.message || 'Löschen fehlgeschlagen');
+    } finally {
+      setLoadingKey(null);
+    }
+  };
+
+  const alsGueltigSetzen = (kind: KindLite, gewinner: AnmeldungLite, alle: AnmeldungLite[]) => {
+    const andere = alle.filter((a) => a.id !== gewinner.id);
+    if (andere.length === 0) return;
+    if (!confirm(
+      `${kind.vorname} ${kind.nachname}: Anmeldung von ${gewinner.eltern_email} als gültig markieren?\n\n`
+      + `Folgende ${andere.length} Anmeldung${andere.length > 1 ? 'en' : ''} werden gelöscht:\n`
+      + andere.map((a) => `• ${a.eltern_email || '(ohne E-Mail)'}${a.verifiziert ? ' (verifiziert)' : ' (unverifiziert)'}`).join('\n'),
+    )) return;
+    loescheAnmeldungen(andere.map((a) => a.id), `${andere.length} andere Anmeldung${andere.length > 1 ? 'en' : ''} entfernt.`);
+  };
+
+  const einzelLoeschen = (kind: KindLite, a: AnmeldungLite) => {
+    if (!confirm(
+      `Anmeldung von ${a.eltern_email || '(ohne E-Mail)'} für ${kind.vorname} ${kind.nachname} löschen?\n\n`
+      + `Status: ${a.verifiziert ? 'verifiziert' : 'unverifiziert'}\n`
+      + `Eingegangen: ${a.erstellt_am ? new Date(a.erstellt_am).toLocaleDateString('de-DE') : '–'}`,
+    )) return;
+    loescheAnmeldungen([a.id], 'Anmeldung gelöscht.');
+  };
+
+  return (
+    <div className={`rounded-lg border ${istLeer ? 'border-slate-200 bg-white' : 'border-amber-300 bg-amber-50/30'}`}>
+      <button
+        onClick={() => setOffen((v) => !v)}
+        className={`w-full px-4 py-3 flex items-center gap-2 text-left ${istLeer ? 'hover:bg-slate-50' : 'hover:bg-amber-50'}`}
+      >
+        {istLeer
+          ? <CheckCircle2 size={16} className="text-green-500" />
+          : <AlertCircle size={16} className="text-amber-600" />}
+        <span className="font-semibold text-sm text-slate-800">Kinder mit Mehrfach-Anmeldungen</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${istLeer ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>
+          {eintraege.length}
+        </span>
+        <span className="ml-auto text-slate-400">{offen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+      </button>
+      {offen && (
+        <div className={`px-4 pb-4 pt-1 border-t space-y-2 ${istLeer ? 'border-slate-100' : 'border-amber-200'}`}>
+          {istLeer ? (
+            <p className="text-sm text-slate-500 py-3">
+              Keine Kinder mit mehreren Anmeldungen. Alles eindeutig.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-slate-600 mb-2">
+                Diese Kinder haben mehr als eine Anmeldung — z.B. weil Eltern unabhängig voneinander
+                gemeldet haben oder eine Tippfehler-Anmeldung wiederholt wurde. Mit{' '}
+                <strong>„Als gültig markieren"</strong> behältst du eine Anmeldung und löschst die anderen.
+                Mit <strong>„Diese löschen"</strong> entfernst du einzelne Einträge.
+              </p>
+              {eintraege.map(({ kind, anmeldungen }) => (
+                <div key={kind.id} className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-2 flex-wrap">
+                    {kind.vorname} {kind.nachname}
+                    <span className="text-xs text-slate-500 font-normal">Klasse {kind.klasse || '–'}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                      {anmeldungen.length} Anmeldungen
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-slate-50">
+                    {anmeldungen.map((a) => {
+                      const delKey = `${kind.id}-${a.id}-del`;
+                      const winKey = `${kind.id}-${a.id}-win`;
+                      const aktion = loadingKey?.startsWith(`${kind.id}-`);
+                      return (
+                        <li key={a.id} className="py-2 flex items-center gap-2 flex-wrap">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm text-slate-800 truncate">{a.eltern_email || '(ohne E-Mail)'}</div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                              {a.verifiziert
+                                ? <span className="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">verifiziert</span>
+                                : <span className="text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">unverifiziert</span>}
+                              {a.erstellt_am && (
+                                <span>eingegangen {new Date(a.erstellt_am).toLocaleDateString('de-DE')}</span>
+                              )}
+                              {a.benachrichtigt_am && (
+                                <span className="text-orange-700">bereits benachrichtigt</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => alsGueltigSetzen(kind, a, anmeldungen)}
+                            disabled={aktion}
+                            className="text-[11px] font-medium bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
+                            title="Diese behalten, andere löschen"
+                          >
+                            {loadingKey === winKey ? <Loader2 size={10} className="animate-spin" /> : null}
+                            Als gültig markieren
+                          </button>
+                          <button
+                            onClick={() => einzelLoeschen(kind, a)}
+                            disabled={aktion}
+                            className="text-[11px] text-red-700 hover:text-red-900 border border-red-200 bg-white hover:bg-red-50 px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
+                            title="Nur diese Anmeldung löschen"
+                          >
+                            {loadingKey === delKey ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
+                            Diese löschen
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
