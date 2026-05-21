@@ -25,9 +25,14 @@ import {
 } from '@/lib/helfer-utils';
 import { createClient } from '@/lib/supabase/client';
 
+interface AufgabeLite { id: string; titel: string }
+interface SpendeLite { id: string; titel: string }
+
 interface Props {
   kinder: KindLite[];
   anmeldungen: AnmeldungLite[];
+  aufgaben: AufgabeLite[];
+  spendenBedarf: SpendeLite[];
   onRefresh: () => void;
 }
 
@@ -51,7 +56,7 @@ const STATUS_STYLE: Record<RueckmeldungsStatus, { bg: string; text: string; icon
   fehlt:         { bg: 'bg-red-100',     text: 'text-red-700',     icon: AlertCircle,  emoji: '❌' },
 };
 
-export function Schritt1Rueckmeldungen({ kinder, anmeldungen, onRefresh }: Props) {
+export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenBedarf, onRefresh }: Props) {
   const [filter, setFilter] = useState<RueckmeldungsStatus | 'alle'>('alle');
   const [suche, setSuche] = useState('');
   const [offeneKlassen, setOffeneKlassen] = useState<Set<string>>(new Set());
@@ -320,6 +325,8 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, onRefresh }: Props
       {/* Sektion: Kinder mit Mehrfach-Anmeldungen */}
       <KinderMitMehrfachAnmeldungen
         eintraege={mehrfachAnmeldungen}
+        aufgaben={aufgaben}
+        spendenBedarf={spendenBedarf}
         onRefresh={onRefresh}
       />
 
@@ -1033,16 +1040,70 @@ function EintragZuKindVerknuepfenModal({
   );
 }
 
+// Erzeugt einen stabilen "Inhalts-Fingerabdruck" einer Anmeldung — nur für Gleichheits-Vergleich.
+function anmeldungsFingerabdruck(a: AnmeldungLite): string {
+  const helfer = Array.isArray(a.helfer_aufgaben_json)
+    ? (a.helfer_aufgaben_json as any[])
+        .map((h) => `${h?.aufgabe_id || ''}:${h?.prioritaet ?? ''}`)
+        .sort()
+        .join('|')
+    : '';
+  const essen = Array.isArray(a.essensspenden_json)
+    ? (a.essensspenden_json as any[])
+        .map((e) => `${e?.spende_id || ''}:${e?.menge ?? ''}`)
+        .sort()
+        .join('|')
+    : '';
+  const weitere = Array.isArray(a.weitere_kinder_json)
+    ? a.weitere_kinder_json
+        .map((w) => `${normalizeName(w?.vorname || '')}|${normalizeName(w?.nachname || '')}|${(w?.klasse || '').trim().toLowerCase()}`)
+        .sort()
+        .join(';')
+    : '';
+  return [
+    helfer,
+    essen,
+    a.ist_springer ? `s:${a.springer_zeitfenster || ''}` : '',
+    (a.kommentar || '').trim(),
+    weitere,
+  ].join('||');
+}
+
 function KinderMitMehrfachAnmeldungen({
   eintraege,
+  aufgaben,
+  spendenBedarf,
   onRefresh,
 }: {
   eintraege: { kind: KindLite; anmeldungen: AnmeldungLite[] }[];
+  aufgaben: AufgabeLite[];
+  spendenBedarf: SpendeLite[];
   onRefresh: () => void;
 }) {
   const istLeer = eintraege.length === 0;
   const [offen, setOffen] = useState(!istLeer);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [expandedAnmeldungIds, setExpandedAnmeldungIds] = useState<Set<string>>(new Set());
+
+  const aufgabenMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of aufgaben) m.set(a.id, a.titel);
+    return m;
+  }, [aufgaben]);
+  const spendenMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of spendenBedarf) m.set(s.id, s.titel);
+    return m;
+  }, [spendenBedarf]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedAnmeldungIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const loescheAnmeldungen = async (ids: string[], successMsg: string) => {
     setLoadingKey(ids.join(','));
@@ -1108,62 +1169,160 @@ function KinderMitMehrfachAnmeldungen({
                 <strong>„Als gültig markieren"</strong> behältst du eine Anmeldung und löschst die anderen.
                 Mit <strong>„Diese löschen"</strong> entfernst du einzelne Einträge.
               </p>
-              {eintraege.map(({ kind, anmeldungen }) => (
-                <div key={kind.id} className="rounded-md border border-slate-200 bg-white p-3">
-                  <div className="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-2 flex-wrap">
-                    {kind.vorname} {kind.nachname}
-                    <span className="text-xs text-slate-500 font-normal">Klasse {kind.klasse || '–'}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                      {anmeldungen.length} Anmeldungen
-                    </span>
-                  </div>
-                  <ul className="divide-y divide-slate-50">
-                    {anmeldungen.map((a) => {
-                      const delKey = `${kind.id}-${a.id}-del`;
-                      const winKey = `${kind.id}-${a.id}-win`;
-                      const aktion = loadingKey?.startsWith(`${kind.id}-`);
-                      return (
-                        <li key={a.id} className="py-2 flex items-center gap-2 flex-wrap">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm text-slate-800 truncate">{a.eltern_email || '(ohne E-Mail)'}</div>
-                            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                              {a.verifiziert
-                                ? <span className="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">verifiziert</span>
-                                : <span className="text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">unverifiziert</span>}
-                              {a.erstellt_am && (
-                                <span>eingegangen {new Date(a.erstellt_am).toLocaleDateString('de-DE')}</span>
-                              )}
-                              {a.benachrichtigt_am && (
-                                <span className="text-orange-700">bereits benachrichtigt</span>
-                              )}
+              {eintraege.map(({ kind, anmeldungen }) => {
+                const fingerprints = anmeldungen.map(anmeldungsFingerabdruck);
+                const inhaltlichIdentisch = fingerprints.every((f) => f === fingerprints[0]);
+                return (
+                  <div key={kind.id} className="rounded-md border border-slate-200 bg-white p-3">
+                    <div className="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-2 flex-wrap">
+                      {kind.vorname} {kind.nachname}
+                      <span className="text-xs text-slate-500 font-normal">Klasse {kind.klasse || '–'}</span>
+                      <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                        {anmeldungen.length} Anmeldungen
+                      </span>
+                      {inhaltlichIdentisch ? (
+                        <span className="text-[10px] uppercase tracking-wider text-green-700 bg-green-100 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                          <CheckCircle2 size={10} /> Inhaltlich identisch
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase tracking-wider text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                          <AlertCircle size={10} /> Unterschiedlicher Inhalt — Eltern fragen
+                        </span>
+                      )}
+                    </div>
+                    <ul className="divide-y divide-slate-50">
+                      {anmeldungen.map((a) => {
+                        const delKey = `${kind.id}-${a.id}-del`;
+                        const winKey = `${kind.id}-${a.id}-win`;
+                        const aktion = loadingKey?.startsWith(`${kind.id}-`);
+                        const isExpanded = expandedAnmeldungIds.has(a.id);
+                        return (
+                          <li key={a.id} className="py-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => toggleExpanded(a.id)}
+                                className="text-slate-400 hover:text-slate-700 shrink-0"
+                                title={isExpanded ? 'Details ausblenden' : 'Details anzeigen'}
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-slate-800 truncate">{a.eltern_email || '(ohne E-Mail)'}</div>
+                                <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                                  {a.verifiziert
+                                    ? <span className="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">verifiziert</span>
+                                    : <span className="text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">unverifiziert</span>}
+                                  {a.erstellt_am && (
+                                    <span>eingegangen {new Date(a.erstellt_am).toLocaleDateString('de-DE')}</span>
+                                  )}
+                                  {a.benachrichtigt_am && (
+                                    <span className="text-orange-700">bereits benachrichtigt</span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => alsGueltigSetzen(kind, a, anmeldungen)}
+                                disabled={aktion}
+                                className="text-[11px] font-medium bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
+                                title="Diese behalten, andere löschen"
+                              >
+                                {loadingKey === winKey ? <Loader2 size={10} className="animate-spin" /> : null}
+                                Als gültig markieren
+                              </button>
+                              <button
+                                onClick={() => einzelLoeschen(kind, a)}
+                                disabled={aktion}
+                                className="text-[11px] text-red-700 hover:text-red-900 border border-red-200 bg-white hover:bg-red-50 px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
+                                title="Nur diese Anmeldung löschen"
+                              >
+                                {loadingKey === delKey ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
+                                Diese löschen
+                              </button>
                             </div>
-                          </div>
-                          <button
-                            onClick={() => alsGueltigSetzen(kind, a, anmeldungen)}
-                            disabled={aktion}
-                            className="text-[11px] font-medium bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
-                            title="Diese behalten, andere löschen"
-                          >
-                            {loadingKey === winKey ? <Loader2 size={10} className="animate-spin" /> : null}
-                            Als gültig markieren
-                          </button>
-                          <button
-                            onClick={() => einzelLoeschen(kind, a)}
-                            disabled={aktion}
-                            className="text-[11px] text-red-700 hover:text-red-900 border border-red-200 bg-white hover:bg-red-50 px-2 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50"
-                            title="Nur diese Anmeldung löschen"
-                          >
-                            {loadingKey === delKey ? <Loader2 size={10} className="animate-spin" /> : <X size={10} />}
-                            Diese löschen
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
+                            {isExpanded && (
+                              <AnmeldungDetail anmeldung={a} aufgabenMap={aufgabenMap} spendenMap={spendenMap} />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnmeldungDetail({
+  anmeldung,
+  aufgabenMap,
+  spendenMap,
+}: {
+  anmeldung: AnmeldungLite;
+  aufgabenMap: Map<string, string>;
+  spendenMap: Map<string, string>;
+}) {
+  const helfer = Array.isArray(anmeldung.helfer_aufgaben_json)
+    ? (anmeldung.helfer_aufgaben_json as { aufgabe_id: string; prioritaet?: number }[])
+    : [];
+  const essen = Array.isArray(anmeldung.essensspenden_json)
+    ? (anmeldung.essensspenden_json as { spende_id: string; menge?: number }[])
+    : [];
+  const weitere = Array.isArray(anmeldung.weitere_kinder_json) ? anmeldung.weitere_kinder_json : [];
+  return (
+    <div className="mt-2 ml-6 pl-3 border-l-2 border-slate-200 text-xs text-slate-700 space-y-2">
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Helfer-Wünsche</div>
+        {anmeldung.ist_springer ? (
+          <div>
+            Springer ({anmeldung.springer_zeitfenster || 'kein Zeitfenster'})
+            {helfer.length > 0 && ` + ${helfer.length} Aufgabe(n)`}
+          </div>
+        ) : helfer.length === 0 ? (
+          <div className="text-slate-400">—</div>
+        ) : (
+          <ul className="list-disc pl-5 space-y-0.5">
+            {helfer.map((h, i) => (
+              <li key={i}>
+                {aufgabenMap.get(h.aufgabe_id) || `Aufgabe ${h.aufgabe_id.substring(0, 8)}…`}
+                {h.prioritaet ? <span className="text-slate-400"> (Prio {h.prioritaet})</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Essensspenden</div>
+        {essen.length === 0 ? (
+          <div className="text-slate-400">—</div>
+        ) : (
+          <ul className="list-disc pl-5 space-y-0.5">
+            {essen.map((e, i) => (
+              <li key={i}>
+                {e.menge ? `${e.menge}× ` : ''}{spendenMap.get(e.spende_id) || `Spende ${e.spende_id.substring(0, 8)}…`}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {weitere.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Weitere Kinder in dieser Anmeldung</div>
+          <ul className="list-disc pl-5 space-y-0.5">
+            {weitere.map((w, i) => (
+              <li key={i}>{w.vorname} {w.nachname} ({w.klasse || '–'})</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {anmeldung.kommentar?.trim() && (
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">Kommentar</div>
+          <div className="whitespace-pre-wrap bg-slate-50 border border-slate-100 rounded p-2">{anmeldung.kommentar}</div>
         </div>
       )}
     </div>

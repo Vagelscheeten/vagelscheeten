@@ -26,6 +26,7 @@ export interface WorkflowStats {
   essensspendenVerteilt: boolean;
   kinder: KindLite[];
   anmeldungen: AnmeldungLite[];
+  essensspendenBedarf: { id: string; titel: string }[];
 }
 
 type SchrittStatus = 'done' | 'current' | 'locked';
@@ -237,7 +238,13 @@ export function WorkflowDashboard({ stats, onRefresh }: WorkflowDashboardProps) 
             {isOffen && status !== 'locked' && (
               <div className="border-t border-slate-100">
                 {schritt.nr === 1 && (
-                  <Schritt1Rueckmeldungen kinder={stats.kinder} anmeldungen={stats.anmeldungen} onRefresh={onRefresh} />
+                  <Schritt1Rueckmeldungen
+                    kinder={stats.kinder}
+                    anmeldungen={stats.anmeldungen}
+                    aufgaben={stats.aufgaben}
+                    spendenBedarf={stats.essensspendenBedarf}
+                    onRefresh={onRefresh}
+                  />
                 )}
                 {schritt.nr === 2 && (
                   <SchrittSichtenZuteilen stats={stats} onRefresh={onRefresh} />

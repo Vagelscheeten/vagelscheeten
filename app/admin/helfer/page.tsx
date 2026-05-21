@@ -31,7 +31,7 @@ export default function HelferPage() {
 
     const eventId = event.id;
 
-    const [rueckRes, zuteilRes, aufgabenRes, benachrichtigtRes, zuBenachrichtigenRes, essensspendenRes, eventRes, kinderRes, anmeldungenRes] = await Promise.all([
+    const [rueckRes, zuteilRes, aufgabenRes, benachrichtigtRes, zuBenachrichtigenRes, essensspendenRes, eventRes, kinderRes, anmeldungenRes, spendenBedarfRes] = await Promise.all([
       supabase
         .from('helfer_rueckmeldungen')
         .select('id', { count: 'exact', head: true })
@@ -78,6 +78,10 @@ export default function HelferPage() {
         .from('anmeldungen')
         .select('id, eltern_email, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, benachrichtigt_am, erstellt_am')
         .eq('event_id', eventId),
+      supabase
+        .from('essensspenden_bedarf')
+        .select('id, titel')
+        .eq('event_id', eventId),
     ]);
 
     setStats({
@@ -91,6 +95,7 @@ export default function HelferPage() {
       essensspendenVerteilt: !!(eventRes.data?.essensspenden_verteilt_am),
       kinder: (kinderRes.data || []) as KindLite[],
       anmeldungen: (anmeldungenRes.data || []) as AnmeldungLite[],
+      essensspendenBedarf: (spendenBedarfRes.data || []) as { id: string; titel: string }[],
     });
 
     setIsLoading(false);
