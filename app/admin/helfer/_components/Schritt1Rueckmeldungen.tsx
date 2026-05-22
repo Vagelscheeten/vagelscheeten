@@ -737,12 +737,16 @@ function AnmeldungenMitUnbekannten({
       `${a.kind_vorname} ${a.kind_nachname}`,
       ...(Array.isArray(a.weitere_kinder_json) ? (a.weitere_kinder_json as WeiteresKind[]).map((w) => `${w.vorname} ${w.nachname}`) : []),
     ].join(', ');
-    if (!confirm(`Diese Anmeldung wirklich löschen?\n\nFamilie ${a.kind_nachname} (${a.eltern_email})\nKinder: ${namen}\n\nHinweis: Helfer-Rückmeldungen und Essensspenden-Zusagen bleiben bestehen — sie sind ggf. in den nachfolgenden Schritten zu bereinigen.`)) return;
+    if (!confirm(`Diese Anmeldung wirklich löschen?\n\nFamilie ${a.kind_nachname} (${a.eltern_email})\nKinder: ${namen}\n\nDie Helfer-Rückmeldungen und Essensspenden werden ebenfalls bereinigt.`)) return;
     setLoadingKey(`${a.id}-del`);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('anmeldungen').delete().eq('id', a.id);
-      if (error) throw error;
+      const res = await fetch('/api/helfer/anmeldungen-bereinigen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [a.id] }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || 'Unbekannter Fehler');
       toast.success('Anmeldung gelöscht.');
       onRefresh();
     } catch (e: any) {
@@ -1108,9 +1112,13 @@ function KinderMitMehrfachAnmeldungen({
   const loescheAnmeldungen = async (ids: string[], successMsg: string) => {
     setLoadingKey(ids.join(','));
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('anmeldungen').delete().in('id', ids);
-      if (error) throw error;
+      const res = await fetch('/api/helfer/anmeldungen-bereinigen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || 'Unbekannter Fehler');
       toast.success(successMsg);
       onRefresh();
     } catch (e: any) {
@@ -1126,18 +1134,20 @@ function KinderMitMehrfachAnmeldungen({
     if (!confirm(
       `${kind.vorname} ${kind.nachname}: Anmeldung von ${gewinner.eltern_email} als gültig markieren?\n\n`
       + `Folgende ${andere.length} Anmeldung${andere.length > 1 ? 'en' : ''} werden gelöscht:\n`
-      + andere.map((a) => `• ${a.eltern_email || '(ohne E-Mail)'}${a.verifiziert ? ' (verifiziert)' : ' (unverifiziert)'}`).join('\n'),
+      + andere.map((a) => `• ${a.eltern_email || '(ohne E-Mail)'}${a.verifiziert ? ' (verifiziert)' : ' (unverifiziert)'}`).join('\n')
+      + `\n\nHelfer-Rückmeldungen und Essensspenden werden anschließend aus der verbleibenden Anmeldung neu erzeugt.`,
     )) return;
-    loescheAnmeldungen(andere.map((a) => a.id), `${andere.length} andere Anmeldung${andere.length > 1 ? 'en' : ''} entfernt.`);
+    loescheAnmeldungen(andere.map((a) => a.id), `${andere.length} andere Anmeldung${andere.length > 1 ? 'en' : ''} entfernt, abgeleitete Daten bereinigt.`);
   };
 
   const einzelLoeschen = (kind: KindLite, a: AnmeldungLite) => {
     if (!confirm(
       `Anmeldung von ${a.eltern_email || '(ohne E-Mail)'} für ${kind.vorname} ${kind.nachname} löschen?\n\n`
       + `Status: ${a.verifiziert ? 'verifiziert' : 'unverifiziert'}\n`
-      + `Eingegangen: ${a.erstellt_am ? new Date(a.erstellt_am).toLocaleDateString('de-DE') : '–'}`,
+      + `Eingegangen: ${a.erstellt_am ? new Date(a.erstellt_am).toLocaleDateString('de-DE') : '–'}\n\n`
+      + `Helfer-Rückmeldungen und Essensspenden werden anschließend aus den verbleibenden Anmeldungen für dieses Kind neu erzeugt.`,
     )) return;
-    loescheAnmeldungen([a.id], 'Anmeldung gelöscht.');
+    loescheAnmeldungen([a.id], 'Anmeldung gelöscht, abgeleitete Daten bereinigt.');
   };
 
   return (
