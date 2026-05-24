@@ -352,6 +352,7 @@ export async function POST(req: NextRequest) {
               if (removeIdx >= 0) nichtZugewieseneRueckmeldungen.splice(removeIdx, 1);
 
               zugewiesen = true;
+              break; // Diesen Swap nur einmal durchführen, sonst Doublette in neueZuteilungen
             }
           }
         }
