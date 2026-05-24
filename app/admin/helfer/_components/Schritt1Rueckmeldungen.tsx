@@ -75,6 +75,9 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
     return kinder.map((k) => deriveStatus(k, idx));
   }, [kinder, anmeldungen]);
 
+  const aufgabenMap = useMemo(() => new Map(aufgaben.map((a) => [a.id, a.titel])), [aufgaben]);
+  const spendenMap = useMemo(() => new Map(spendenBedarf.map((s) => [s.id, s.titel])), [spendenBedarf]);
+
   // Anmeldungen, deren Kind-Einträge nicht (alle) auf die aktuelle Klassenliste matchen.
   const kinderIdx = useMemo(() => buildKinderIndex(kinder), [kinder]);
 
@@ -525,6 +528,8 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
                         key={k.kind.id}
                         eintrag={k}
                         geschwister={geschwisterMap.get(k.kind.id) || []}
+                        aufgabenMap={aufgabenMap}
+                        spendenMap={spendenMap}
                         onDetails={() => setDetailKind(k)}
                         onKommentar={() => setKommentarKind(k)}
                         onVerknuepfen={() => setVerknuepfenKind(k)}
@@ -599,12 +604,16 @@ function StatKachel({
 function KindZeile({
   eintrag,
   geschwister,
+  aufgabenMap,
+  spendenMap,
   onDetails,
   onKommentar,
   onVerknuepfen,
 }: {
   eintrag: KindMitStatus;
   geschwister: KindLite[];
+  aufgabenMap: Map<string, string>;
+  spendenMap: Map<string, string>;
   onDetails: () => void;
   onKommentar: () => void;
   onVerknuepfen: () => void;
@@ -614,6 +623,24 @@ function KindZeile({
   const geschwisterTitle = geschwister.length > 0
     ? `Geschwister (gleiche Anmeldung): ${geschwister.map((g) => `${g.vorname} ${g.nachname} (Klasse ${g.klasse || '–'})`).join(', ')}`
     : '';
+
+  // Helfer-Wünsche + Spenden für Inline-Anzeige
+  const a = eintrag.anmeldung;
+  const helferJson = Array.isArray(a?.helfer_aufgaben_json) ? (a!.helfer_aufgaben_json as any[]) : [];
+  const essenJson = Array.isArray(a?.essensspenden_json) ? (a!.essensspenden_json as any[]) : [];
+  const helferTitel = helferJson
+    .map((h) => aufgabenMap.get(h?.aufgabe_id))
+    .filter(Boolean) as string[];
+  if (a?.ist_springer) helferTitel.push(`Springer${a.springer_zeitfenster ? ` (${a.springer_zeitfenster})` : ''}`);
+  const spendenTitel = essenJson
+    .map((e) => {
+      const t = spendenMap.get(e?.spende_id);
+      if (!t) return null;
+      const menge = e?.menge ?? 1;
+      return menge > 1 ? `${menge}× ${t}` : t;
+    })
+    .filter(Boolean) as string[];
+
   return (
     <div
       className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer"
@@ -625,8 +652,23 @@ function KindZeile({
         }
       }}
     >
-      <span className="text-sm text-slate-800 flex-1 truncate">
+      <span className="text-sm text-slate-800 whitespace-nowrap">
         {eintrag.kind.vorname} {eintrag.kind.nachname}
+      </span>
+      <span className="text-xs text-slate-500 flex-1 truncate min-w-0">
+        {helferTitel.length > 0 && (
+          <span title={`Helfer-Wünsche: ${helferTitel.join(', ')}`}>
+            <Wrench size={10} className="inline -mt-0.5 mr-1 text-slate-400" />
+            {helferTitel.join(', ')}
+          </span>
+        )}
+        {helferTitel.length > 0 && spendenTitel.length > 0 && <span className="mx-2 text-slate-300">·</span>}
+        {spendenTitel.length > 0 && (
+          <span title={`Essensspenden: ${spendenTitel.join(', ')}`}>
+            <Utensils size={10} className="inline -mt-0.5 mr-1 text-slate-400" />
+            {spendenTitel.join(', ')}
+          </span>
+        )}
       </span>
       {geschwister.length > 0 && (
         <span
