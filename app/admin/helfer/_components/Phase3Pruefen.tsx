@@ -3,9 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, X, AlertTriangle, CheckCircle2, Search, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, AlertTriangle, CheckCircle2, Search, ChevronDown, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatZeitfenster } from '@/lib/helfer-utils';
+import {
+  formatZeitfenster,
+  buildAnmeldungsIndex,
+  findAnmeldungForKind,
+  type AnmeldungLite,
+  type KindLite,
+} from '@/lib/helfer-utils';
 
 interface AufgabeMitZuteilungen {
   id: string;
@@ -58,10 +64,22 @@ interface Wunsch {
   zeitfenster: string | null;
 }
 
+interface KindDetail {
+  helferWuensche: { aufgabe_id: string; aufgabe_titel: string }[];
+  istSpringer: boolean;
+  springerZeitfenster: string | null;
+  essensspenden: { titel: string; menge: number }[];
+  kommentar: string | null;
+  elternEmail: string | null;
+  geschwister: { vorname: string; nachname: string; klasse: string }[];
+}
+
 export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
   const [aufgaben, setAufgaben] = useState<AufgabeMitZuteilungen[]>([]);
   const [nichtZugewiesen, setNichtZugewiesen] = useState<NichtZugewiesenerWunsch[]>([]);
   const [wuenscheByKind, setWuenscheByKind] = useState<Record<string, Wunsch[]>>({});
+  const [detailsByKindId, setDetailsByKindId] = useState<Record<string, KindDetail>>({});
+  const [detailModal, setDetailModal] = useState<{ z: Zuteilung; aufgabeTitel: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [addingTo, setAddingTo] = useState<string | null>(null); // aufgabe_id
   const [addMode, setAddMode] = useState<'wuensche' | 'kind' | 'extern'>('wuensche');
@@ -191,6 +209,52 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       byKind[r.kind_id].push({ aufgabe_titel, ist_springer: r.ist_springer, zeitfenster: r.zeitfenster });
     }
     setWuenscheByKind(byKind);
+
+    // Anmeldungs-Details laden für Detail-Modal (Wünsche + Essensspenden + Kommentar pro Familie)
+    const [anmeldungenRes, spendenBedarfRes, alleKinderRes] = await Promise.all([
+      supabase
+        .from('anmeldungen')
+        .select('id, eltern_email, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, benachrichtigt_am, erstellt_am')
+        .eq('event_id', eventId)
+        .eq('verifiziert', true),
+      supabase
+        .from('essensspenden_bedarf')
+        .select('id, titel')
+        .eq('event_id', eventId),
+      supabase
+        .from('kinder')
+        .select('id, vorname, nachname, klasse, geschlecht')
+        .eq('event_id', eventId),
+    ]);
+
+    const anmeldungen = (anmeldungenRes.data || []) as AnmeldungLite[];
+    const spendenTitel = new Map<string, string>();
+    for (const s of spendenBedarfRes.data || []) spendenTitel.set(s.id, s.titel);
+    const alleKinder = (alleKinderRes.data || []) as KindLite[];
+
+    const anmeldungsIdx = buildAnmeldungsIndex(anmeldungen);
+    const details: Record<string, KindDetail> = {};
+    for (const k of alleKinder) {
+      const a = findAnmeldungForKind(k, anmeldungsIdx);
+      if (!a) continue;
+      const helferJson = Array.isArray(a.helfer_aufgaben_json) ? (a.helfer_aufgaben_json as any[]) : [];
+      const essenJson = Array.isArray(a.essensspenden_json) ? (a.essensspenden_json as any[]) : [];
+      const weitere = Array.isArray(a.weitere_kinder_json) ? a.weitere_kinder_json : [];
+      details[k.id] = {
+        helferWuensche: helferJson
+          .filter((h) => h?.aufgabe_id)
+          .map((h) => ({ aufgabe_id: h.aufgabe_id, aufgabe_titel: aufgabenTitelById.get(h.aufgabe_id) || 'Unbekannte Aufgabe' })),
+        istSpringer: !!a.ist_springer,
+        springerZeitfenster: a.springer_zeitfenster,
+        essensspenden: essenJson
+          .filter((e) => e?.spende_id)
+          .map((e) => ({ titel: spendenTitel.get(e.spende_id) || 'Spende', menge: e.menge ?? 1 })),
+        kommentar: a.kommentar,
+        elternEmail: a.eltern_email,
+        geschwister: weitere.filter((w) => w?.vorname && w?.nachname) as { vorname: string; nachname: string; klasse: string }[],
+      };
+    }
+    setDetailsByKindId(details);
 
     setAufgaben(aufgabenMitZ);
     setNichtZugewiesen(nichtZugew);
@@ -543,27 +607,31 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                   const tooltip = tooltipLines.join(' · ');
 
                   return (
-                    <div key={z.id} className="relative group/chip">
+                    <div key={z.id} className="relative">
                       <div
-                        className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm bg-white border ${z.manuell ? 'border-orange-200' : 'border-slate-200'}`}
+                        className={`flex items-center gap-1.5 rounded-full pl-3 pr-1 py-1 text-sm bg-white border ${z.manuell ? 'border-orange-200' : 'border-slate-200'}`}
                       >
-                        <span className="font-medium">{name}</span>
-                        {klasse && <span className="text-slate-400 text-xs">({klasse})</span>}
+                        <button
+                          onClick={() => setDetailModal({ z, aufgabeTitel: aufgabe.titel })}
+                          className="inline-flex items-center gap-1.5 hover:text-blue-700 transition-colors"
+                          title="Details anzeigen"
+                        >
+                          <span className="font-medium">{name}</span>
+                          {klasse && <span className="text-slate-400 text-xs">({klasse})</span>}
+                          <Info size={12} className="text-slate-300" />
+                        </button>
                         {z.via_springer && <span className="bg-purple-100 text-purple-700 text-xs font-semibold px-1.5 py-0.5 rounded">S</span>}
                         {z.manuell && <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-1.5 py-0.5 rounded">M</span>}
                         <button
                           onClick={() => handleRemoveZuteilung(z.id)}
-                          className="ml-0.5 text-slate-300 hover:text-red-500 transition-colors"
+                          className="ml-0.5 text-slate-300 hover:text-red-500 transition-colors px-0.5"
                           title="Entfernen"
                         >
                           <X size={13} />
                         </button>
                       </div>
                       {tooltip && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded-md whitespace-nowrap pointer-events-none opacity-0 group-hover/chip:opacity-100 transition-opacity z-20 shadow-lg">
-                          {tooltip}
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
-                        </div>
+                        <span className="sr-only">{tooltip}</span>
                       )}
                     </div>
                   );
@@ -691,7 +759,161 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       <p className="text-xs text-slate-400 flex items-center gap-2">
         <span className="bg-purple-100 text-purple-700 font-semibold px-1.5 py-0.5 rounded">S</span> = via Springer
         <span className="bg-orange-100 text-orange-700 font-semibold px-1.5 py-0.5 rounded">M</span> = manuell hinzugefügt
+        · Klick auf Helfer-Name öffnet Detail-Ansicht
       </p>
+
+      {detailModal && (
+        <ZuteilungDetailModal
+          zuteilung={detailModal.z}
+          zugewieseneAufgabe={detailModal.aufgabeTitel}
+          detail={detailModal.z.kind_id ? detailsByKindId[detailModal.z.kind_id] : undefined}
+          onClose={() => setDetailModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ZuteilungDetailModal({
+  zuteilung,
+  zugewieseneAufgabe,
+  detail,
+  onClose,
+}: {
+  zuteilung: Zuteilung;
+  zugewieseneAufgabe: string;
+  detail: KindDetail | undefined;
+  onClose: () => void;
+}) {
+  const name = zuteilung.kind
+    ? `${zuteilung.kind.vorname} ${zuteilung.kind.nachname}`
+    : zuteilung.externe_helfer?.name || 'Externer Helfer';
+  const klasse = zuteilung.kind?.klasse;
+
+  // Status der Zuteilung ableiten
+  const statusBadges: { label: string; classes: string }[] = [];
+  if (zuteilung.externer_helfer_id) {
+    statusBadges.push({ label: 'Externer Helfer', classes: 'bg-slate-100 text-slate-700' });
+  } else if (zuteilung.manuell) {
+    statusBadges.push({ label: 'Manuell zugewiesen', classes: 'bg-orange-100 text-orange-800' });
+  }
+  if (zuteilung.via_springer) {
+    statusBadges.push({ label: 'Aus Springer-Pool', classes: 'bg-purple-100 text-purple-700' });
+  }
+  // Wunsch erfüllt? → wenn die zugewiesene Aufgabe in den Wünschen vorkommt
+  const wunschErfuellt = detail?.helferWuensche.some((w) => w.aufgabe_titel === zugewieseneAufgabe) ?? false;
+  if (!zuteilung.externer_helfer_id && !zuteilung.manuell && !zuteilung.via_springer) {
+    if (wunschErfuellt) {
+      statusBadges.push({ label: 'Wunsch erfüllt', classes: 'bg-green-100 text-green-800' });
+    } else if (detail?.istSpringer) {
+      statusBadges.push({ label: 'Springer-Einsatz', classes: 'bg-purple-100 text-purple-700' });
+    } else {
+      statusBadges.push({ label: 'Anders zugeteilt', classes: 'bg-amber-100 text-amber-800' });
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="relative bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-semibold text-slate-800">{name}{klasse ? <span className="text-slate-400 font-normal"> · Klasse {klasse}</span> : null}</h3>
+            <div className="flex gap-1.5 mt-1 flex-wrap">
+              {statusBadges.map((b, i) => (
+                <span key={i} className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold ${b.classes}`}>{b.label}</span>
+              ))}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={16} /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 text-sm">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Zugewiesene Aufgabe</div>
+            <div className="font-medium text-slate-800">
+              {zugewieseneAufgabe}
+              {zuteilung.zeitfenster && <span className="text-slate-500 font-normal"> · {formatZeitfenster(zuteilung.zeitfenster as any)}</span>}
+            </div>
+          </div>
+
+          {!detail && !zuteilung.externer_helfer_id && (
+            <p className="text-slate-500 italic">Keine Anmeldungs-Details gefunden — vermutlich manuell zugeordnetes Kind ohne passende Anmeldung.</p>
+          )}
+
+          {detail && (
+            <>
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Helfer-Wünsche der Familie</div>
+                {detail.helferWuensche.length === 0 && !detail.istSpringer ? (
+                  <p className="text-slate-400 italic">Keine Helfer-Aufgaben gewünscht</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {detail.istSpringer && (
+                      <li className="flex items-center gap-2">
+                        <span className="text-purple-600">★</span>
+                        <span>Springer-Modus ({detail.springerZeitfenster || 'beides'})</span>
+                      </li>
+                    )}
+                    {detail.helferWuensche.map((w, i) => {
+                      const istGewaehlt = w.aufgabe_titel === zugewieseneAufgabe;
+                      return (
+                        <li key={i} className="flex items-center gap-2">
+                          {istGewaehlt ? <CheckCircle2 size={13} className="text-green-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shrink-0" />}
+                          <span className={istGewaehlt ? 'font-medium text-slate-800' : 'text-slate-600'}>
+                            {w.aufgabe_titel}
+                            {istGewaehlt && <span className="text-xs text-green-700 ml-1">— zugewiesen</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Essensspenden</div>
+                {detail.essensspenden.length === 0 ? (
+                  <p className="text-slate-400 italic">Keine</p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {detail.essensspenden.map((e, i) => (
+                      <li key={i} className="text-slate-700">{e.menge}× {e.titel}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {detail.kommentar && detail.kommentar.trim().length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Anmerkung der Eltern</div>
+                  <div className="text-slate-700 whitespace-pre-wrap bg-amber-50 border border-amber-100 rounded p-2">{detail.kommentar}</div>
+                </div>
+              )}
+
+              {detail.geschwister.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Geschwister in dieser Anmeldung</div>
+                  <ul className="space-y-0.5">
+                    {detail.geschwister.map((g, i) => (
+                      <li key={i} className="text-slate-700">{g.vorname} {g.nachname} (Klasse {g.klasse || '–'})</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {detail.elternEmail && (
+                <div className="text-xs text-slate-400 pt-1 border-t border-slate-100">
+                  {detail.elternEmail}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
