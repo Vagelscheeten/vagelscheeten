@@ -79,7 +79,11 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
   const [nichtZugewiesen, setNichtZugewiesen] = useState<NichtZugewiesenerWunsch[]>([]);
   const [wuenscheByKind, setWuenscheByKind] = useState<Record<string, Wunsch[]>>({});
   const [detailsByKindId, setDetailsByKindId] = useState<Record<string, KindDetail>>({});
-  const [detailModal, setDetailModal] = useState<{ z: Zuteilung; aufgabeTitel: string } | null>(null);
+  const [detailModal, setDetailModal] = useState<
+    | { mode: 'zuteilung'; z: Zuteilung; aufgabeTitel: string }
+    | { mode: 'wunsch'; r: NichtZugewiesenerWunsch }
+    | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [addingTo, setAddingTo] = useState<string | null>(null); // aufgabe_id
   const [addMode, setAddMode] = useState<'wuensche' | 'kind' | 'extern'>('wuensche');
@@ -462,10 +466,15 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                 <div key={r.id} className="bg-white rounded-lg border border-orange-200 px-3 py-2.5 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div>
+                      <button
+                        onClick={() => setDetailModal({ mode: 'wunsch', r })}
+                        className="text-left hover:text-blue-700 transition-colors inline-flex items-center gap-1.5"
+                        title="Details der Familie anzeigen"
+                      >
                         <span className="font-medium text-sm text-slate-800">{name}</span>
-                        {klasse && <span className="text-xs text-slate-400 ml-1.5">({klasse})</span>}
-                      </div>
+                        {klasse && <span className="text-xs text-slate-400">({klasse})</span>}
+                        <Info size={12} className="text-slate-300" />
+                      </button>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
                           Wunsch: {r.ist_springer ? 'Springer' : r.aufgabe_titel}
@@ -612,7 +621,7 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                         className={`flex items-center gap-1.5 rounded-full pl-3 pr-1 py-1 text-sm bg-white border ${z.manuell ? 'border-orange-200' : 'border-slate-200'}`}
                       >
                         <button
-                          onClick={() => setDetailModal({ z, aufgabeTitel: aufgabe.titel })}
+                          onClick={() => setDetailModal({ mode: 'zuteilung', z, aufgabeTitel: aufgabe.titel })}
                           className="inline-flex items-center gap-1.5 hover:text-blue-700 transition-colors"
                           title="Details anzeigen"
                         >
@@ -763,10 +772,13 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       </p>
 
       {detailModal && (
-        <ZuteilungDetailModal
-          zuteilung={detailModal.z}
-          zugewieseneAufgabe={detailModal.aufgabeTitel}
-          detail={detailModal.z.kind_id ? detailsByKindId[detailModal.z.kind_id] : undefined}
+        <DetailModal
+          data={detailModal}
+          detail={
+            detailModal.mode === 'zuteilung'
+              ? (detailModal.z.kind_id ? detailsByKindId[detailModal.z.kind_id] : undefined)
+              : (detailModal.r.kind_id ? detailsByKindId[detailModal.r.kind_id] : undefined)
+          }
           onClose={() => setDetailModal(null)}
         />
       )}
@@ -774,41 +786,52 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
   );
 }
 
-function ZuteilungDetailModal({
-  zuteilung,
-  zugewieseneAufgabe,
+function DetailModal({
+  data,
   detail,
   onClose,
 }: {
-  zuteilung: Zuteilung;
-  zugewieseneAufgabe: string;
+  data:
+    | { mode: 'zuteilung'; z: Zuteilung; aufgabeTitel: string }
+    | { mode: 'wunsch'; r: NichtZugewiesenerWunsch };
   detail: KindDetail | undefined;
   onClose: () => void;
 }) {
-  const name = zuteilung.kind
-    ? `${zuteilung.kind.vorname} ${zuteilung.kind.nachname}`
-    : zuteilung.externe_helfer?.name || 'Externer Helfer';
-  const klasse = zuteilung.kind?.klasse;
+  // Name + Klasse je nach Modus
+  const name = data.mode === 'zuteilung'
+    ? (data.z.kind ? `${data.z.kind.vorname} ${data.z.kind.nachname}` : data.z.externe_helfer?.name || 'Externer Helfer')
+    : (data.r.kind ? `${data.r.kind.vorname} ${data.r.kind.nachname}` : 'Unbekannt');
+  const klasse = data.mode === 'zuteilung' ? data.z.kind?.klasse : data.r.kind?.klasse;
+  const zugewieseneAufgabe = data.mode === 'zuteilung' ? data.aufgabeTitel : null;
 
-  // Status der Zuteilung ableiten
+  // Status-Badges
   const statusBadges: { label: string; classes: string }[] = [];
-  if (zuteilung.externer_helfer_id) {
-    statusBadges.push({ label: 'Externer Helfer', classes: 'bg-slate-100 text-slate-700' });
-  } else if (zuteilung.manuell) {
-    statusBadges.push({ label: 'Manuell zugewiesen', classes: 'bg-orange-100 text-orange-800' });
-  }
-  if (zuteilung.via_springer) {
-    statusBadges.push({ label: 'Aus Springer-Pool', classes: 'bg-purple-100 text-purple-700' });
-  }
-  // Wunsch erfüllt? → wenn die zugewiesene Aufgabe in den Wünschen vorkommt
-  const wunschErfuellt = detail?.helferWuensche.some((w) => w.aufgabe_titel === zugewieseneAufgabe) ?? false;
-  if (!zuteilung.externer_helfer_id && !zuteilung.manuell && !zuteilung.via_springer) {
-    if (wunschErfuellt) {
-      statusBadges.push({ label: 'Wunsch erfüllt', classes: 'bg-green-100 text-green-800' });
-    } else if (detail?.istSpringer) {
-      statusBadges.push({ label: 'Springer-Einsatz', classes: 'bg-purple-100 text-purple-700' });
-    } else {
+  if (data.mode === 'zuteilung') {
+    const z = data.z;
+    if (z.externer_helfer_id) {
+      statusBadges.push({ label: 'Externer Helfer', classes: 'bg-slate-100 text-slate-700' });
+    } else if (z.manuell) {
+      statusBadges.push({ label: 'Manuell zugewiesen', classes: 'bg-orange-100 text-orange-800' });
+    }
+    if (z.via_springer) {
+      statusBadges.push({ label: 'Aus Springer-Pool', classes: 'bg-purple-100 text-purple-700' });
+    }
+    const wunschErfuellt = detail?.helferWuensche.some((w) => w.aufgabe_titel === zugewieseneAufgabe) ?? false;
+    if (!z.externer_helfer_id && !z.manuell && !z.via_springer) {
+      if (wunschErfuellt) {
+        statusBadges.push({ label: 'Wunsch erfüllt', classes: 'bg-green-100 text-green-800' });
+      } else if (detail?.istSpringer) {
+        statusBadges.push({ label: 'Springer-Einsatz', classes: 'bg-purple-100 text-purple-700' });
+      } else {
+        statusBadges.push({ label: 'Anders zugeteilt', classes: 'bg-amber-100 text-amber-800' });
+      }
+    }
+  } else {
+    // Modus wunsch — Status zeigt, was mit der Familie passiert ist
+    if (data.r.zugewiesen_zu) {
       statusBadges.push({ label: 'Anders zugeteilt', classes: 'bg-amber-100 text-amber-800' });
+    } else {
+      statusBadges.push({ label: 'Nicht zugeteilt', classes: 'bg-red-100 text-red-700' });
     }
   }
 
@@ -832,15 +855,32 @@ function ZuteilungDetailModal({
         </div>
 
         <div className="px-5 py-4 space-y-4 text-sm">
-          <div>
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Zugewiesene Aufgabe</div>
-            <div className="font-medium text-slate-800">
-              {zugewieseneAufgabe}
-              {zuteilung.zeitfenster && <span className="text-slate-500 font-normal"> · {formatZeitfenster(zuteilung.zeitfenster as any)}</span>}
+          {data.mode === 'zuteilung' && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Zugewiesene Aufgabe</div>
+              <div className="font-medium text-slate-800">
+                {zugewieseneAufgabe}
+                {data.z.zeitfenster && <span className="text-slate-500 font-normal"> · {formatZeitfenster(data.z.zeitfenster as any)}</span>}
+              </div>
             </div>
-          </div>
+          )}
 
-          {!detail && !zuteilung.externer_helfer_id && (
+          {data.mode === 'wunsch' && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Dieser konkrete Wunsch</div>
+              <div className="font-medium text-slate-800">
+                {data.r.ist_springer ? 'Springer' : data.r.aufgabe_titel}
+                {data.r.zeitfenster && <span className="text-slate-500 font-normal"> · {formatZeitfenster(data.r.zeitfenster as any)}</span>}
+              </div>
+              {data.r.zugewiesen_zu && (
+                <div className="text-xs text-slate-500 mt-1">
+                  Aktuelle Zuteilung der Familie: <strong>{data.r.zugewiesen_zu}</strong>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!detail && data.mode === 'zuteilung' && !data.z.externer_helfer_id && (
             <p className="text-slate-500 italic">Keine Anmeldungs-Details gefunden — vermutlich manuell zugeordnetes Kind ohne passende Anmeldung.</p>
           )}
 
@@ -859,13 +899,24 @@ function ZuteilungDetailModal({
                       </li>
                     )}
                     {detail.helferWuensche.map((w, i) => {
-                      const istGewaehlt = w.aufgabe_titel === zugewieseneAufgabe;
+                      // 'zuteilung'-Modus: ✓ am zugewiesenen Wunsch
+                      // 'wunsch'-Modus: ✓ am aktuell betrachteten Wunsch (data.r.aufgabe_titel)
+                      // Plus Markierung welche der Wünsche bereits einer anderen Aufgabe zugeteilt sind
+                      const istGewaehlt = data.mode === 'zuteilung'
+                        ? w.aufgabe_titel === zugewieseneAufgabe
+                        : w.aufgabe_titel === data.r.aufgabe_titel;
+                      const istAndersZugeteilt = data.mode === 'wunsch' && data.r.zugewiesen_zu === w.aufgabe_titel;
                       return (
                         <li key={i} className="flex items-center gap-2">
-                          {istGewaehlt ? <CheckCircle2 size={13} className="text-green-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shrink-0" />}
+                          {istGewaehlt
+                            ? <CheckCircle2 size={13} className="text-green-600 shrink-0" />
+                            : istAndersZugeteilt
+                              ? <span className="w-3.5 h-3.5 rounded-full bg-blue-100 border border-blue-300 shrink-0" />
+                              : <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shrink-0" />}
                           <span className={istGewaehlt ? 'font-medium text-slate-800' : 'text-slate-600'}>
                             {w.aufgabe_titel}
-                            {istGewaehlt && <span className="text-xs text-green-700 ml-1">— zugewiesen</span>}
+                            {data.mode === 'zuteilung' && istGewaehlt && <span className="text-xs text-green-700 ml-1">— zugewiesen</span>}
+                            {data.mode === 'wunsch' && istAndersZugeteilt && <span className="text-xs text-blue-700 ml-1">— Familie hier zugeteilt</span>}
                           </span>
                         </li>
                       );
