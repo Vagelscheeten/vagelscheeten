@@ -103,6 +103,15 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     leer: 0,
   });
   const [wartendeExpanded, setWartendeExpanded] = useState(false);
+  const [springerExpanded, setSpringerExpanded] = useState(false);
+  const [springerDetails, setSpringerDetails] = useState<{
+    kindId: string;
+    name: string;
+    klasse: string | null;
+    springerZeitfenster: string;
+    status: 'via_springer' | 'regulaer' | 'wartend';
+    aufgabe: string | null;
+  }[]>([]);
 
   const ladeDaten = useCallback(async () => {
     setIsLoading(true);
@@ -186,6 +195,38 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     }
     setFamilienGesamt(new Set([...familienMitNormalemWunsch, ...familienMitSpringerAngebot]).size);
     setSpringerFamilien(familienMitSpringerAngebot.size);
+
+    // Springer-Details: pro Springer-Familie der Einsatz-Status
+    const springerKindInfo = new Map<string, { name: string; klasse: string | null; zeitfenster: string }>();
+    for (const r of (rueckmeldungenRes.data || []) as any[]) {
+      if (!r.kind_id || !r.ist_springer) continue;
+      if (springerKindInfo.has(r.kind_id)) continue;
+      const kindObj = Array.isArray(r.kind) ? r.kind[0] : r.kind;
+      springerKindInfo.set(r.kind_id, {
+        name: kindObj ? `${kindObj.vorname} ${kindObj.nachname}` : 'Unbekannt',
+        klasse: kindObj?.klasse || null,
+        zeitfenster: r.zeitfenster || '—',
+      });
+    }
+    const sprDetails = [...springerKindInfo.entries()].map(([kindId, info]) => {
+      const zuteilung = zuteilungen.find((z) => z.kind_id === kindId);
+      let status: 'via_springer' | 'regulaer' | 'wartend' = 'wartend';
+      let aufgabeName: string | null = null;
+      if (zuteilung) {
+        aufgabeName = aufgabenTitelById.get(zuteilung.aufgabe_id) || null;
+        status = zuteilung.via_springer ? 'via_springer' : 'regulaer';
+      }
+      return {
+        kindId,
+        name: info.name,
+        klasse: info.klasse,
+        springerZeitfenster: info.zeitfenster,
+        status,
+        aufgabe: aufgabeName,
+      };
+    });
+    sprDetails.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    setSpringerDetails(sprDetails);
 
     // Zufriedene Kinder: mindestens ein Wunsch wurde erfüllt
     const zufriedeneKinder = new Set<string>();
@@ -615,7 +656,16 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
               <div className="text-xs text-slate-500">
                 mit Helfer-Wunsch
                 {bilanz.springerFamilien > 0 && (
-                  <span className="text-purple-600"> · davon {bilanz.springerFamilien} Springer</span>
+                  <>
+                    {' · '}
+                    <button
+                      onClick={() => setSpringerExpanded((v) => !v)}
+                      className="inline-flex items-center gap-0.5 text-purple-600 hover:underline underline-offset-2"
+                    >
+                      davon {bilanz.springerFamilien} Springer
+                      <ChevronDown size={11} className={`transition-transform ${springerExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -628,6 +678,52 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
               <div className="text-xs text-slate-500">leer (weder Helfer noch Essen)</div>
             </div>
           </div>
+
+          {/* Springer-Detail */}
+          {springerExpanded && springerDetails.length > 0 && (
+            <div className="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5">
+              <div className="text-xs font-semibold text-purple-900 mb-1.5">
+                Springer-Bereitschaft im Detail
+              </div>
+              <ul className="text-sm space-y-1">
+                {springerDetails.map((s) => {
+                  const zfLabel = s.springerZeitfenster === 'vormittag'
+                    ? 'vormittags'
+                    : s.springerZeitfenster === 'nachmittag'
+                      ? 'nachmittags'
+                      : s.springerZeitfenster === 'beides'
+                        ? 'ganztägig'
+                        : s.springerZeitfenster;
+                  return (
+                    <li key={s.kindId} className="flex flex-wrap gap-x-2 items-center">
+                      <span className="font-medium text-slate-800">{s.name}</span>
+                      {s.klasse && <span className="text-slate-400 text-xs">({s.klasse})</span>}
+                      <span className="text-xs text-slate-500">Springer {zfLabel}</span>
+                      <span className="text-slate-400">→</span>
+                      {s.status === 'via_springer' && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="bg-purple-200 text-purple-800 text-xs font-semibold px-1.5 py-0.5 rounded">als Springer</span>
+                          <span className="text-slate-700">{s.aufgabe}</span>
+                        </span>
+                      )}
+                      {s.status === 'regulaer' && (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-1.5 py-0.5 rounded">über Wunsch</span>
+                          <span className="text-slate-700">{s.aufgabe}</span>
+                        </span>
+                      )}
+                      {s.status === 'wartend' && (
+                        <span className="text-red-600 text-xs font-semibold">noch keine Zuteilung</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-xs text-purple-800 mt-2 leading-snug">
+                <strong>Hinweis:</strong> Familien, die Springer-Bereitschaft <em>und</em> einen konkreten Wunsch angegeben haben, werden bevorzugt auf den Wunsch zugeteilt. Im Springer-Pool landen nur die ohne erfüllten Wunsch.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Deckungsplan */}
