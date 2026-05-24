@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2, X, AlertTriangle, CheckCircle2, Search, ChevronDown, Info } from 'lucide-react';
@@ -419,6 +419,49 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     setIsSaving(false);
   };
 
+  // Aufgaben-Anzahl pro Kind (für Mehrfach-Zuteilungs-Markierung)
+  const aufgabenProKind = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of aufgaben) {
+      for (const z of a.zuteilungen) {
+        if (z.kind_id) m.set(z.kind_id, (m.get(z.kind_id) || 0) + 1);
+      }
+    }
+    return m;
+  }, [aufgaben]);
+
+  // Liste der Familien mit 2+ Aufgaben (für Banner)
+  const mehrfachZugeteilte = useMemo(() => {
+    const result: { kindId: string; name: string; klasse: string | null; anzahl: number; aufgabenTitel: string[] }[] = [];
+    const aufgabenByKind = new Map<string, { titel: string; klasse: string | null; vorname: string; nachname: string }[]>();
+    for (const a of aufgaben) {
+      for (const z of a.zuteilungen) {
+        if (!z.kind_id || !z.kind) continue;
+        if (!aufgabenByKind.has(z.kind_id)) aufgabenByKind.set(z.kind_id, []);
+        aufgabenByKind.get(z.kind_id)!.push({
+          titel: a.titel,
+          klasse: z.kind.klasse || null,
+          vorname: z.kind.vorname,
+          nachname: z.kind.nachname,
+        });
+      }
+    }
+    for (const [kindId, eintraege] of aufgabenByKind) {
+      if (eintraege.length > 1) {
+        const erste = eintraege[0];
+        result.push({
+          kindId,
+          name: `${erste.vorname} ${erste.nachname}`,
+          klasse: erste.klasse,
+          anzahl: eintraege.length,
+          aufgabenTitel: eintraege.map((e) => e.titel),
+        });
+      }
+    }
+    result.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    return result;
+  }, [aufgaben]);
+
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="animate-spin text-gray-400" size={24} /></div>;
   }
@@ -432,6 +475,32 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       <p className="text-sm text-slate-500">
         Überprüfe die Zuteilungen pro Aufgabe. Rote Karten haben Lücken (Bedarf nicht gedeckt).
       </p>
+
+      {/* Mehrfach-Zuteilungen */}
+      {mehrfachZugeteilte.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-amber-900 text-sm">
+                {mehrfachZugeteilte.length} {mehrfachZugeteilte.length === 1 ? 'Familie' : 'Familien'} mit mehreren Aufgaben
+              </div>
+              <p className="text-xs text-amber-800 mt-1 mb-2">
+                Doppel-Zuteilungen sollten die Ausnahme bleiben. Bitte prüfen, ob eine der Aufgaben entfernt werden kann.
+              </p>
+              <ul className="text-sm text-amber-900 space-y-0.5">
+                {mehrfachZugeteilte.map((m) => (
+                  <li key={m.kindId}>
+                    <span className="font-medium">{m.name}</span>
+                    {m.klasse && <span className="text-amber-700"> ({m.klasse})</span>}
+                    <span className="text-amber-700"> — {m.aufgabenTitel.join(' + ')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Unerfüllte Wünsche */}
       {nichtZugewiesen.length > 0 && (
@@ -615,10 +684,13 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                   }
                   const tooltip = tooltipLines.join(' · ');
 
+                  const anzahlAufgaben = z.kind_id ? (aufgabenProKind.get(z.kind_id) || 1) : 1;
+                  const hatMehrere = anzahlAufgaben > 1;
+
                   return (
                     <div key={z.id} className="relative">
                       <div
-                        className={`flex items-center gap-1.5 rounded-full pl-3 pr-1 py-1 text-sm bg-white border ${z.manuell ? 'border-orange-200' : 'border-slate-200'}`}
+                        className={`flex items-center gap-1.5 rounded-full pl-3 pr-1 py-1 text-sm bg-white border ${hatMehrere ? 'border-amber-300 bg-amber-50' : z.manuell ? 'border-orange-200' : 'border-slate-200'}`}
                       >
                         <button
                           onClick={() => setDetailModal({ mode: 'zuteilung', z, aufgabeTitel: aufgabe.titel })}
@@ -629,6 +701,14 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                           {klasse && <span className="text-slate-400 text-xs">({klasse})</span>}
                           <Info size={12} className="text-slate-300" />
                         </button>
+                        {hatMehrere && (
+                          <span
+                            className="bg-amber-200 text-amber-900 text-xs font-bold px-1.5 py-0.5 rounded"
+                            title={`Diese Familie hat ${anzahlAufgaben} Aufgaben zugeteilt`}
+                          >
+                            {anzahlAufgaben}×
+                          </span>
+                        )}
                         {z.via_springer && <span className="bg-purple-100 text-purple-700 text-xs font-semibold px-1.5 py-0.5 rounded">S</span>}
                         {z.manuell && <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-1.5 py-0.5 rounded">M</span>}
                         <button

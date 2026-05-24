@@ -174,7 +174,17 @@ export async function POST(req: NextRequest) {
       const aufgabeId = aufgabe.id;
       const zeitfenster = aufgabe.zeitfenster;
       const kindId = rueckmeldung.kind_id;
-      
+
+      // Eine Aufgabe pro Familie ist die Regel — Doppel-Zuteilungen entstehen nur durch
+      // manuelle Eingriffe (oder explizite Ausnahmen, die nicht hierüber laufen).
+      if ((helferAufgabenAnzahl[kindId] || 0) > 0) {
+        nichtZugewieseneRueckmeldungen.push({
+          id: rueckmeldung.id,
+          grund: 'Helfer hat bereits eine Aufgabe',
+        });
+        return false;
+      }
+
       // Prüfen, ob die Aufgabe noch Kapazität hat
       const aktuelleBelegung = aufgabenBelegung[aufgabeId] || 0;
       if (aktuelleBelegung >= aufgabe.bedarf) {
@@ -348,19 +358,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6.3 Zweite Phase: Weitere Aufgaben zuweisen, nachdem alle mindestens eine haben
-    // Prüfen, ob es noch Helfer gibt, die keine Aufgabe haben (und eine haben möchten)
-    const helferOhneAufgabe = erstePhaseRueckmeldungen.filter(r =>
-      !helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0
-    ).length;
-    
-    // Nur wenn alle Helfer der ersten Phase mindestens eine Aufgabe haben ODER alle verbleibenden Plätze gefüllt werden müssen
-    if (helferOhneAufgabe === 0) {
-      for (const rueckmeldung of zweitePhaseRueckmeldungen) {
-        weiseRueckmeldungZu(rueckmeldung);
-      }
-    } else {
-    }
+    // Hinweis: Es gibt bewusst KEINE Phase 2 mehr, die Zweit-Aufgaben verteilt.
+    // Jede Familie soll genau EINE Aufgabe bekommen. Offene Bedarfe nach diesem Lauf
+    // füllt der User manuell (über Springer oder direkte Zuweisung).
+    void zweitePhaseRueckmeldungen;
 
     // 7. Neue Zuteilungen in die Datenbank einfügen
     let anzahlRegulaeZugewiesen = 0;
