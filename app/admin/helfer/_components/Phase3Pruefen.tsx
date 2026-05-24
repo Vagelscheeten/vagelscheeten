@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, X, AlertTriangle, CheckCircle2, Search, ChevronDown, Info } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, AlertTriangle, CheckCircle2, Search, ChevronDown, Info, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   formatZeitfenster,
@@ -103,6 +103,15 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     leer: 0,
   });
   const [wartendeExpanded, setWartendeExpanded] = useState(false);
+  const [wuenscherOffenAufgabeId, setWuenscherOffenAufgabeId] = useState<string | null>(null);
+  const [moveOpenZuteilungId, setMoveOpenZuteilungId] = useState<string | null>(null);
+  const [wuenscherByAufgabe, setWuenscherByAufgabe] = useState<Record<string, {
+    kindId: string;
+    name: string;
+    klasse: string | null;
+    aktuelleAufgabe: string | null;
+    erfuellt: boolean;
+  }[]>>({});
   const [springerExpanded, setSpringerExpanded] = useState(false);
   const [springerDetails, setSpringerDetails] = useState<{
     kindId: string;
@@ -269,6 +278,37 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     }
     setWuenscheByKind(byKind);
 
+    // Wünscher pro Aufgabe: wer hat sie gewünscht und wo sind sie jetzt?
+    const byAufgabe: Record<string, { kindId: string; name: string; klasse: string | null; aktuelleAufgabe: string | null; erfuellt: boolean }[]> = {};
+    for (const r of (rueckmeldungenRes.data || []) as any[]) {
+      if (!r.kind_id || !r.aufgabe_id || r.ist_springer) continue;
+      const kindObj = Array.isArray(r.kind) ? r.kind[0] : r.kind;
+      if (!kindObj) continue;
+      const zugeteilteAufgaben = zuteilungenByKind.get(r.kind_id);
+      const aktuelle = zugeteilteAufgaben && zugeteilteAufgaben.size > 0
+        ? [...zugeteilteAufgaben].map((id) => aufgabenTitelById.get(id)).filter(Boolean).join(', ')
+        : null;
+      const erfuellt = zugeteilteAufgaben?.has(r.aufgabe_id) ?? false;
+      if (!byAufgabe[r.aufgabe_id]) byAufgabe[r.aufgabe_id] = [];
+      // Dedup: ein Kind soll nur einmal pro Aufgabe erscheinen
+      if (byAufgabe[r.aufgabe_id].some((x) => x.kindId === r.kind_id)) continue;
+      byAufgabe[r.aufgabe_id].push({
+        kindId: r.kind_id,
+        name: `${kindObj.vorname} ${kindObj.nachname}`,
+        klasse: kindObj.klasse || null,
+        aktuelleAufgabe: aktuelle,
+        erfuellt,
+      });
+    }
+    // Pro Aufgabe sortieren: erfüllt zuerst (für Vollständigkeit), dann nach Name
+    for (const aId of Object.keys(byAufgabe)) {
+      byAufgabe[aId].sort((a, b) => {
+        if (a.erfuellt !== b.erfuellt) return a.erfuellt ? -1 : 1;
+        return a.name.localeCompare(b.name, 'de');
+      });
+    }
+    setWuenscherByAufgabe(byAufgabe);
+
     // Anmeldungs-Details laden für Detail-Modal (Wünsche + Essensspenden + Kommentar pro Familie)
     const [anmeldungenRes, spendenBedarfRes, alleKinderRes] = await Promise.all([
       supabase
@@ -350,6 +390,30 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       toast.error('Fehler beim Entfernen');
     } else {
       toast.success('Zuteilung entfernt');
+      ladeDaten();
+      onRefresh();
+    }
+  };
+
+  const handleMoveZuteilung = async (zuteilungId: string, neueAufgabeId: string) => {
+    const neueAufgabe = aufgaben.find((a) => a.id === neueAufgabeId);
+    if (!neueAufgabe) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('helfer_zuteilungen')
+      .update({
+        aufgabe_id: neueAufgabeId,
+        zeitfenster: neueAufgabe.zeitfenster,
+        zeitslot_id: null, // alter Slot passt zur alten Aufgabe nicht mehr
+        manuell: true,
+      })
+      .eq('id', zuteilungId);
+
+    if (error) {
+      toast.error('Fehler beim Verschieben');
+    } else {
+      toast.success(`Verschoben auf "${neueAufgabe.titel}"`);
+      setMoveOpenZuteilungId(null);
       ladeDaten();
       onRefresh();
     }
@@ -1049,13 +1113,57 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                         )}
                         {z.manuell && <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-1.5 py-0.5 rounded">M</span>}
                         <button
+                          onClick={() => setMoveOpenZuteilungId(moveOpenZuteilungId === z.id ? null : z.id)}
+                          className="ml-0.5 text-slate-300 hover:text-blue-500 transition-colors px-0.5"
+                          title="Auf andere Aufgabe verschieben"
+                        >
+                          <ArrowRightLeft size={12} />
+                        </button>
+                        <button
                           onClick={() => handleRemoveZuteilung(z.id)}
-                          className="ml-0.5 text-slate-300 hover:text-red-500 transition-colors px-0.5"
+                          className="text-slate-300 hover:text-red-500 transition-colors px-0.5"
                           title="Entfernen"
                         >
                           <X size={13} />
                         </button>
                       </div>
+                      {moveOpenZuteilungId === z.id && (
+                        <div
+                          className="absolute z-30 mt-1 left-0 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden min-w-[220px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="px-3 py-1.5 text-xs font-semibold text-slate-600 border-b border-slate-100 bg-slate-50">
+                            Verschieben auf …
+                          </div>
+                          <ul className="py-1 max-h-64 overflow-auto">
+                            {aufgaben
+                              .filter((a) => a.id !== z.aufgabe_id)
+                              .map((a) => {
+                                const belegt = a.zuteilungen.length;
+                                const voll = belegt >= a.bedarf;
+                                return (
+                                  <li key={a.id}>
+                                    <button
+                                      onClick={() => handleMoveZuteilung(z.id, a.id)}
+                                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center justify-between gap-2"
+                                    >
+                                      <span className="text-slate-800">{a.titel}</span>
+                                      <span className={`text-xs ${voll ? 'text-red-600' : 'text-slate-500'}`}>
+                                        {belegt}/{a.bedarf}
+                                      </span>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                          </ul>
+                          <button
+                            onClick={() => setMoveOpenZuteilungId(null)}
+                            className="w-full px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 border-t border-slate-100 text-left"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      )}
                       {tooltip && (
                         <span className="sr-only">{tooltip}</span>
                       )}
@@ -1066,6 +1174,56 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
             ) : (
               <p className="text-sm text-slate-400 italic mb-3">Keine Helfer zugeteilt</p>
             )}
+
+            {/* Wünscher-Liste */}
+            {(() => {
+              const wuenscher = wuenscherByAufgabe[aufgabe.id] || [];
+              if (wuenscher.length === 0) return null;
+              const erfuellt = wuenscher.filter((w) => w.erfuellt).length;
+              const anderswo = wuenscher.filter((w) => !w.erfuellt && w.aktuelleAufgabe).length;
+              const ohneZuteilung = wuenscher.filter((w) => !w.erfuellt && !w.aktuelleAufgabe).length;
+              const offen = wuenscherOffenAufgabeId === aufgabe.id;
+              return (
+                <div className="mt-1 mb-3">
+                  <button
+                    onClick={() => setWuenscherOffenAufgabeId(offen ? null : aufgabe.id)}
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors"
+                  >
+                    <ChevronDown size={12} className={`transition-transform ${offen ? 'rotate-180' : ''}`} />
+                    <span>
+                      {wuenscher.length} {wuenscher.length === 1 ? 'Familie hat' : 'Familien haben'} diese Aufgabe gewünscht
+                      <span className="text-slate-400">
+                        {' '}— {erfuellt} erfüllt
+                        {anderswo > 0 && `, ${anderswo} anders zugeteilt`}
+                        {ohneZuteilung > 0 && `, ${ohneZuteilung} ohne Zuteilung`}
+                      </span>
+                    </span>
+                  </button>
+                  {offen && (
+                    <ul className="mt-2 ml-4 space-y-1 text-sm">
+                      {wuenscher.map((w) => (
+                        <li key={w.kindId} className="flex flex-wrap items-center gap-x-2">
+                          {w.erfuellt ? (
+                            <span className="text-green-600 shrink-0" title="Wunsch erfüllt">✓</span>
+                          ) : !w.aktuelleAufgabe ? (
+                            <span className="text-red-500 shrink-0" title="Keine Zuteilung">✗</span>
+                          ) : (
+                            <span className="text-amber-500 shrink-0" title="Anders zugeteilt">→</span>
+                          )}
+                          <span className="font-medium text-slate-800">{w.name}</span>
+                          {w.klasse && <span className="text-slate-400 text-xs">({w.klasse})</span>}
+                          {!w.erfuellt && (
+                            <span className="text-xs text-slate-500">
+                              {w.aktuelleAufgabe ? `→ aktuell: ${w.aktuelleAufgabe}` : '— keine Zuteilung'}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Hinzufügen-Panel */}
             {addingTo === aufgabe.id && (
