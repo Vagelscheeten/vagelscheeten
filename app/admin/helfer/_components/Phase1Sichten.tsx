@@ -477,6 +477,8 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   const [activeTab, setActiveTab] = useState<TabId>('rueckmeldungen');
   const [zuordnenItem, setZuordnenItem] = useState<Rueckmeldung | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [zuteilungenProAufgabe, setZuteilungenProAufgabe] = useState<Record<string, number>>({});
+  const [springerZugeteiltCount, setSpringerZugeteiltCount] = useState(0);
 
   const ladeDaten = useCallback(async () => {
     setIsLoading(true);
@@ -521,8 +523,18 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
 
       const { data: zuteilungenData } = await supabase
         .from('helfer_zuteilungen')
-        .select(`id, kind_id, aufgabe:helferaufgaben(id, titel)`)
+        .select(`id, kind_id, aufgabe_id, via_springer, aufgabe:helferaufgaben(id, titel)`)
         .eq('event_id', eventId);
+
+      // Zuteilungen pro Aufgabe + Springer-Zuteilungen zählen
+      const proAufgabe: Record<string, number> = {};
+      let viaSpringerCount = 0;
+      for (const z of zuteilungenData || []) {
+        if (z.aufgabe_id) proAufgabe[z.aufgabe_id] = (proAufgabe[z.aufgabe_id] || 0) + 1;
+        if (z.via_springer) viaSpringerCount++;
+      }
+      setZuteilungenProAufgabe(proAufgabe);
+      setSpringerZugeteiltCount(viaSpringerCount);
 
       const enriched = ruecks.map(r => {
         const kind = Array.isArray(r.kind) ? r.kind[0] : r.kind;
@@ -690,11 +702,13 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   // ── Derived stats ─────────────────────────────────────────────────────────
 
   const aufgabenStats = aufgaben.map(a => {
-    const anzahl = rueckmeldungen.filter(r => !r.ist_springer && r.aufgabe_id === a.id).length;
-    const diff = a.bedarf - anzahl;
-    return { ...a, anzahl, diff };
+    const wuensche = rueckmeldungen.filter(r => !r.ist_springer && r.aufgabe_id === a.id).length;
+    const zugeteilt = zuteilungenProAufgabe[a.id] || 0;
+    const diff = a.bedarf - zugeteilt;
+    return { ...a, wuensche, zugeteilt, diff };
   });
   const springerAnzahl = rueckmeldungen.filter(r => r.ist_springer).length;
+  const springerZugeteilt = springerZugeteiltCount;
 
   const gefiltert = filterAufgabe === 'all'
     ? rueckmeldungen
@@ -719,7 +733,12 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
     <div className="space-y-6">
       {/* Aufgaben-Ampel */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Bedarf vs. Rückmeldungen pro Aufgabe</h3>
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-700">Bedarf vs. Zuteilungen pro Aufgabe</h3>
+          <p className="text-xs text-slate-500">
+            Hauptzahl: aktuell zugeteilt · grau: Wünsche insgesamt (je Familie max. 1 Aufgabe)
+          </p>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {aufgabenStats.map(a => {
             const color = a.diff > 0 ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50';
@@ -731,11 +750,16 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
                 className={`text-left rounded-xl border p-3 transition-all hover:shadow-sm ${color} ${filterAufgabe === a.id ? 'ring-2 ring-offset-1 ring-orange-400' : ''}`}
               >
                 <div className="text-xs text-slate-500 mb-1 truncate">{a.titel}</div>
-                <div className={`text-lg font-bold ${textColor}`}>{a.anzahl} / {a.bedarf}</div>
+                <div className="flex items-baseline gap-2">
+                  <div className={`text-lg font-bold ${textColor}`}>{a.zugeteilt} / {a.bedarf}</div>
+                  <div className="text-xs text-slate-400" title={`${a.wuensche} Familien haben diese Aufgabe gewünscht`}>
+                    ({a.wuensche} Wü.)
+                  </div>
+                </div>
                 <div className="text-xs mt-1">
                   {a.diff > 0
-                    ? <span className="text-red-600 flex items-center gap-1"><AlertTriangle size={11} /> {a.diff} fehlen</span>
-                    : <span className="text-green-600 flex items-center gap-1"><CheckCircle size={11} /> Ausreichend</span>
+                    ? <span className="text-red-600 flex items-center gap-1"><AlertTriangle size={11} /> {a.diff} {a.diff === 1 ? 'Platz' : 'Plätze'} offen</span>
+                    : <span className="text-green-600 flex items-center gap-1"><CheckCircle size={11} /> Voll besetzt</span>
                   }
                 </div>
               </button>
@@ -747,8 +771,11 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
               className={`text-left rounded-xl border border-purple-200 bg-purple-50 p-3 transition-all hover:shadow-sm ${filterAufgabe === 'springer' ? 'ring-2 ring-offset-1 ring-orange-400' : ''}`}
             >
               <div className="text-xs text-slate-500 mb-1">Springer</div>
-              <div className="text-lg font-bold text-purple-700">{springerAnzahl}</div>
-              <div className="text-xs mt-1 text-purple-600">Flexibel einsetzbar</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-lg font-bold text-purple-700">{springerZugeteilt}</div>
+                <div className="text-xs text-slate-400">({springerAnzahl} Wü.)</div>
+              </div>
+              <div className="text-xs mt-1 text-purple-600">als Springer eingesetzt</div>
             </button>
           )}
         </div>
