@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink } from 'lucide-react';
+import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Phase4KommunizierenProps {
@@ -23,51 +23,49 @@ interface MitbringStatus {
   hatPdf: boolean;
 }
 
-interface VorschauEmail {
+interface VorschauData {
+  anmeldungId: string;
   kindName: string;
   kindKlasse: string;
-  aufgabeTitel: string;
-  aufgabeBeschreibung: string | null;
-  zeitfenster: string;
   elternEmail: string;
-  weitereKinder: { vorname: string; nachname: string; klasse: string }[];
+  subject: string;
+  html: string;
+  hatZuteilung: boolean;
+  poolSize: number;
 }
 
 export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenProps) {
   const [stats, setStats] = useState<BenachrichtigungsStats | null>(null);
-  const [vorschau, setVorschau] = useState<VorschauEmail | null>(null);
+  const [vorschau, setVorschau] = useState<VorschauData | null>(null);
+  const [vorschauSkip, setVorschauSkip] = useState(0);
+  const [vorschauLoading, setVorschauLoading] = useState(false);
   const [mitbringStatus, setMitbringStatus] = useState<MitbringStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [ergebnis, setErgebnis] = useState<{ gesendet: number; fehler: number } | null>(null);
 
-  const ladeDaten = useCallback(async () => {
+  const ladeStats = useCallback(async () => {
     setIsLoading(true);
     const supabase = createClient();
 
-    // Anmeldungen mit Zuteilungs-Info
     const { data: anmeldungen } = await supabase
       .from('anmeldungen')
-      .select(`
-        id, kind_vorname, kind_nachname, kind_klasse, eltern_email, verifiziert, benachrichtigt_am, weitere_kinder_json
-      `)
+      .select('id, eltern_email, benachrichtigt_am')
       .eq('event_id', eventId)
       .eq('verifiziert', true);
 
-    if (!anmeldungen) { setIsLoading(false); return; }
+    if (anmeldungen) {
+      const bereitsGesendet = anmeldungen.filter((a) => a.benachrichtigt_am).length;
+      const mitEmail = anmeldungen.filter((a) => a.eltern_email && !a.benachrichtigt_am);
+      const ohneEmail = anmeldungen.filter((a) => !a.eltern_email && !a.benachrichtigt_am);
+      setStats({
+        zuSenden: mitEmail.length,
+        bereitsGesendet,
+        ohneEmail: ohneEmail.length,
+      });
+    }
 
-    const bereitsGesendet = anmeldungen.filter(a => a.benachrichtigt_am).length;
-    const mitEmail = anmeldungen.filter(a => a.eltern_email && !a.benachrichtigt_am);
-    const ohneEmail = anmeldungen.filter(a => !a.eltern_email && !a.benachrichtigt_am);
-
-    setStats({
-      zuSenden: mitEmail.length,
-      bereitsGesendet,
-      ohneEmail: ohneEmail.length,
-    });
-
-    // Mitbringliste-Status laden (Warnung wenn leer oder PDF fehlt)
     const [eintragRes, eventRes] = await Promise.all([
       supabase
         .from('mitbringliste_eintraege')
@@ -84,61 +82,36 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
       hatPdf: !!eventRes.data?.mitbringliste_pdf_filename,
     });
 
-    // Vorschau mit erstem zugewiesenen Helfer
-    if (mitEmail.length > 0) {
-      const erste = mitEmail[0];
-
-      // Kind-ID finden, um die richtige Zuteilung zu laden
-      const { data: kindMatch } = await supabase
-        .from('kinder')
-        .select('id')
-        .eq('event_id', eventId)
-        .ilike('vorname', erste.kind_vorname)
-        .ilike('nachname', erste.kind_nachname)
-        .limit(1);
-
-      const kindId = kindMatch?.[0]?.id;
-
-      // Zuteilung für dieses Kind laden
-      let aufgabeTitel = 'Helfer-Aufgabe';
-      let aufgabeBeschreibung: string | null = null;
-      let zeitfenster = '';
-
-      if (kindId) {
-        const { data: zuteilungData } = await supabase
-          .from('helfer_zuteilungen')
-          .select(`
-            zeitfenster,
-            aufgabe:helferaufgaben(titel, beschreibung)
-          `)
-          .eq('event_id', eventId)
-          .eq('kind_id', kindId)
-          .limit(1);
-
-        if (zuteilungData && zuteilungData.length > 0) {
-          const z = zuteilungData[0];
-          const aufgabe = Array.isArray(z.aufgabe) ? z.aufgabe[0] : z.aufgabe;
-          aufgabeTitel = aufgabe?.titel || 'Helfer-Aufgabe';
-          aufgabeBeschreibung = aufgabe?.beschreibung || null;
-          zeitfenster = z.zeitfenster || '';
-        }
-      }
-
-      setVorschau({
-        kindName: `${erste.kind_vorname} ${erste.kind_nachname}`,
-        kindKlasse: erste.kind_klasse || '',
-        aufgabeTitel,
-        aufgabeBeschreibung,
-        zeitfenster,
-        elternEmail: erste.eltern_email || '',
-        weitereKinder: (erste as any).weitere_kinder_json || [],
-      });
-    }
-
     setIsLoading(false);
   }, [eventId]);
 
-  useEffect(() => { ladeDaten(); }, [ladeDaten]);
+  const ladeVorschau = useCallback(
+    async (skip: number) => {
+      setVorschauLoading(true);
+      try {
+        const res = await fetch(`/api/helfer/benachrichtigung/vorschau?eventId=${eventId}&skip=${skip}`);
+        if (res.ok) {
+          const data: VorschauData = await res.json();
+          setVorschau(data);
+        } else {
+          setVorschau(null);
+        }
+      } catch {
+        setVorschau(null);
+      } finally {
+        setVorschauLoading(false);
+      }
+    },
+    [eventId],
+  );
+
+  useEffect(() => {
+    ladeStats();
+  }, [ladeStats]);
+
+  useEffect(() => {
+    ladeVorschau(vorschauSkip);
+  }, [ladeVorschau, vorschauSkip]);
 
   const handleSenden = async () => {
     setConfirming(false);
@@ -157,7 +130,8 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
       if (data.erfolg) {
         setErgebnis({ gesendet: data.gesendet, fehler: data.fehler || 0 });
         toast.success(`${data.gesendet} E-Mails gesendet`);
-        ladeDaten();
+        ladeStats();
+        ladeVorschau(vorschauSkip);
         onRefresh();
       } else {
         toast.error(data.error || 'Fehler beim Senden');
@@ -232,28 +206,75 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
         </div>
       )}
 
-      {/* E-Mail Vorschau */}
-      {vorschau && (
-        <div>
-          <h3 className="text-sm font-semibold text-slate-700 mb-2">E-Mail Vorschau <span className="font-normal text-slate-400">(exemplarisch)</span></h3>
-          <div className="bg-white border rounded-xl p-4 font-mono text-sm space-y-2">
-            <div className="text-slate-500 border-b pb-2 mb-3">
-              <div><span className="text-slate-400">An:</span> {vorschau.elternEmail}</div>
-              <div><span className="text-slate-400">Betreff:</span> Helfer-Zuteilung beim Melsdörper Vagelscheeten ({vorschau.weitereKinder.length > 0 ? `Familie ${vorschau.kindName.split(' ').pop()}` : vorschau.kindName})</div>
-            </div>
-            <p className="font-sans">Hallo!</p>
-            <p className="font-sans">Vielen Dank für die Anmeldung als Helfer zum Melsdörper Vagelscheeten ({vorschau.weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>{vorschau.kindName}</strong>, Klasse {vorschau.kindKlasse}{vorschau.weitereKinder.map(k => `; ${k.vorname} ${k.nachname}, Klasse ${k.klasse}`).join('')}).</p>
-            <p className="font-sans">Folgende Aufgabe wurde zugeteilt:</p>
-            <div className="bg-slate-50 rounded-lg p-3 font-sans space-y-1">
-              <p><strong>Aufgabe:</strong> {vorschau.aufgabeTitel}</p>
-              {vorschau.aufgabeBeschreibung && <p className="text-slate-600 text-xs">{vorschau.aufgabeBeschreibung}</p>}
-              <p><strong>Zeitfenster:</strong> {vorschau.zeitfenster}</p>
-            </div>
-            <p className="font-sans">Vielen Dank für die Unterstützung!</p>
-            <p className="font-sans text-slate-500 text-xs">Bei Fragen: orgateam@vagelscheeten.de</p>
-          </div>
+      {/* Echte E-Mail-Vorschau */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-slate-700">
+            E-Mail-Vorschau
+            {vorschau && (
+              <span className="font-normal text-slate-400 ml-2">
+                — Beispiel-Anmeldung {vorschau.poolSize > 1 ? `(1 von ${vorschau.poolSize})` : ''}
+              </span>
+            )}
+          </h3>
+          {vorschau && vorschau.poolSize > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVorschauSkip((s) => s + 1)}
+              disabled={vorschauLoading}
+              className="gap-1.5"
+            >
+              {vorschauLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
+              Andere Anmeldung
+            </Button>
+          )}
         </div>
-      )}
+
+        {vorschauLoading && !vorschau ? (
+          <div className="bg-white border rounded-xl p-8 flex justify-center">
+            <Loader2 className="animate-spin text-gray-400" size={24} />
+          </div>
+        ) : vorschau ? (
+          <div className="bg-white border rounded-xl overflow-hidden">
+            <div className="bg-slate-50 border-b px-4 py-3 text-sm space-y-0.5">
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-16 shrink-0">Von:</span>
+                <span className="text-slate-700">Orgateam Vagelscheeten &lt;orgateam@vagelscheeten.de&gt;</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-16 shrink-0">An:</span>
+                <span className="text-slate-700">{vorschau.elternEmail}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-slate-400 w-16 shrink-0">Betreff:</span>
+                <span className="text-slate-700 font-medium">{vorschau.subject}</span>
+              </div>
+              <div className="flex gap-2 pt-1 mt-1 border-t text-xs text-slate-500">
+                <span className="w-16 shrink-0">Beispiel:</span>
+                <span>
+                  {vorschau.kindName}{vorschau.kindKlasse ? ` (Klasse ${vorschau.kindKlasse})` : ''}
+                  {!vorschau.hatZuteilung && (
+                    <span className="ml-2 text-amber-600">— ohne Helfer-Zuteilung</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <iframe
+              title="E-Mail-Vorschau"
+              srcDoc={vorschau.html}
+              sandbox=""
+              className="w-full bg-white"
+              style={{ height: '650px', border: 'none' }}
+            />
+          </div>
+        ) : (
+          <div className="bg-white border rounded-xl p-8 text-center text-sm text-slate-500">
+            <Mail size={32} className="mx-auto mb-2 text-slate-300" />
+            Keine Anmeldung für Vorschau verfügbar.
+          </div>
+        )}
+      </div>
 
       {/* Sende-Button */}
       {stats && stats.zuSenden > 0 && !ergebnis && (
