@@ -224,20 +224,22 @@ export async function POST(req: NextRequest) {
             && k.nachname.toLowerCase() === anmeldung.kind_nachname.toLowerCase()
         );
 
-        let aufgabeTitel = 'Helfer';
-        let aufgabeBeschreibung: string | null = null;
-        let zeitfensterText = '';
-
+        // Alle Zuteilungen für dieses Kind (Familie kann mehrere Aufgaben übernommen haben).
+        const familienZuteilungen: { titel: string; beschreibung: string | null; zeitfenster: string }[] = [];
         if (kind) {
-          const zuteilung = (zuteilungen || []).find(z => z.kind_id === kind.id);
-          if (zuteilung) {
-            const aufgabe = Array.isArray(zuteilung.aufgabe)
-              ? zuteilung.aufgabe[0]
-              : zuteilung.aufgabe;
-            aufgabeTitel = aufgabe?.titel || 'Helfer';
-            aufgabeBeschreibung = aufgabe?.beschreibung || null;
-            zeitfensterText = formatZeitfenster(zuteilung.zeitfenster);
+          const treffer = (zuteilungen || []).filter(z => z.kind_id === kind.id);
+          for (const z of treffer) {
+            const aufgabe = Array.isArray(z.aufgabe) ? z.aufgabe[0] : z.aufgabe;
+            familienZuteilungen.push({
+              titel: aufgabe?.titel || 'Helfer',
+              beschreibung: aufgabe?.beschreibung || null,
+              zeitfenster: formatZeitfenster(z.zeitfenster),
+            });
           }
+        }
+        // Fallback: kein Match in helfer_zuteilungen → Platzhalter „Helfer"
+        if (familienZuteilungen.length === 0) {
+          familienZuteilungen.push({ titel: 'Helfer', beschreibung: null, zeitfenster: '' });
         }
 
         const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
@@ -266,35 +268,39 @@ export async function POST(req: NextRequest) {
 
     <p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map(k => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
 
-    <p>Folgende Aufgabe wurde zugeteilt:</p>
+    <p>${familienZuteilungen.length > 1 ? `Folgende ${familienZuteilungen.length} Aufgaben wurden` : 'Folgende Aufgabe wurde'} zugeteilt:</p>
 
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
-      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <tr>
-          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Aufgabe:</td>
-          <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(aufgabeTitel)}</td>
-        </tr>
-        ${aufgabeBeschreibung ? `
-        <tr>
-          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
-          <td style="padding: 8px 0;">${escapeHtml(aufgabeBeschreibung)}</td>
-        </tr>` : ''}
-        ${zeitfensterText ? `
-        <tr>
-          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
-          <td style="padding: 8px 0; font-weight: 600;">${zeitfensterText}</td>
-        </tr>` : ''}
-        ${kindEssensspenden.length > 0 ? `
-        <tr>
-          <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td>
-          <td style="padding: 8px 0;">
-            <ul style="margin: 0; padding-left: 18px;">${kindEssensspenden.map(e => {
-              const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-              return `<li>${e.menge}&times; ${escapeHtml(spende?.titel || 'Essensspende')}</li>`;
-            }).join('')}</ul>
-          </td>
-        </tr>` : ''}
-      </table>
+      ${familienZuteilungen.map((z, i) => `
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;${i > 0 ? ' margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;' : ''}">
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
+            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.titel)}</td>
+          </tr>
+          ${z.beschreibung ? `
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
+            <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
+          </tr>` : ''}
+          ${z.zeitfenster ? `
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>
+          </tr>` : ''}
+        </table>
+      `).join('')}
+      ${kindEssensspenden.length > 0 ? `
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td>
+            <td style="padding: 8px 0;">
+              <ul style="margin: 0; padding-left: 18px;">${kindEssensspenden.map(e => {
+                const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+                return `<li>${e.menge}&times; ${escapeHtml(spende?.titel || 'Essensspende')}</li>`;
+              }).join('')}</ul>
+            </td>
+          </tr>
+        </table>` : ''}
     </div>
 
     ${mitbringHtml}

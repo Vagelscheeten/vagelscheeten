@@ -92,23 +92,24 @@ async function main() {
     .limit(1)
     .single();
 
-  let aufgabeTitel = 'Helfer';
-  let aufgabeBeschreibung: string | null = null;
-  let zeitfensterText = '';
+  const familienZuteilungen: { titel: string; beschreibung: string | null; zeitfenster: string }[] = [];
   if (kind) {
-    const { data: zuteilung } = await supabaseAdmin
+    const { data: treffer } = await supabaseAdmin
       .from('helfer_zuteilungen')
       .select('zeitfenster, aufgabe:helferaufgaben(titel, beschreibung)')
       .eq('event_id', event.id)
-      .eq('kind_id', kind.id)
-      .limit(1)
-      .single();
-    if (zuteilung) {
-      const a: any = Array.isArray(zuteilung.aufgabe) ? zuteilung.aufgabe[0] : zuteilung.aufgabe;
-      aufgabeTitel = a?.titel || 'Helfer';
-      aufgabeBeschreibung = a?.beschreibung || null;
-      zeitfensterText = formatZeitfenster(zuteilung.zeitfenster);
+      .eq('kind_id', kind.id);
+    for (const z of treffer || []) {
+      const a: any = Array.isArray(z.aufgabe) ? z.aufgabe[0] : z.aufgabe;
+      familienZuteilungen.push({
+        titel: a?.titel || 'Helfer',
+        beschreibung: a?.beschreibung || null,
+        zeitfenster: formatZeitfenster(z.zeitfenster),
+      });
     }
+  }
+  if (familienZuteilungen.length === 0) {
+    familienZuteilungen.push({ titel: 'Helfer', beschreibung: null, zeitfenster: '' });
   }
 
   const weitereKinder: any[] = (anmeldung.weitere_kinder_json as any[]) || [];
@@ -144,14 +145,18 @@ async function main() {
   const ablaufHtml = renderAblauf(ablaufEintraege || []);
 
   const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
+  const aufgabenBlock = familienZuteilungen.map((z, i) => `<table style="width: 100%; border-collapse: collapse; font-size: 14px;${i > 0 ? ' margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;' : ''}"><tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.titel)}</td></tr>${z.beschreibung ? `<tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td><td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td></tr>` : ''}${z.zeitfenster ? `<tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td><td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td></tr>` : ''}</table>`).join('');
   const essensspendenBlock = kindEssensspenden.length > 0
-    ? `<tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td><td style="padding: 8px 0;"><ul style="margin: 0; padding-left: 18px;">${kindEssensspenden.map((e: any) => { const sp = Array.isArray(e.spende) ? e.spende[0] : e.spende; return `<li>${e.menge}&times; ${escapeHtml(sp?.titel || 'Essensspende')}</li>`; }).join('')}</ul></td></tr>`
+    ? `<table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;"><tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td><td style="padding: 8px 0;"><ul style="margin: 0; padding-left: 18px;">${kindEssensspenden.map((e: any) => { const sp = Array.isArray(e.spende) ? e.spende[0] : e.spende; return `<li>${e.menge}&times; ${escapeHtml(sp?.titel || 'Essensspende')}</li>`; }).join('')}</ul></td></tr></table>`
     : '';
-  const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;"><div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;"><div style="background: #fff3cd; border: 1px solid #f0c14b; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #7a5b00; margin-bottom: 16px;"><strong>TEST-MAIL</strong> — kein automatischer Versand. Daten von Anmeldung ${escapeHtml(anmeldung.kind_nachname)} (${anmeldung.eltern_email}).</div><h2 style="color: #F2A03D;">Helfer-Zuteilung beim ${FEST_DATUM}</h2><p>Hallo!</p><p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p><p>Folgende Aufgabe wurde zugeteilt:</p><div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;"><table style="width: 100%; border-collapse: collapse; font-size: 14px;"><tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Aufgabe:</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(aufgabeTitel)}</td></tr>${aufgabeBeschreibung ? `<tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td><td style="padding: 8px 0;">${escapeHtml(aufgabeBeschreibung)}</td></tr>` : ''}${zeitfensterText ? `<tr><td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td><td style="padding: 8px 0; font-weight: 600;">${zeitfensterText}</td></tr>` : ''}${essensspendenBlock}</table></div>${mitbringHtml}${ablaufHtml}<p style="margin-top: 28px;">Vielen Dank für die Unterstützung!</p><p style="font-size: 14px;">Bei Fragen: <a href="mailto:orgateam@vagelscheeten.de" style="color: #2563eb;">orgateam@vagelscheeten.de</a></p><hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;"><p style="color: #999; font-size: 12px;">Diese E-Mail wurde automatisch versendet.</p></div></body></html>`;
+  const aufgabenIntro = familienZuteilungen.length > 1
+    ? `Folgende ${familienZuteilungen.length} Aufgaben wurden zugeteilt:`
+    : 'Folgende Aufgabe wurde zugeteilt:';
+  const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;"><div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;"><div style="background: #fff3cd; border: 1px solid #f0c14b; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #7a5b00; margin-bottom: 16px;"><strong>TEST-MAIL</strong> — kein automatischer Versand. Daten von Anmeldung ${escapeHtml(anmeldung.kind_nachname)} (${anmeldung.eltern_email}).</div><h2 style="color: #F2A03D;">Helfer-Zuteilung beim ${FEST_DATUM}</h2><p>Hallo!</p><p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p><p>${aufgabenIntro}</p><div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;">${aufgabenBlock}${essensspendenBlock}</div>${mitbringHtml}${ablaufHtml}<p style="margin-top: 28px;">Vielen Dank für die Unterstützung!</p><p style="font-size: 14px;">Bei Fragen: <a href="mailto:orgateam@vagelscheeten.de" style="color: #2563eb;">orgateam@vagelscheeten.de</a></p><hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;"><p style="color: #999; font-size: 12px;">Diese E-Mail wurde automatisch versendet.</p></div></body></html>`;
 
   console.log(`Sende Test-Mail an ${TARGET_EMAIL}…`);
   console.log(`  Anmeldung: ${anmeldung.kind_vorname} ${anmeldung.kind_nachname} (${anmeldung.eltern_email})`);
-  console.log(`  Aufgabe: ${aufgabeTitel} (${zeitfensterText || '–'})`);
+  console.log(`  Aufgaben (${familienZuteilungen.length}): ${familienZuteilungen.map((z) => `${z.titel} [${z.zeitfenster || '–'}]`).join(', ')}`);
   console.log(`  Mitbringliste-Einträge: ${mitbringEintraege?.length || 0}`);
   console.log(`  Ablauf-Einträge: ${ablaufEintraege?.length || 0}`);
   console.log(`  PDF: ${mitbringPdfUrl ?? '(keiner)'}`);
