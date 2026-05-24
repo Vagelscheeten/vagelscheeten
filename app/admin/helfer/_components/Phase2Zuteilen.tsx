@@ -98,7 +98,7 @@ export function Phase2Zuteilen({ eventId, anzahlRueckmeldungen, anzahlZuteilunge
           <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800">
             <p className="font-semibold">Achtung: {anzahlZuteilungen} bestehende Zuteilungen werden ersetzt!</p>
-            <p className="mt-1">Die Auto-Zuteilung löscht alle bisherigen automatischen Zuteilungen und erstellt sie komplett neu. Manuell gesetzte Zuteilungen (aus Schritt 3) bleiben erhalten.</p>
+            <p className="mt-1"><strong>Die Auto-Zuteilung löscht ALLE bisherigen Zuteilungen — auch manuelle</strong> — und verteilt komplett neu.</p>
           </div>
         </div>
       )}
@@ -118,7 +118,7 @@ export function Phase2Zuteilen({ eventId, anzahlRueckmeldungen, anzahlZuteilunge
         <div className="bg-slate-50 border rounded-xl p-4 space-y-3">
           <p className="text-sm font-semibold text-slate-800">Zuteilung wirklich neu starten?</p>
           <p className="text-sm text-slate-600">
-            Die {anzahlZuteilungen} bestehenden automatischen Zuteilungen werden gelöscht und für alle {anzahlRueckmeldungen} Rückmeldungen neu berechnet. Manuelle Zuteilungen bleiben erhalten.
+            Die {anzahlZuteilungen} bestehenden Zuteilungen werden <strong>komplett gelöscht</strong> (auch manuelle) und für alle {anzahlRueckmeldungen} Rückmeldungen neu berechnet.
           </p>
           <div className="flex gap-2">
             <Button onClick={handleAutoZuteilung} disabled={isRunning} className="gap-2">

@@ -890,7 +890,7 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
                     const hatFreitext = gruppe.some(r => r.freitext);
                     const freitexte = gruppe.filter(r => r.freitext).map(r => r.freitext).join(' | ');
                     const aufgabenTitel = gruppe
-                      .map(r => r.ist_springer ? 'Springer' : (r.aufgabe?.titel || '-'))
+                      .map(r => r.ist_springer ? `Springer (${formatZeitfenster(r.zeitfenster as any)})` : (r.aufgabe?.titel || '-'))
                       .filter((t, i, arr) => arr.indexOf(t) === i);
                     const aufgabenText = aufgabenTitel.join(', ');
                     const kindId = first.kind_id;
@@ -910,8 +910,8 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
                         </td>
                         <td className="px-4 py-3 max-w-[220px]">
                           <div className="relative group/aufgabe">
-                            {aufgabenTitel.length === 1 && aufgabenTitel[0] === 'Springer' ? (
-                              <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Springer</Badge>
+                            {aufgabenTitel.length === 1 && aufgabenTitel[0].startsWith('Springer') ? (
+                              <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">{aufgabenTitel[0]}</Badge>
                             ) : (
                               <span className="text-slate-700 truncate block">{aufgabenText}</span>
                             )}
@@ -986,7 +986,7 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
                     <tr key={r.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-medium text-slate-800">{r.kind_name_extern || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {r.ist_springer ? <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Springer</Badge> : r.aufgabe?.titel || '-'}
+                        {r.ist_springer ? <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Springer ({formatZeitfenster(r.zeitfenster as any)})</Badge> : r.aufgabe?.titel || '-'}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell text-slate-500 text-xs">{formatZeitfenster(r.zeitfenster as any)}</td>
                       <td className="px-4 py-3 text-right">

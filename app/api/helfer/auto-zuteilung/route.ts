@@ -86,65 +86,26 @@ export async function POST(req: NextRequest) {
       .update({ essensspenden_verteilt_am: null })
       .eq('id', eventId);
 
-    // 3. Alte nicht-manuelle Zuteilungen löschen (fresh start)
-    // 2a. Zuteilungen mit korrekter event_id löschen
+    // 3. ALLE bestehenden Zuteilungen löschen — auch manuelle.
+    // Auto-Zuteilung ist immer ein vollständiger Neustart.
     await supabase
       .from('helfer_zuteilungen')
       .delete()
-      .eq('event_id', eventId)
-      .eq('manuell', false);
+      .eq('event_id', eventId);
 
-    // 2b. Legacy-Einträge ohne event_id löschen (über rueckmeldung_id identifizieren)
+    // Legacy-Einträge ohne event_id zusätzlich über rueckmeldung_id löschen
     const alleRueckmeldungIds = (regulaereRueckmeldungen || []).map(r => r.id);
     if (alleRueckmeldungIds.length > 0) {
       await supabase
         .from('helfer_zuteilungen')
         .delete()
-        .in('rueckmeldung_id', alleRueckmeldungIds)
-        .eq('manuell', false);
+        .in('rueckmeldung_id', alleRueckmeldungIds);
     }
 
-    // 3. Verbleibende Zuteilungen laden (nur noch manuelle)
-    const { data: bestehendeZuteilungen, error: zuteilungenError } = await supabase
-      .from('helfer_zuteilungen')
-      .select('*')
-      .eq('event_id', eventId);
-
-    if (zuteilungenError) throw zuteilungenError;
-
-    // 4. Aufgaben mit aktueller Belegung ermitteln (aus manuellen Zuteilungen)
+    // 4. Fresh Start: keine bestehenden Zuteilungen, alle Belegungen bei 0
     const aufgabenBelegung: Record<string, number> = {};
-    bestehendeZuteilungen?.forEach((zuteilung: Zuteilung) => {
-      if (!aufgabenBelegung[zuteilung.aufgabe_id]) {
-        aufgabenBelegung[zuteilung.aufgabe_id] = 0;
-      }
-      aufgabenBelegung[zuteilung.aufgabe_id]++;
-    });
-
-    // 5. Kinder mit Zeitfenster-Zuteilungen tracken und Anzahl der Aufgaben pro Kind
     const kinderZeitfenster: Record<string, Set<string>> = {};
     const helferAufgabenAnzahl: Record<string, number> = {};
-    
-    bestehendeZuteilungen?.forEach((zuteilung: Zuteilung) => {
-      // Zeitfenster tracken
-      if (!kinderZeitfenster[zuteilung.kind_id]) {
-        kinderZeitfenster[zuteilung.kind_id] = new Set();
-      }
-      
-      // Wenn die Aufgabe "beides" als Zeitfenster hat, blockiert sie beide Zeitfenster
-      if (zuteilung.zeitfenster === 'beides') {
-        kinderZeitfenster[zuteilung.kind_id].add('vormittag');
-        kinderZeitfenster[zuteilung.kind_id].add('nachmittag');
-      } else {
-        kinderZeitfenster[zuteilung.kind_id].add(zuteilung.zeitfenster);
-      }
-      
-      // Anzahl der Aufgaben pro Kind tracken
-      if (!helferAufgabenAnzahl[zuteilung.kind_id]) {
-        helferAufgabenAnzahl[zuteilung.kind_id] = 0;
-      }
-      helferAufgabenAnzahl[zuteilung.kind_id]++;
-    });
 
     // 6. Rückmeldungen zufällig mischen (Fairness — kein Vorteil durch frühe Anmeldung)
     const rueckmeldungenArray = regulaereRueckmeldungen as any[] || [];

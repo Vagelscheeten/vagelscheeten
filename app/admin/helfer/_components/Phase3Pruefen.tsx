@@ -868,7 +868,7 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                       </button>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                          Wunsch: {r.ist_springer ? 'Springer' : r.aufgabe_titel}
+                          Wunsch: {r.ist_springer ? `Springer (${formatZeitfenster(r.zeitfenster as any)})` : r.aufgabe_titel}
                         </span>
                         {r.zeitfenster && (
                           <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
@@ -1008,6 +1008,14 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
 
                   const anzahlAufgaben = z.kind_id ? (aufgabenProKind.get(z.kind_id) || 1) : 1;
                   const hatMehrere = anzahlAufgaben > 1;
+                  const springerWunsch = wuensche.find((w) => w.ist_springer);
+                  const springerZfKurz = springerWunsch?.zeitfenster === 'vormittag'
+                    ? 'Vm'
+                    : springerWunsch?.zeitfenster === 'nachmittag'
+                      ? 'Nm'
+                      : springerWunsch?.zeitfenster === 'beides'
+                        ? 'Gz'
+                        : null;
 
                   return (
                     <div key={z.id} className="relative">
@@ -1031,7 +1039,14 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
                             {anzahlAufgaben}×
                           </span>
                         )}
-                        {z.via_springer && <span className="bg-purple-100 text-purple-700 text-xs font-semibold px-1.5 py-0.5 rounded">S</span>}
+                        {z.via_springer && (
+                          <span
+                            className="bg-purple-100 text-purple-700 text-xs font-semibold px-1.5 py-0.5 rounded"
+                            title={`Als Springer eingesetzt — Bereitschaft: ${springerWunsch?.zeitfenster ? formatZeitfenster(springerWunsch.zeitfenster as any) : 'unbekannt'}`}
+                          >
+                            S{springerZfKurz ? ` ${springerZfKurz}` : ''}
+                          </span>
+                        )}
                         {z.manuell && <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-1.5 py-0.5 rounded">M</span>}
                         <button
                           onClick={() => handleRemoveZuteilung(z.id)}
