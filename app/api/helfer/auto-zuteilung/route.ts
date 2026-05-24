@@ -420,11 +420,8 @@ export async function POST(req: NextRequest) {
       
     if (springerError) throw springerError;
     
-    // Prüfen, welche Springer bereits zugewiesen wurden
+    // Prüfen, welche Kinder bereits zugewiesen wurden (alle in diesem Lauf)
     const zugewieseneKinder = new Set<string>();
-    bestehendeZuteilungen?.forEach(zuteilung => {
-      zugewieseneKinder.add(zuteilung.kind_id);
-    });
     neueZuteilungen.forEach(zuteilung => {
       zugewieseneKinder.add(zuteilung.kind_id);
     });
