@@ -247,10 +247,110 @@ export async function POST(req: NextRequest) {
     for (const rueckmeldung of erstePhaseRueckmeldungen) {
       weiseRueckmeldungZu(rueckmeldung);
     }
-    
+
+    // 6.2.5 Optimierungs-Pass: Multi-Wunsch-Helfer auf alternative freie Aufgaben umverteilen,
+    // damit Single-Wunsch-Helfer (deren einzige Wunsch-Aufgabe voll ist) ihren Wunsch bekommen.
+    //
+    // Beispiel: Familie A wollte [Snackstand, Kuchenbuffet], bekam Snackstand.
+    //           Familie B wollte nur [Snackstand], geht leer aus weil Snackstand voll ist.
+    //           Kuchenbuffet hat Platz → wir verschieben A auf Kuchenbuffet, B bekommt Snackstand.
+    {
+      const ruecksByKind: Record<string, any[]> = {};
+      for (const r of rueckmeldungenArray) {
+        if (!r.kind_id) continue;
+        (ruecksByKind[r.kind_id] = ruecksByKind[r.kind_id] || []).push(r);
+      }
+      // Wartende: Kinder ohne Zuteilung nach Phase 1
+      const wartendeKindIds = Array.from(new Set(
+        erstePhaseRueckmeldungen
+          .filter((r: any) => r.kind_id && (!helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0))
+          .map((r: any) => r.kind_id),
+      ));
+
+      const passtZeitfenster = (kindId: string, neuesZf: string, altesZf: string): boolean => {
+        // Simuliert: Kind verlässt altesZf, kommt zu neuesZf — gibt es nach der Verschiebung einen Konflikt?
+        const zf = new Set(kinderZeitfenster[kindId] || []);
+        if (altesZf === 'beides') { zf.delete('vormittag'); zf.delete('nachmittag'); } else { zf.delete(altesZf); }
+        if (neuesZf === 'beides') {
+          return !zf.has('vormittag') && !zf.has('nachmittag');
+        }
+        return !zf.has(neuesZf);
+      };
+
+      for (const wartendeKindId of wartendeKindIds) {
+        if (helferAufgabenAnzahl[wartendeKindId] > 0) continue;
+        const wuensche = ruecksByKind[wartendeKindId] || [];
+        let zugewiesen = false;
+
+        for (const wunsch of wuensche) {
+          if (zugewiesen) break;
+          const wunschAufgabe = wunsch.helferaufgaben as Aufgabe;
+          const wunschAufgabeId = wunschAufgabe.id;
+          // Nur dann interessant, wenn der Wunsch voll ist (sonst wäre er schon zugeteilt worden)
+          if ((aufgabenBelegung[wunschAufgabeId] || 0) < wunschAufgabe.bedarf) continue;
+          // Zeitfenster-Konflikt für das wartende Kind?
+          const wartendZf = kinderZeitfenster[wartendeKindId] || new Set();
+          if (wunschAufgabe.zeitfenster === 'beides') {
+            if (wartendZf.has('vormittag') || wartendZf.has('nachmittag')) continue;
+          } else if (wartendZf.has(wunschAufgabe.zeitfenster)) continue;
+
+          // Suche ein verschiebbares Kind auf wunschAufgabe (nur aus neueZuteilungen — bestehende anrühren wir nicht)
+          for (const aktuelleZuteilung of neueZuteilungen) {
+            if (zugewiesen) break;
+            if (aktuelleZuteilung.aufgabe_id !== wunschAufgabeId) continue;
+            const verschiebbarKindId = aktuelleZuteilung.kind_id;
+            // Alternative-Wünsche dieses verschiebbaren Kindes (nicht der Wunsch, auf dem es bereits ist)
+            const altWuensche = (ruecksByKind[verschiebbarKindId] || []).filter(
+              (r: any) => (r.helferaufgaben as Aufgabe).id !== wunschAufgabeId,
+            );
+            for (const altWunsch of altWuensche) {
+              const altAufgabe = altWunsch.helferaufgaben as Aufgabe;
+              if ((aufgabenBelegung[altAufgabe.id] || 0) >= altAufgabe.bedarf) continue;
+              if (!passtZeitfenster(verschiebbarKindId, altAufgabe.zeitfenster, aktuelleZuteilung.zeitfenster)) continue;
+
+              // Verschiebung durchführen
+              const altesZf = aktuelleZuteilung.zeitfenster;
+              aktuelleZuteilung.aufgabe_id = altAufgabe.id;
+              aktuelleZuteilung.rueckmeldung_id = altWunsch.id;
+              aktuelleZuteilung.zeitfenster = altAufgabe.zeitfenster;
+              // Belegung anpassen
+              aufgabenBelegung[wunschAufgabeId] = (aufgabenBelegung[wunschAufgabeId] || 0) - 1;
+              aufgabenBelegung[altAufgabe.id] = (aufgabenBelegung[altAufgabe.id] || 0) + 1;
+              // Zeitfenster des verschobenen Kindes anpassen
+              const zfVerschoben = kinderZeitfenster[verschiebbarKindId] || new Set();
+              if (altesZf === 'beides') { zfVerschoben.delete('vormittag'); zfVerschoben.delete('nachmittag'); } else { zfVerschoben.delete(altesZf); }
+              if (altAufgabe.zeitfenster === 'beides') { zfVerschoben.add('vormittag'); zfVerschoben.add('nachmittag'); } else { zfVerschoben.add(altAufgabe.zeitfenster); }
+              kinderZeitfenster[verschiebbarKindId] = zfVerschoben;
+
+              // Wartendes Kind auf den freigewordenen Platz zuweisen
+              neueZuteilungen.push({
+                kind_id: wartendeKindId,
+                aufgabe_id: wunschAufgabeId,
+                rueckmeldung_id: wunsch.id,
+                zeitfenster: wunschAufgabe.zeitfenster,
+                manuell: false,
+                event_id: eventId,
+              });
+              aufgabenBelegung[wunschAufgabeId] = (aufgabenBelegung[wunschAufgabeId] || 0) + 1;
+              const wartendZfSet = kinderZeitfenster[wartendeKindId] || new Set();
+              if (wunschAufgabe.zeitfenster === 'beides') { wartendZfSet.add('vormittag'); wartendZfSet.add('nachmittag'); } else { wartendZfSet.add(wunschAufgabe.zeitfenster); }
+              kinderZeitfenster[wartendeKindId] = wartendZfSet;
+              helferAufgabenAnzahl[wartendeKindId] = (helferAufgabenAnzahl[wartendeKindId] || 0) + 1;
+
+              // nichtZugewieseneRueckmeldungen-Eintrag dieses Wunsches entfernen, falls drin
+              const removeIdx = nichtZugewieseneRueckmeldungen.findIndex(n => n.id === wunsch.id);
+              if (removeIdx >= 0) nichtZugewieseneRueckmeldungen.splice(removeIdx, 1);
+
+              zugewiesen = true;
+            }
+          }
+        }
+      }
+    }
+
     // 6.3 Zweite Phase: Weitere Aufgaben zuweisen, nachdem alle mindestens eine haben
     // Prüfen, ob es noch Helfer gibt, die keine Aufgabe haben (und eine haben möchten)
-    const helferOhneAufgabe = erstePhaseRueckmeldungen.filter(r => 
+    const helferOhneAufgabe = erstePhaseRueckmeldungen.filter(r =>
       !helferAufgabenAnzahl[r.kind_id] || helferAufgabenAnzahl[r.kind_id] === 0
     ).length;
     
