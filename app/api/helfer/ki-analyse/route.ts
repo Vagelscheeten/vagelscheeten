@@ -27,6 +27,13 @@ interface KiHinweis {
 }
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { buildKindIdentifier } from '@/lib/anmeldungen-bereinigen';
+
+const supabaseAdmin = createAdminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
 export async function POST(req: NextRequest) {
   // Auth-Check
@@ -38,13 +45,75 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  const { freitexte, aufgaben } = await req.json() as {
-    freitexte: FreitextEntry[];
-    aufgaben: Aufgabe[];
+  const body = await req.json() as {
+    freitexte?: FreitextEntry[];
+    aufgaben?: Aufgabe[];
+    eventId?: string;
   };
 
+  let freitexte: FreitextEntry[] = body.freitexte || [];
+  let aufgaben: Aufgabe[] = body.aufgaben || [];
+
+  // Modus „eventId": Endpoint baut die Freitext-Liste selbst aus anmeldungen.kommentar
+  // (Eltern-Kommentar gilt für die ganze Familie → pro helfer_rueckmeldung wird der Kommentar
+  // im Kontext der konkreten Aufgabe von der KI bewertet).
+  if (body.eventId) {
+    const eventId = body.eventId;
+    const [rueckRes, aufgabenRes, anmeldungenRes] = await Promise.all([
+      supabaseAdmin
+        .from('helfer_rueckmeldungen')
+        .select(`
+          id, kind_id, aufgabe_id, zeitfenster, ist_springer, kind_name_extern,
+          kind:kinder(vorname, nachname, klasse),
+          aufgabe:helferaufgaben(titel, zeitfenster)
+        `)
+        .eq('event_id', eventId),
+      supabaseAdmin
+        .from('helferaufgaben')
+        .select('id, titel, zeitfenster')
+        .eq('event_id', eventId),
+      supabaseAdmin
+        .from('anmeldungen')
+        .select('id, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, kommentar, verifiziert')
+        .eq('event_id', eventId)
+        .eq('verifiziert', true)
+        .not('kommentar', 'is', null),
+    ]);
+
+    aufgaben = (aufgabenRes.data || []).map((a: any) => ({ id: a.id, titel: a.titel, zeitfenster: a.zeitfenster || 'beides' }));
+
+    // Map: kind_identifier → kommentar
+    const kommentarMap = new Map<string, string>();
+    for (const a of anmeldungenRes.data || []) {
+      const k = (a.kommentar || '').trim();
+      if (!k) continue;
+      kommentarMap.set(buildKindIdentifier(a as any), k);
+    }
+
+    // Pro helfer_rueckmeldung: schauen ob es einen Eltern-Kommentar gibt
+    freitexte = [];
+    for (const r of (rueckRes.data || []) as any[]) {
+      if (!r.kind_name_extern) continue;
+      const kommentar = kommentarMap.get(r.kind_name_extern);
+      if (!kommentar) continue;
+      const aufgabe = Array.isArray(r.aufgabe) ? r.aufgabe[0] : r.aufgabe;
+      const kind = Array.isArray(r.kind) ? r.kind[0] : r.kind;
+      const aufgabeTitel = r.ist_springer ? 'Springer (flexibel)' : (aufgabe?.titel || 'Unbekannt');
+      const aufgabeZeitfenster = r.ist_springer ? null : (aufgabe?.zeitfenster || null);
+      freitexte.push({
+        id: r.id,
+        freitext: kommentar,
+        aufgabe_titel: aufgabeTitel,
+        aufgabe_id: r.aufgabe_id || '',
+        aufgabe_zeitfenster: aufgabeZeitfenster,
+        kind_name: kind ? `${kind.vorname} ${kind.nachname}` : (r.kind_name_extern || 'Unbekannt'),
+        zeitfenster: r.zeitfenster || null,
+      });
+    }
+  }
+
   if (!freitexte || freitexte.length === 0) {
-    return NextResponse.json({ error: 'Keine Freitexte übergeben' }, { status: 400 });
+    return NextResponse.json({ hinweise: [], info: 'Keine Eltern-Kommentare zu analysieren' });
   }
 
   if (!apiKey) {
@@ -134,12 +203,16 @@ Antworte NUR mit dem JSON-Array, kein anderer Text.`;
 
     const alle: KiHinweis[] = JSON.parse(jsonMatch[0]);
 
-    // Aufgabentitel anreichern — alle zurückgeben, keiner wird gefiltert
+    // Lookup: id → originaler Freitext (Eltern-Kommentar) für die Anzeige
+    const freitextById = new Map(freitexte.map(f => [f.id, f.freitext]));
+
+    // Aufgabentitel + Original-Freitext anreichern — alle zurückgeben, keiner wird gefiltert
     const hinweise = alle.map(h => ({
       ...h,
       empfohlene_aufgabe_titel: h.empfohlene_aufgabe_id
         ? (aufgaben || []).find(a => a.id === h.empfohlene_aufgabe_id)?.titel ?? null
         : null,
+      freitext_original: freitextById.get(h.id) || null,
     }));
 
     return NextResponse.json({ hinweise });

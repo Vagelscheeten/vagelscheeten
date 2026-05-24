@@ -12,7 +12,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Pencil, Trash2, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+import { Pencil, Trash2, ChevronDown, ChevronUp, Clock, CalendarClock } from 'lucide-react';
+import { ZeitslotsModal } from './ZeitslotsModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
@@ -76,6 +77,7 @@ export function AufgabenListe({ aufgaben, rueckmeldungen, onEdit, onRefresh }: A
   const [isDeletingWithRueckmeldungen, setIsDeletingWithRueckmeldungen] = useState(false);
   const [zeitfensterFilter, setZeitfensterFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [slotsAufgabe, setSlotsAufgabe] = useState<Aufgabe | null>(null);
 
   const rueckmeldungenCountMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -251,6 +253,7 @@ export function AufgabenListe({ aufgaben, rueckmeldungen, onEdit, onRefresh }: A
                       <RowActions
                         actions={[
                           { label: 'Bearbeiten', icon: Pencil, onClick: () => onEdit(aufgabe) },
+                          { label: 'Zeitslots verwalten', icon: CalendarClock, onClick: () => setSlotsAufgabe(aufgabe) },
                           { label: 'Löschen', icon: Trash2, onClick: () => handleDeleteClick(aufgabe), destructive: true, separatorBefore: true },
                         ]}
                       />
@@ -302,6 +305,10 @@ export function AufgabenListe({ aufgaben, rueckmeldungen, onEdit, onRefresh }: A
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {slotsAufgabe && (
+        <ZeitslotsModal aufgabe={slotsAufgabe} onClose={() => setSlotsAufgabe(null)} />
+      )}
     </div>
   );
 }

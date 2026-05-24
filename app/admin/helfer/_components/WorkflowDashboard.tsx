@@ -10,6 +10,7 @@ import { Phase1Sichten } from './Phase1Sichten';
 import { Phase2Zuteilen } from './Phase2Zuteilen';
 import { Phase3Pruefen } from './Phase3Pruefen';
 import { Phase4Kommunizieren } from './Phase4Kommunizieren';
+import { SlotZuteilung } from './SlotZuteilung';
 import { Phase5Nachpflegen } from './Phase5Nachpflegen';
 import { PhaseEssensspenden } from './PhaseEssensspenden';
 import { Schritt1Rueckmeldungen } from './Schritt1Rueckmeldungen';
@@ -323,12 +324,13 @@ function SchrittSichtenZuteilen({ stats, onRefresh }: { stats: WorkflowStats; on
 // ── Schritt 3: Prüfen + Benachrichtigen ─────────────────────────────────────
 
 function SchrittPruefenBenachrichtigen({ stats, onRefresh }: { stats: WorkflowStats; onRefresh: () => void }) {
-  const [tab, setTab] = useState<'pruefen' | 'benachrichtigen'>('pruefen');
+  const [tab, setTab] = useState<'pruefen' | 'slots' | 'benachrichtigen'>('pruefen');
 
   return (
     <div>
       <div className="flex border-b border-slate-100">
         <SubTab active={tab === 'pruefen'} onClick={() => setTab('pruefen')} label="Zuteilungen prüfen" />
+        <SubTab active={tab === 'slots'} onClick={() => setTab('slots')} label="Zeitslots" />
         <SubTab active={tab === 'benachrichtigen'} onClick={() => setTab('benachrichtigen')} label="Eltern benachrichtigen" badge={stats.anzahlBenachrichtigt > 0 ? stats.anzahlBenachrichtigt : undefined} badgeDone={stats.anzahlBenachrichtigt > 0} />
       </div>
       <div className="px-5 py-5">
@@ -336,11 +338,14 @@ function SchrittPruefenBenachrichtigen({ stats, onRefresh }: { stats: WorkflowSt
           <>
             {stats.anzahlBenachrichtigt === 0 && (
               <div className="mb-4 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
-                Wenn alle Zuteilungen stimmen, wechsle zu <strong>Eltern benachrichtigen</strong>. Damit ist dieser Schritt abgeschlossen.
+                Wenn alle Zuteilungen stimmen, wechsle zu <strong>Zeitslots</strong> (für Aufgaben mit Slots) und dann zu <strong>Eltern benachrichtigen</strong>.
               </div>
             )}
             <Phase3Pruefen eventId={stats.eventId} onRefresh={onRefresh} />
           </>
+        )}
+        {tab === 'slots' && (
+          <SlotZuteilung eventId={stats.eventId} />
         )}
         {tab === 'benachrichtigen' && (
           <Phase4Kommunizieren eventId={stats.eventId} onRefresh={onRefresh} />

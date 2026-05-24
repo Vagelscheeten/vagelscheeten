@@ -766,6 +766,7 @@ export type Database = {
           rueckmeldung_id: string | null
           via_springer: boolean
           zeitfenster: string
+          zeitslot_id: string | null
           zugewiesen_am: string
         }
         Insert: {
@@ -778,6 +779,7 @@ export type Database = {
           rueckmeldung_id?: string | null
           via_springer?: boolean
           zeitfenster: string
+          zeitslot_id?: string | null
           zugewiesen_am?: string
         }
         Update: {
@@ -790,6 +792,7 @@ export type Database = {
           rueckmeldung_id?: string | null
           via_springer?: boolean
           zeitfenster?: string
+          zeitslot_id?: string | null
           zugewiesen_am?: string
         }
         Relationships: [
@@ -826,6 +829,50 @@ export type Database = {
             columns: ["rueckmeldung_id"]
             isOneToOne: true
             referencedRelation: "helfer_rueckmeldungen"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      helferaufgabe_zeitslots: {
+        Row: {
+          aufgabe_id: string
+          bedarf: number
+          created_at: string | null
+          end_zeit: string
+          id: string
+          sortierung: number
+          standort: string | null
+          start_zeit: string
+          titel: string
+        }
+        Insert: {
+          aufgabe_id: string
+          bedarf?: number
+          created_at?: string | null
+          end_zeit: string
+          id?: string
+          sortierung?: number
+          standort?: string | null
+          start_zeit: string
+          titel: string
+        }
+        Update: {
+          aufgabe_id?: string
+          bedarf?: number
+          created_at?: string | null
+          end_zeit?: string
+          id?: string
+          sortierung?: number
+          standort?: string | null
+          start_zeit?: string
+          titel?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "helferaufgabe_zeitslots_aufgabe_id_fkey"
+            columns: ["aufgabe_id"]
+            isOneToOne: false
+            referencedRelation: "helferaufgaben"
             referencedColumns: ["id"]
           },
         ]

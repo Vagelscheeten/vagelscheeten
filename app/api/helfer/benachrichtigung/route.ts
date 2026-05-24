@@ -159,7 +159,8 @@ export async function POST(req: NextRequest) {
       .from('helfer_zuteilungen')
       .select(`
         kind_id, zeitfenster,
-        aufgabe:helferaufgaben(titel, beschreibung)
+        aufgabe:helferaufgaben(titel, beschreibung),
+        zeitslot:helferaufgabe_zeitslots(titel, standort, start_zeit, end_zeit)
       `)
       .eq('event_id', eventId);
 
@@ -225,21 +226,35 @@ export async function POST(req: NextRequest) {
         );
 
         // Alle Zuteilungen für dieses Kind (Familie kann mehrere Aufgaben übernommen haben).
-        const familienZuteilungen: { titel: string; beschreibung: string | null; zeitfenster: string }[] = [];
+        const familienZuteilungen: {
+          titel: string;
+          beschreibung: string | null;
+          zeitfenster: string;
+          slotTitel: string | null;
+          slotStandort: string | null;
+          slotZeit: string | null;
+        }[] = [];
         if (kind) {
           const treffer = (zuteilungen || []).filter(z => z.kind_id === kind.id);
           for (const z of treffer) {
             const aufgabe = Array.isArray(z.aufgabe) ? z.aufgabe[0] : z.aufgabe;
+            const slot: any = Array.isArray((z as any).zeitslot) ? (z as any).zeitslot[0] : (z as any).zeitslot;
+            const slotZeit = slot?.start_zeit && slot?.end_zeit
+              ? `${String(slot.start_zeit).substring(0, 5)} bis ${String(slot.end_zeit).substring(0, 5)} Uhr`
+              : null;
             familienZuteilungen.push({
               titel: aufgabe?.titel || 'Helfer',
               beschreibung: aufgabe?.beschreibung || null,
               zeitfenster: formatZeitfenster(z.zeitfenster),
+              slotTitel: slot?.titel || null,
+              slotStandort: slot?.standort || null,
+              slotZeit,
             });
           }
         }
         // Fallback: kein Match in helfer_zuteilungen → Platzhalter „Helfer"
         if (familienZuteilungen.length === 0) {
-          familienZuteilungen.push({ titel: 'Helfer', beschreibung: null, zeitfenster: '' });
+          familienZuteilungen.push({ titel: 'Helfer', beschreibung: null, zeitfenster: '', slotTitel: null, slotStandort: null, slotZeit: null });
         }
 
         const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
@@ -275,14 +290,18 @@ export async function POST(req: NextRequest) {
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;${i > 0 ? ' margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;' : ''}">
           <tr>
             <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
-            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.titel)}</td>
+            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.titel)}${z.slotStandort ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotStandort)})</span>` : ''}</td>
           </tr>
           ${z.beschreibung ? `
           <tr>
             <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
             <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
           </tr>` : ''}
-          ${z.zeitfenster ? `
+          ${z.slotZeit ? `
+          <tr>
+            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Einsatz-Zeit:</td>
+            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.slotZeit)}${z.slotTitel ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotTitel)})</span>` : ''}</td>
+          </tr>` : z.zeitfenster ? `
           <tr>
             <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
             <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>

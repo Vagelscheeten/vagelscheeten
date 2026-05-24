@@ -21,6 +21,7 @@ interface AnmeldungRow {
   essensspenden_json: { spende_id: string; menge?: number }[] | null;
   ist_springer: boolean | null;
   springer_zeitfenster: string | null;
+  kommentar: string | null;
   verifiziert: boolean | null;
 }
 
@@ -53,6 +54,10 @@ async function regeneriereAusAnmeldung(supabaseAdmin: SupabaseClient, a: Anmeldu
     .ilike('nachname', a.kind_nachname);
   const autoKindId = kindMatch && kindMatch.length === 1 ? kindMatch[0].id : null;
 
+  // Eltern-Kommentar aus der Anmeldung holen — die Anmeldung ist die Datenwahrheit,
+  // helfer_rueckmeldungen.kommentar dient nur als Spiegel für die KI-Analyse + Anzeige.
+  const elternKommentar = (a as any).kommentar?.toString().trim() || null;
+
   // Springer-Eintrag
   if (a.ist_springer) {
     await supabaseAdmin.from('helfer_rueckmeldungen').insert({
@@ -64,7 +69,7 @@ async function regeneriereAusAnmeldung(supabaseAdmin: SupabaseClient, a: Anmeldu
       ist_springer: true,
       zeitfenster: a.springer_zeitfenster || 'beides',
       freitext: null,
-      kommentar: null,
+      kommentar: elternKommentar,
     });
   }
 
@@ -81,7 +86,7 @@ async function regeneriereAusAnmeldung(supabaseAdmin: SupabaseClient, a: Anmeldu
       ist_springer: false,
       zeitfenster: null,
       freitext: null,
-      kommentar: null,
+      kommentar: elternKommentar,
     });
   }
 
@@ -129,7 +134,7 @@ export async function regeneriereFuerIdentifier(
   // 2) Verbleibende verifizierte Anmeldungen mit diesem identifier finden
   const { data: anmeldungen } = await supabaseAdmin
     .from('anmeldungen')
-    .select('id, event_id, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, verifiziert')
+    .select('id, event_id, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert')
     .eq('event_id', eventId)
     .eq('verifiziert', true);
 

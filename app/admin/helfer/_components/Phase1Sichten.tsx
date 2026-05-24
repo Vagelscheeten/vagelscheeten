@@ -602,38 +602,32 @@ export function Phase1Sichten({ eventId, onRefresh }: Phase1SichtenProps) {
   };
 
   const handleKiAnalyse = async () => {
-    const mitFreitext = rueckmeldungen.filter(r => r.freitext && r.freitext.trim().length > 0);
-    if (mitFreitext.length === 0) { toast.info('Keine Freitexte vorhanden'); return; }
-
     setKiLoading(true);
     try {
       const res = await fetch('/api/helfer/ki-analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          freitexte: mitFreitext.map(r => ({
-            id: r.id,
-            freitext: r.freitext,
-            aufgabe_titel: r.aufgabe?.titel || 'Unbekannt',
-            aufgabe_id: r.aufgabe_id || '',
-            aufgabe_zeitfenster: r.aufgabe?.zeitfenster || null,
-            zeitfenster: r.zeitfenster || null,
-            kind_name: r.kind ? `${r.kind.vorname} ${r.kind.nachname}` : r.kind_name_extern || 'Unbekannt',
-          })),
-          aufgaben: aufgaben.map(a => ({ id: a.id, titel: a.titel, zeitfenster: a.zeitfenster })),
-        }),
+        body: JSON.stringify({ eventId }),
       });
 
       const data = await res.json();
+      if (data.info && (!data.hinweise || data.hinweise.length === 0)) {
+        toast.info(data.info);
+      }
       if (data.hinweise) {
+        const rueckMap = new Map(rueckmeldungen.map(r => [r.id, r]));
         const angereichert = data.hinweise.map((h: KiHinweis) => {
-          const original = mitFreitext.find(r => r.id === h.id);
+          const original = rueckMap.get(h.id);
           return {
             ...h,
             kind_name: original ? original.kind
               ? `${original.kind.nachname}, ${original.kind.vorname}`
               : original.kind_name_extern || 'Unbekannt' : undefined,
-            freitext_original: original?.freitext ?? undefined,
+            freitext_original: original?.kind_name_extern
+              ? // Eltern-Kommentar steht in anmeldungen.kommentar — der Endpoint hat ihn schon ausgewertet.
+                // Wir zeigen den (anonymisierten) Inhalt unverändert von der KI-Antwort an.
+                (h as any).freitext_original ?? undefined
+              : undefined,
             aufgabe_id_aktuell: original?.aufgabe_id ?? undefined,
             aufgabe_titel_aktuell: original?.aufgabe?.titel ?? undefined,
             zeitfenster_aktuell: original?.zeitfenster || original?.aufgabe?.zeitfenster || undefined,
