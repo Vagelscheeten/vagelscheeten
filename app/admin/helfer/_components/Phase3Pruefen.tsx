@@ -102,6 +102,7 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     nurEssen: 0,
     leer: 0,
   });
+  const [wartendeExpanded, setWartendeExpanded] = useState(false);
 
   const ladeDaten = useCallback(async () => {
     setIsLoading(true);
@@ -501,6 +502,30 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     };
   }, [aufgaben, familienGesamt, springerFamilien, anmeldungsStats]);
 
+  // Liste der wartenden Familien (im Helfer-Pool, aber ohne Zuteilung)
+  const wartendeFamilienListe = useMemo(() => {
+    type Item = { kindId: string; name: string; klasse: string | null; wuensche: string[] };
+    const map = new Map<string, Item>();
+    for (const r of nichtZugewiesen) {
+      if (!r.kind_id) continue;
+      if ((aufgabenProKind.get(r.kind_id) || 0) > 0) continue; // hat schon eine Zuteilung
+      if (!map.has(r.kind_id)) {
+        map.set(r.kind_id, {
+          kindId: r.kind_id,
+          name: r.kind ? `${r.kind.vorname} ${r.kind.nachname}` : 'Unbekannt',
+          klasse: r.kind?.klasse || null,
+          wuensche: [],
+        });
+      }
+      if (r.aufgabe_titel && r.aufgabe_titel !== '—') {
+        map.get(r.kind_id)!.wuensche.push(r.aufgabe_titel);
+      } else if (r.ist_springer) {
+        map.get(r.kind_id)!.wuensche.push('Springer');
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  }, [nichtZugewiesen, aufgabenProKind]);
+
   // Liste der Familien mit 2+ Aufgaben (für Banner)
   const mehrfachZugeteilte = useMemo(() => {
     const result: { kindId: string; name: string; klasse: string | null; anzahl: number; aufgabenTitel: string[] }[] = [];
@@ -613,10 +638,29 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
               {bilanz.wartendeFamilien > 0 && (
                 <li className="flex items-start gap-2">
                   <span className="text-blue-600 font-bold mt-0.5">→</span>
-                  <span>
-                    <strong>{bilanz.wartendeFamilien}</strong> wartende {bilanz.wartendeFamilien === 1 ? 'Familie' : 'Familien'} aus dem Helfer-Pool manuell zuweisen
-                    {' '}<span className="text-slate-500">(haben sich gemeldet, Wunsch-Aufgabe war voll)</span>
-                  </span>
+                  <div className="flex-1">
+                    <button
+                      onClick={() => setWartendeExpanded((v) => !v)}
+                      className="text-left inline-flex items-center gap-1 hover:underline underline-offset-2"
+                    >
+                      <strong>{bilanz.wartendeFamilien}</strong> wartende {bilanz.wartendeFamilien === 1 ? 'Familie' : 'Familien'} aus dem Helfer-Pool manuell zuweisen
+                      <ChevronDown size={14} className={`text-slate-400 transition-transform ${wartendeExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    <span className="text-slate-500"> (haben sich gemeldet, Wunsch-Aufgabe war voll)</span>
+                    {wartendeExpanded && (
+                      <ul className="mt-1.5 pl-2 space-y-0.5 text-sm text-slate-700">
+                        {wartendeFamilienListe.map((w) => (
+                          <li key={w.kindId} className="flex flex-wrap gap-x-2">
+                            <span className="font-medium">{w.name}</span>
+                            {w.klasse && <span className="text-slate-400">({w.klasse})</span>}
+                            <span className="text-slate-500">
+                              — Wunsch: {w.wuensche.length > 0 ? w.wuensche.join(', ') : '—'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </li>
               )}
               {bilanz.defizitNachVollerAuslastung > 0 && (
