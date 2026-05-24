@@ -95,6 +95,13 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [pickerRueckmeldungId, setPickerRueckmeldungId] = useState<string | null>(null);
   const [pickerAufgabeId, setPickerAufgabeId] = useState<string>('');
+  const [familienGesamt, setFamilienGesamt] = useState(0);
+  const [springerFamilien, setSpringerFamilien] = useState(0);
+  const [anmeldungsStats, setAnmeldungsStats] = useState({
+    verifiziert: 0,
+    nurEssen: 0,
+    leer: 0,
+  });
 
   const ladeDaten = useCallback(async () => {
     setIsLoading(true);
@@ -167,11 +174,17 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
 
     // Rückmeldungen pro Kind gruppieren, um zu prüfen ob IRGENDEIN Wunsch erfüllt wurde
     const rmByKind = new Map<string, any[]>();
+    const familienMitNormalemWunsch = new Set<string>();
+    const familienMitSpringerAngebot = new Set<string>();
     for (const r of (rueckmeldungenRes.data || [])) {
       if (!r.kind_id) continue;
       if (!rmByKind.has(r.kind_id)) rmByKind.set(r.kind_id, []);
       rmByKind.get(r.kind_id)!.push(r);
+      if (r.ist_springer) familienMitSpringerAngebot.add(r.kind_id);
+      else familienMitNormalemWunsch.add(r.kind_id);
     }
+    setFamilienGesamt(new Set([...familienMitNormalemWunsch, ...familienMitSpringerAngebot]).size);
+    setSpringerFamilien(familienMitSpringerAngebot.size);
 
     // Zufriedene Kinder: mindestens ein Wunsch wurde erfüllt
     const zufriedeneKinder = new Set<string>();
@@ -235,6 +248,23 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     const spendenTitel = new Map<string, string>();
     for (const s of spendenBedarfRes.data || []) spendenTitel.set(s.id, s.titel);
     const alleKinder = (alleKinderRes.data || []) as KindLite[];
+
+    // Anmeldungs-Statistik für Personalbilanz
+    let nurEssenCount = 0;
+    let leerCount = 0;
+    for (const a of anmeldungen) {
+      const hatHelfer = Array.isArray(a.helfer_aufgaben_json) && (a.helfer_aufgaben_json as any[]).length > 0;
+      const hatEssen = Array.isArray(a.essensspenden_json) && (a.essensspenden_json as any[]).length > 0;
+      const istSpringer = !!a.ist_springer;
+      if (hatHelfer || istSpringer) continue;
+      if (hatEssen) nurEssenCount++;
+      else leerCount++;
+    }
+    setAnmeldungsStats({
+      verifiziert: anmeldungen.length,
+      nurEssen: nurEssenCount,
+      leer: leerCount,
+    });
 
     const anmeldungsIdx = buildAnmeldungsIndex(anmeldungen);
     const details: Record<string, KindDetail> = {};
@@ -430,6 +460,47 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
     return m;
   }, [aufgaben]);
 
+  // Personalbilanz (gesamt)
+  const bilanz = useMemo(() => {
+    const bedarfGesamt = aufgaben.reduce((s, a) => s + a.bedarf, 0);
+    const belegtGesamt = aufgaben.reduce((s, a) => s + a.zuteilungen.length, 0);
+    const zugewieseneKinder = new Set<string>();
+    let externeAnzahl = 0;
+    let viaSpringerAnzahl = 0;
+    for (const a of aufgaben) {
+      for (const z of a.zuteilungen) {
+        if (z.kind_id) zugewieseneKinder.add(z.kind_id);
+        if (z.externe_helfer) externeAnzahl++;
+        if (z.via_springer) viaSpringerAnzahl++;
+      }
+    }
+    const luecken = Math.max(0, bedarfGesamt - belegtGesamt);
+    // Helfer-Pool = Familien, die einen Helfer-Wunsch oder Springer-Bereitschaft signalisiert haben
+    const helferPool = familienGesamt;
+    const zugewieseneFamilien = zugewieseneKinder.size;
+    const wartendeFamilien = Math.max(0, helferPool - zugewieseneFamilien);
+    // Echtes Defizit nach voller Auslastung des Helfer-Pools (1 Aufgabe pro Familie)
+    const defizitNachVollerAuslastung = Math.max(0, bedarfGesamt - helferPool);
+    // Reserve: Familien ohne Helfer-Wunsch, die theoretisch noch angesprochen werden könnten
+    const reserveNurEssen = anmeldungsStats.nurEssen;
+    const reserveLeer = anmeldungsStats.leer;
+    return {
+      bedarfGesamt,
+      belegtGesamt,
+      luecken,
+      zugewieseneFamilien,
+      helferPool,
+      wartendeFamilien,
+      springerFamilien,
+      externeAnzahl,
+      viaSpringerAnzahl,
+      defizitNachVollerAuslastung,
+      verifizierteAnmeldungen: anmeldungsStats.verifiziert,
+      reserveNurEssen,
+      reserveLeer,
+    };
+  }, [aufgaben, familienGesamt, springerFamilien, anmeldungsStats]);
+
   // Liste der Familien mit 2+ Aufgaben (für Banner)
   const mehrfachZugeteilte = useMemo(() => {
     const result: { kindId: string; name: string; klasse: string | null; anzahl: number; aufgabenTitel: string[] }[] = [];
@@ -475,6 +546,117 @@ export function Phase3Pruefen({ eventId, onRefresh }: Phase3PruefenProps) {
       <p className="text-sm text-slate-500">
         Überprüfe die Zuteilungen pro Aufgabe. Rote Karten haben Lücken (Bedarf nicht gedeckt).
       </p>
+
+      {/* Personalbilanz */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Info size={16} className="text-slate-500" />
+          <h3 className="font-semibold text-sm text-slate-800">Personalbilanz</h3>
+        </div>
+
+        {/* Top: 3 große Zahlen */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+            <div className="text-xs text-slate-500">Bedarf</div>
+            <div className="text-2xl font-bold text-slate-800 leading-tight">{bilanz.bedarfGesamt}</div>
+            <div className="text-xs text-slate-500">Helfer-Plätze gesamt</div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 ${bilanz.belegtGesamt >= bilanz.bedarfGesamt ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+            <div className="text-xs text-slate-500">Zugeteilt</div>
+            <div className={`text-2xl font-bold leading-tight ${bilanz.belegtGesamt >= bilanz.bedarfGesamt ? 'text-green-700' : 'text-blue-700'}`}>{bilanz.belegtGesamt}</div>
+            <div className="text-xs text-slate-500">
+              {bilanz.viaSpringerAnzahl > 0 && `${bilanz.viaSpringerAnzahl} via Springer · `}
+              {bilanz.externeAnzahl > 0 && `${bilanz.externeAnzahl} extern`}
+              {bilanz.viaSpringerAnzahl === 0 && bilanz.externeAnzahl === 0 && 'alle regulär'}
+            </div>
+          </div>
+          <div className={`rounded-lg border px-3 py-2 ${bilanz.luecken === 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className="text-xs text-slate-500">Offene Plätze</div>
+            <div className={`text-2xl font-bold leading-tight ${bilanz.luecken === 0 ? 'text-green-700' : 'text-red-700'}`}>{bilanz.luecken}</div>
+            <div className="text-xs text-slate-500">{bilanz.luecken === 0 ? 'alles gedeckt' : 'noch zu füllen'}</div>
+          </div>
+        </div>
+
+        {/* Familien-Übersicht (transparent) */}
+        <div className="border-t pt-3 mb-3">
+          <div className="text-xs font-semibold text-slate-600 mb-2">Familien-Übersicht (Rückmeldungen)</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div className="bg-slate-50 rounded px-3 py-2">
+              <div className="font-bold text-slate-800">{bilanz.verifizierteAnmeldungen}</div>
+              <div className="text-xs text-slate-500">verifizierte Anmeldungen</div>
+            </div>
+            <div className="bg-blue-50 rounded px-3 py-2">
+              <div className="font-bold text-blue-700">{bilanz.helferPool}</div>
+              <div className="text-xs text-slate-500">
+                mit Helfer-Wunsch
+                {bilanz.springerFamilien > 0 && (
+                  <span className="text-purple-600"> · davon {bilanz.springerFamilien} Springer</span>
+                )}
+              </div>
+            </div>
+            <div className="bg-amber-50 rounded px-3 py-2">
+              <div className="font-bold text-amber-700">{bilanz.reserveNurEssen}</div>
+              <div className="text-xs text-slate-500">nur Essensspende (kein Helfer)</div>
+            </div>
+            <div className="bg-slate-50 rounded px-3 py-2">
+              <div className="font-bold text-slate-600">{bilanz.reserveLeer}</div>
+              <div className="text-xs text-slate-500">leer (weder Helfer noch Essen)</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Deckungsplan */}
+        {bilanz.luecken > 0 ? (
+          <div className="border-t pt-3">
+            <div className="text-xs font-semibold text-slate-600 mb-2">So können die {bilanz.luecken} offenen Plätze gedeckt werden:</div>
+            <ul className="text-sm space-y-1.5">
+              {bilanz.wartendeFamilien > 0 && (
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 font-bold mt-0.5">→</span>
+                  <span>
+                    <strong>{bilanz.wartendeFamilien}</strong> wartende {bilanz.wartendeFamilien === 1 ? 'Familie' : 'Familien'} aus dem Helfer-Pool manuell zuweisen
+                    {' '}<span className="text-slate-500">(haben sich gemeldet, Wunsch-Aufgabe war voll)</span>
+                  </span>
+                </li>
+              )}
+              {bilanz.defizitNachVollerAuslastung > 0 && (
+                <li className="flex items-start gap-2">
+                  <span className="text-red-600 font-bold mt-0.5">⚠</span>
+                  <span>
+                    <strong className="text-red-700">{bilanz.defizitNachVollerAuslastung} Plätze</strong> fehlen selbst bei voller Auslastung des Helfer-Pools (jede Familie übernimmt max. 1 Aufgabe).
+                    <br />
+                    <span className="text-slate-600">Optionen:</span>
+                    <ul className="list-disc list-inside ml-2 text-slate-600 text-xs mt-0.5">
+                      {bilanz.reserveNurEssen + bilanz.reserveLeer > 0 && (
+                        <li>
+                          {bilanz.reserveNurEssen + bilanz.reserveLeer} Familien ohne Helfer-Wunsch nachträglich ansprechen
+                          {' '}({bilanz.reserveNurEssen} nur Essen, {bilanz.reserveLeer} leer)
+                        </li>
+                      )}
+                      <li>Externe Helfer hinzufügen</li>
+                      <li>Mehrfach-Zuteilung bei einzelnen Familien als Ausnahme</li>
+                      <li>Bedarf reduzieren</li>
+                    </ul>
+                  </span>
+                </li>
+              )}
+              {bilanz.defizitNachVollerAuslastung === 0 && bilanz.wartendeFamilien === 0 && (
+                <li className="flex items-start gap-2 text-amber-700">
+                  <Info size={14} className="mt-1 shrink-0" />
+                  <span>Alle wartenden Familien zugeteilt — aber {bilanz.luecken} {bilanz.luecken === 1 ? 'Aufgabe' : 'Aufgaben'} hat noch freie Plätze. Externe Helfer oder Bedarf-Anpassung nötig.</span>
+                </li>
+              )}
+            </ul>
+          </div>
+        ) : (
+          <div className="border-t pt-3">
+            <div className="flex items-center gap-2 text-sm text-green-700">
+              <CheckCircle2 size={14} />
+              <span>Alle Aufgaben sind vollständig besetzt.</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Mehrfach-Zuteilungen */}
       {mehrfachZugeteilte.length > 0 && (
