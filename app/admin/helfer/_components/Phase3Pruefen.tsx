@@ -899,24 +899,25 @@ function DetailModal({
                       </li>
                     )}
                     {detail.helferWuensche.map((w, i) => {
-                      // 'zuteilung'-Modus: ✓ am zugewiesenen Wunsch
-                      // 'wunsch'-Modus: ✓ am aktuell betrachteten Wunsch (data.r.aufgabe_titel)
-                      // Plus Markierung welche der Wünsche bereits einer anderen Aufgabe zugeteilt sind
-                      const istGewaehlt = data.mode === 'zuteilung'
+                      // ✓ grün NUR dann, wenn dieser Wunsch tatsächlich zugeteilt wurde.
+                      // - 'zuteilung'-Modus: ja, wenn w.aufgabe_titel der zugewiesenen Aufgabe entspricht
+                      // - 'wunsch'-Modus: ja, wenn die Familie auf diese Aufgabe zugeteilt wurde (zugewiesen_zu)
+                      const istZugeteilt = data.mode === 'zuteilung'
                         ? w.aufgabe_titel === zugewieseneAufgabe
-                        : w.aufgabe_titel === data.r.aufgabe_titel;
-                      const istAndersZugeteilt = data.mode === 'wunsch' && data.r.zugewiesen_zu === w.aufgabe_titel;
+                        : data.r.zugewiesen_zu === w.aufgabe_titel;
+                      // Kreis-Markierung nur für die Listen-Zeile selbst (Kontext-Info, kein "zugeteilt")
+                      const istBetrachteterWunsch = data.mode === 'wunsch' && !istZugeteilt && w.aufgabe_titel === data.r.aufgabe_titel;
                       return (
                         <li key={i} className="flex items-center gap-2">
-                          {istGewaehlt
+                          {istZugeteilt
                             ? <CheckCircle2 size={13} className="text-green-600 shrink-0" />
-                            : istAndersZugeteilt
-                              ? <span className="w-3.5 h-3.5 rounded-full bg-blue-100 border border-blue-300 shrink-0" />
+                            : istBetrachteterWunsch
+                              ? <span className="w-3.5 h-3.5 rounded-full bg-amber-100 border border-amber-300 shrink-0" />
                               : <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shrink-0" />}
-                          <span className={istGewaehlt ? 'font-medium text-slate-800' : 'text-slate-600'}>
+                          <span className={istZugeteilt ? 'font-medium text-slate-800' : 'text-slate-600'}>
                             {w.aufgabe_titel}
-                            {data.mode === 'zuteilung' && istGewaehlt && <span className="text-xs text-green-700 ml-1">— zugewiesen</span>}
-                            {data.mode === 'wunsch' && istAndersZugeteilt && <span className="text-xs text-blue-700 ml-1">— Familie hier zugeteilt</span>}
+                            {istZugeteilt && <span className="text-xs text-green-700 ml-1">— zugewiesen</span>}
+                            {istBetrachteterWunsch && <span className="text-xs text-amber-700 ml-1">— dieser Wunsch (nicht erfüllt)</span>}
                           </span>
                         </li>
                       );
