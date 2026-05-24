@@ -58,6 +58,8 @@ const STATUS_STYLE: Record<RueckmeldungsStatus, { bg: string; text: string; icon
 
 export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenBedarf, onRefresh }: Props) {
   const [filter, setFilter] = useState<RueckmeldungsStatus | 'alle'>('alle');
+  const [aufgabeFilter, setAufgabeFilter] = useState<string>('');
+  const [spendeFilter, setSpendeFilter] = useState<string>('');
   const [suche, setSuche] = useState('');
   const [offeneKlassen, setOffeneKlassen] = useState<Set<string>>(new Set());
   const [detailKind, setDetailKind] = useState<KindMitStatus | null>(null);
@@ -139,9 +141,27 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
         const name = `${k.kind.vorname} ${k.kind.nachname}`.toLowerCase();
         if (!name.includes(sucheNorm)) return false;
       }
+      // Aufgaben-Filter: Familie muss diese Aufgabe gewünscht haben (oder Springer wenn 'springer')
+      if (aufgabeFilter) {
+        const a = k.anmeldung;
+        if (!a) return false;
+        if (aufgabeFilter === 'springer') {
+          if (!a.ist_springer) return false;
+        } else {
+          const helfer = Array.isArray(a.helfer_aufgaben_json) ? (a.helfer_aufgaben_json as any[]) : [];
+          if (!helfer.some((h) => h?.aufgabe_id === aufgabeFilter)) return false;
+        }
+      }
+      // Essensspende-Filter
+      if (spendeFilter) {
+        const a = k.anmeldung;
+        if (!a) return false;
+        const essen = Array.isArray(a.essensspenden_json) ? (a.essensspenden_json as any[]) : [];
+        if (!essen.some((e) => e?.spende_id === spendeFilter)) return false;
+      }
       return true;
     });
-  }, [alleMitStatus, filter, sucheNorm]);
+  }, [alleMitStatus, filter, sucheNorm, aufgabeFilter, spendeFilter]);
 
   const gruppiert = useMemo(() => {
     const map = new Map<string, KindMitStatus[]>();
@@ -398,7 +418,7 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
         )}
       </div>
 
-      {/* Suche + Gesamt-Export */}
+      {/* Suche + Filter + Gesamt-Export */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -410,6 +430,37 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:border-orange-300"
           />
         </div>
+        <select
+          value={aufgabeFilter}
+          onChange={(e) => setAufgabeFilter(e.target.value)}
+          className="text-sm border border-slate-200 rounded-md px-2 py-2 bg-white focus:outline-none focus:border-orange-300"
+          title="Familien filtern, die diese Aufgabe gewünscht haben"
+        >
+          <option value="">Alle Helfer-Wünsche</option>
+          {aufgaben.map((a) => (
+            <option key={a.id} value={a.id}>Wunsch: {a.titel}</option>
+          ))}
+          <option value="springer">Wunsch: Springer</option>
+        </select>
+        <select
+          value={spendeFilter}
+          onChange={(e) => setSpendeFilter(e.target.value)}
+          className="text-sm border border-slate-200 rounded-md px-2 py-2 bg-white focus:outline-none focus:border-orange-300"
+          title="Familien filtern, die diese Essensspende angeboten haben"
+        >
+          <option value="">Alle Essensspenden</option>
+          {spendenBedarf.map((s) => (
+            <option key={s.id} value={s.id}>Spende: {s.titel}</option>
+          ))}
+        </select>
+        {(aufgabeFilter || spendeFilter) && (
+          <button
+            onClick={() => { setAufgabeFilter(''); setSpendeFilter(''); }}
+            className="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2"
+          >
+            Filter zurücksetzen
+          </button>
+        )}
         <button
           onClick={() => copyForChat(null)}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 rounded-md"
@@ -489,7 +540,13 @@ export function Schritt1Rueckmeldungen({ kinder, anmeldungen, aufgaben, spendenB
 
       {/* Detail-Modal */}
       {detailKind && (
-        <DetailModal eintrag={detailKind} onClose={() => setDetailKind(null)} />
+        <DetailModal
+          eintrag={detailKind}
+          aufgaben={aufgaben}
+          spendenBedarf={spendenBedarf}
+          geschwister={geschwisterMap.get(detailKind.kind.id) || []}
+          onClose={() => setDetailKind(null)}
+        />
       )}
       {kommentarKind && (
         <KommentarModal eintrag={kommentarKind} onClose={() => setKommentarKind(null)} />
@@ -605,8 +662,25 @@ function KindZeile({
   );
 }
 
-function DetailModal({ eintrag, onClose }: { eintrag: KindMitStatus; onClose: () => void }) {
+function DetailModal({
+  eintrag,
+  aufgaben,
+  spendenBedarf,
+  geschwister,
+  onClose,
+}: {
+  eintrag: KindMitStatus;
+  aufgaben: AufgabeLite[];
+  spendenBedarf: SpendeLite[];
+  geschwister: KindLite[];
+  onClose: () => void;
+}) {
   const a = eintrag.anmeldung;
+  const aufgabeMap = new Map(aufgaben.map((x) => [x.id, x.titel]));
+  const spendeMap = new Map(spendenBedarf.map((x) => [x.id, x.titel]));
+  const helferJson = Array.isArray(a?.helfer_aufgaben_json) ? (a!.helfer_aufgaben_json as any[]) : [];
+  const essenJson = Array.isArray(a?.essensspenden_json) ? (a!.essensspenden_json as any[]) : [];
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -619,26 +693,67 @@ function DetailModal({ eintrag, onClose }: { eintrag: KindMitStatus; onClose: ()
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={16} /></button>
         </div>
-        <div className="px-5 py-4 space-y-3 text-sm">
+        <div className="px-5 py-4 space-y-4 text-sm">
           <Row label="Status" value={STATUS_LABELS[eintrag.status]} />
-          {a && (
+          {a ? (
             <>
               <Row label="Eltern-E-Mail" value={a.eltern_email || '–'} />
               <Row label="Verifiziert" value={a.verifiziert ? 'Ja' : 'Nein'} />
-              <Row label="Helfer-Wünsche" value={`${Array.isArray(a.helfer_aufgaben_json) ? a.helfer_aufgaben_json.length : 0} Aufgabe(n)${a.ist_springer ? ' + Springer' : ''}`} />
-              <Row label="Essensspenden" value={`${Array.isArray(a.essensspenden_json) ? a.essensspenden_json.length : 0} Eintrag/Einträge`} />
-              {a.ist_springer && a.springer_zeitfenster && (
-                <Row label="Springer-Zeitfenster" value={a.springer_zeitfenster} />
+              {geschwister.length > 0 && (
+                <Row
+                  label="Geschwister"
+                  value={geschwister.map((g) => `${g.vorname} ${g.nachname} (${g.klasse || '?'})`).join(', ')}
+                />
               )}
+
+              {/* Helfer-Wünsche konkret */}
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Helfer-Wünsche</div>
+                {helferJson.length === 0 && !a.ist_springer ? (
+                  <div className="text-slate-500 italic">Keine Helfer-Wünsche</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {helferJson.map((h, i) => (
+                      <li key={i} className="text-slate-700 inline-flex items-center gap-1.5">
+                        <Wrench size={12} className="text-slate-400 shrink-0" />
+                        <span>{aufgabeMap.get(h?.aufgabe_id) || 'Unbekannte Aufgabe'}</span>
+                      </li>
+                    ))}
+                    {a.ist_springer && (
+                      <li className="text-purple-700 inline-flex items-center gap-1.5">
+                        <Sparkles size={12} className="shrink-0" />
+                        <span>Springer ({a.springer_zeitfenster || 'kein Zeitfenster'})</span>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+
+              {/* Essensspenden konkret */}
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Essensspenden</div>
+                {essenJson.length === 0 ? (
+                  <div className="text-slate-500 italic">Keine Essensspenden</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {essenJson.map((e, i) => (
+                      <li key={i} className="text-slate-700 inline-flex items-center gap-1.5">
+                        <Utensils size={12} className="text-slate-400 shrink-0" />
+                        <span>{e?.menge ?? 1}× {spendeMap.get(e?.spende_id) || 'Unbekannte Spende'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               {a.kommentar && (
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Kommentar</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Kommentar der Eltern</div>
                   <div className="text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-100 rounded p-2">{a.kommentar}</div>
                 </div>
               )}
             </>
-          )}
-          {!a && (
+          ) : (
             <p className="text-slate-500">Keine Anmeldung gefunden.</p>
           )}
         </div>
