@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import {
   Menu, X, LayoutDashboard, Clock, HelpCircle, Crown, Settings,
   CalendarDays, GraduationCap, Gamepad2, UserCheck,
-  Image as ImageIcon, Download, BarChart3, FileText, Wrench, ArrowLeft,
+  Image as ImageIcon, Download, BarChart3, Wrench, ArrowLeft,
   ChevronDown, UserCog, Inbox, ListChecks,
 } from 'lucide-react';
 
@@ -46,7 +46,6 @@ const adminGroups = [
     items: [
       { href: '/admin/spiel-status', label: 'Spielstatus (Live)', icon: ListChecks },
       { href: '/admin/auswertung', label: 'Auswertung', icon: BarChart3 },
-      { href: '/admin/reporting', label: 'Reporting', icon: FileText },
       { href: '/admin/settings', label: 'Einstellungen', icon: Wrench },
     ],
   },

@@ -1,14 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import React, { useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, RefreshCw, ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
-import { PageShell } from '@/components/admin';
 import {
   berechneRangePunkteProKlasse,
   istKleinerBesser,
@@ -33,83 +27,39 @@ interface Ergebnis {
   id: string;
   kind_id: string;
   spiel_id: string;
-  spielgruppe_id: string;
   wert_numeric: number;
 }
 
 type ViewMode = 'pro-spiel' | 'pro-kind';
 
-export default function AuswertungDetailsPage() {
-  const [spiele, setSpiele] = useState<Spiel[]>([]);
-  const [ergebnisse, setErgebnisse] = useState<Ergebnis[]>([]);
-  const [kinder, setKinder] = useState<Kind[]>([]);
-  const [spielIdsProKlasse, setSpielIdsProKlasse] = useState<Map<string, Set<string>>>(new Map());
-  const [verfuegbareKlassen, setVerfuegbareKlassen] = useState<string[]>([]);
+export function Punktecheck({
+  kinder,
+  spiele,
+  ergebnisse,
+  spielIdsProKlasse,
+}: {
+  kinder: Kind[];
+  spiele: Spiel[];
+  ergebnisse: Ergebnis[];
+  spielIdsProKlasse: Map<string, Set<string>>;
+}) {
+  const verfuegbareKlassen = useMemo(
+    () =>
+      Array.from(new Set(kinder.map((k) => k.klasse).filter(Boolean) as string[])).sort(),
+    [kinder],
+  );
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedKlasse, setSelectedKlasse] = useState<string>('');
+  const [selectedKlasse, setSelectedKlasse] = useState<string>(verfuegbareKlassen[0] ?? '');
   const [viewMode, setViewMode] = useState<ViewMode>('pro-spiel');
 
-  const supabase = createClient();
-
-  const loadInitialData = async () => {
-    setIsLoading(true);
-    try {
-      const { data: event } = await supabase
-        .from('events')
-        .select('id')
-        .eq('ist_aktiv', true)
-        .maybeSingle();
-      if (!event) {
-        setIsLoading(false);
-        return;
-      }
-      const eventId = event.id;
-
-      const [{ data: spieleData }, { data: kinderData }, { data: ergebnisseData }, { data: klasseSpieleData }] =
-        await Promise.all([
-          supabase.from('spiele').select('id, name, wertungstyp, einheit').order('name'),
-          supabase.from('kinder').select('id, vorname, nachname, klasse').eq('event_id', eventId),
-          supabase
-            .from('ergebnisse')
-            .select('id, kind_id, spiel_id, spielgruppe_id, wert_numeric')
-            .eq('event_id', eventId),
-          supabase.from('klasse_spiele').select('spiel_id, klasse:klassen!inner(name)'),
-        ]);
-
-      setSpiele((spieleData ?? []) as Spiel[]);
-      setKinder((kinderData ?? []) as Kind[]);
-      setErgebnisse((ergebnisseData ?? []) as Ergebnis[]);
-
-      const map = new Map<string, Set<string>>();
-      for (const row of klasseSpieleData ?? []) {
-        const klasseName = (row as any).klasse?.name as string | undefined;
-        if (!klasseName) continue;
-        if (!map.has(klasseName)) map.set(klasseName, new Set());
-        map.get(klasseName)!.add(row.spiel_id);
-      }
-      setSpielIdsProKlasse(map);
-
-      const klassenMitKindern = Array.from(
-        new Set((kinderData ?? []).map((k) => k.klasse).filter(Boolean) as string[]),
-      ).sort();
-      setVerfuegbareKlassen(klassenMitKindern);
-      if (klassenMitKindern.length > 0 && !selectedKlasse) {
-        setSelectedKlasse(klassenMitKindern[0]);
-      }
-    } catch (error) {
-      console.error('Fehler beim Laden der Daten:', error);
-    } finally {
-      setIsLoading(false);
+  // Wenn sich die verfügbaren Klassen ändern (nach erstem Daten-Load), Default setzen
+  React.useEffect(() => {
+    if (!selectedKlasse && verfuegbareKlassen.length > 0) {
+      setSelectedKlasse(verfuegbareKlassen[0]);
     }
-  };
+  }, [verfuegbareKlassen, selectedKlasse]);
 
-  useEffect(() => {
-    loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Rang+Punkte klassenweit über alle Ergebnisse vorberechnen
+  // Rang+Punkte klassenweit vorberechnen
   const rangMap = useMemo(() => {
     const kindKlasseMap = new Map(kinder.map((k) => [k.id, k.klasse]));
     const spielWertungstypMap = new Map(spiele.map((s) => [s.id, s.wertungstyp]));
@@ -120,7 +70,6 @@ export default function AuswertungDetailsPage() {
     );
   }, [ergebnisse, kinder, spiele]);
 
-  // Filterung auf gewählte Klasse
   const klassenKinder = useMemo(
     () => kinder.filter((k) => k.klasse === selectedKlasse),
     [kinder, selectedKlasse],
@@ -129,7 +78,6 @@ export default function AuswertungDetailsPage() {
   const klassenSpiele = useMemo(() => {
     const ids = spielIdsProKlasse.get(selectedKlasse);
     if (ids && ids.size > 0) return spiele.filter((s) => ids.has(s.id));
-    // Fallback: aus tatsächlich erfassten Ergebnissen ableiten
     const kindIds = new Set(klassenKinder.map((k) => k.id));
     const spielIdsAusErgebnissen = new Set(
       ergebnisse.filter((e) => kindIds.has(e.kind_id)).map((e) => e.spiel_id),
@@ -143,118 +91,75 @@ export default function AuswertungDetailsPage() {
   }, [ergebnisse, klassenKinder]);
 
   return (
-    <PageShell
-      title="Punktecheck"
-      description="Detaillierte Validierung der Punkteberechnung pro Klasse"
-      breadcrumbs={[
-        { label: 'Admin', href: '/admin' },
-        { label: 'Auswertung', href: '/admin/auswertung' },
-        { label: 'Punktecheck' },
-      ]}
-      actions={
-        <div className="flex gap-2">
-          <Link
-            href="/admin/auswertung"
-            className="inline-flex items-center h-9 px-3.5 rounded-md border border-slate-200 hover:bg-slate-50 text-[0.85rem] font-medium transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" /> Zurück zur Auswertung
-          </Link>
-          <Button variant="outline" size="sm" onClick={loadInitialData} disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Neu laden
-          </Button>
+    <div>
+      <div className="rounded-lg border bg-amber-50/60 px-4 py-3 mb-5 text-sm text-slate-700">
+        <strong className="font-semibold">So funktioniert die Punktevergabe:</strong> Rang und
+        Punkte werden klassenweit pro Spiel berechnet — alle Spielgruppen einer Klasse zählen
+        zusammen. Formel: <span className="font-mono">11 − Rang</span> für Rang 1–10, sonst 0
+        Punkte. Bei Gleichstand erhalten Kinder denselben Rang.
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4 mb-5">
+        <div className="min-w-[180px]">
+          <label className="block text-sm font-medium mb-2">Klasse</label>
+          <Select value={selectedKlasse} onValueChange={setSelectedKlasse}>
+            <SelectTrigger>
+              <SelectValue placeholder="Klasse auswählen" />
+            </SelectTrigger>
+            <SelectContent>
+              {verfuegbareKlassen.map((klasse) => (
+                <SelectItem key={klasse} value={klasse}>
+                  Klasse {klasse}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      }
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle>Punkteberechnung im Detail</CardTitle>
-          <CardDescription>
-            Rang und Punkte werden klassenweit pro Spiel berechnet. Formel:{' '}
-            <span className="font-mono">11 − Rang</span> für Rang 1–10, sonst 0 Punkte. Bei
-            Gleichstand erhalten Kinder denselben Rang.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Filter */}
-          <div className="flex flex-wrap items-end gap-4 mb-6">
-            <div className="min-w-[180px]">
-              <label className="block text-sm font-medium mb-2">Klasse</label>
-              <Select
-                value={selectedKlasse}
-                onValueChange={setSelectedKlasse}
-                disabled={isLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Klasse auswählen" />
-                </SelectTrigger>
-                <SelectContent>
-                  {verfuegbareKlassen.map((klasse) => (
-                    <SelectItem key={klasse} value={klasse}>
-                      Klasse {klasse}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
-            <div className="flex gap-1 bg-slate-100 rounded-md p-1">
-              <button
-                onClick={() => setViewMode('pro-spiel')}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  viewMode === 'pro-spiel'
-                    ? 'bg-white shadow-sm text-slate-900'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Pro Spiel
-              </button>
-              <button
-                onClick={() => setViewMode('pro-kind')}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  viewMode === 'pro-kind'
-                    ? 'bg-white shadow-sm text-slate-900'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Pro Kind
-              </button>
-            </div>
-          </div>
+        <div className="flex gap-1 bg-slate-100 rounded-md p-1">
+          <button
+            onClick={() => setViewMode('pro-spiel')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              viewMode === 'pro-spiel'
+                ? 'bg-white shadow-sm text-slate-900'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Pro Spiel
+          </button>
+          <button
+            onClick={() => setViewMode('pro-kind')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              viewMode === 'pro-kind'
+                ? 'bg-white shadow-sm text-slate-900'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Pro Kind
+          </button>
+        </div>
+      </div>
 
-          {/* Content */}
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-            </div>
-          ) : !selectedKlasse ? (
-            <div className="text-center py-8 text-slate-500">Bitte Klasse wählen.</div>
-          ) : viewMode === 'pro-spiel' ? (
-            <ProSpielView
-              spiele={klassenSpiele}
-              ergebnisse={klassenErgebnisse}
-              kinder={klassenKinder}
-              rangMap={rangMap}
-            />
-          ) : (
-            <ProKindView
-              spiele={klassenSpiele}
-              ergebnisse={klassenErgebnisse}
-              kinder={klassenKinder}
-              rangMap={rangMap}
-            />
-          )}
-        </CardContent>
-      </Card>
-    </PageShell>
+      {!selectedKlasse ? (
+        <div className="text-center py-8 text-slate-500">Bitte Klasse wählen.</div>
+      ) : viewMode === 'pro-spiel' ? (
+        <ProSpielView
+          spiele={klassenSpiele}
+          ergebnisse={klassenErgebnisse}
+          kinder={klassenKinder}
+          rangMap={rangMap}
+        />
+      ) : (
+        <ProKindView
+          spiele={klassenSpiele}
+          ergebnisse={klassenErgebnisse}
+          kinder={klassenKinder}
+          rangMap={rangMap}
+        />
+      )}
+    </div>
   );
 }
-
-// ─── Pro Spiel ────────────────────────────────────────────────────────────────
 
 function ProSpielView({
   spiele,
@@ -296,7 +201,6 @@ function ProSpielView({
               <div>
                 <h3 className="font-semibold text-slate-900">{spiel.name}</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {spiel.wertungstyp} ·{' '}
                   {istKleinerBesser(spiel.wertungstyp) ? 'weniger ist besser' : 'mehr ist besser'}
                 </p>
               </div>
@@ -343,8 +247,6 @@ function ProSpielView({
   );
 }
 
-// ─── Pro Kind ─────────────────────────────────────────────────────────────────
-
 function ProKindView({
   spiele,
   ergebnisse,
@@ -359,9 +261,7 @@ function ProKindView({
   if (kinder.length === 0) {
     return <div className="text-center py-8 text-slate-500">Keine Kinder in dieser Klasse.</div>;
   }
-  const spielMap = new Map(spiele.map((s) => [s.id, s]));
 
-  // Berechne Gesamtpunkte pro Kind, sortiere absteigend
   const kinderMitPunkten = kinder
     .map((kind) => {
       const kindErgebnisse = ergebnisse.filter((e) => e.kind_id === kind.id);

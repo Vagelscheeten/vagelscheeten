@@ -4,15 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import Link from 'next/link';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { CheckCircle, AlertCircle, XCircle, Crown, Loader2 } from 'lucide-react';
+import { Crown, Loader2 } from 'lucide-react';
 import { PageShell } from '@/components/admin';
 import { berechnePunkteFuerRang, berechneRangePunkteProKlasse } from '@/lib/points';
+import { Punktecheck } from './_components/Punktecheck';
 
 // Datenmodelle/Interfaces
 interface Kind {
@@ -69,14 +67,6 @@ interface Ergebnis {
   punkte?: number;
 }
 
-interface GruppeSpielStatus {
-  spielgruppe_id: string;
-  spiel_id: string;
-  status: 'abgeschlossen' | 'teilweise' | 'offen' | 'nicht_zugewiesen';
-  anzahlErgebnisse: number;
-  anzahlKinder: number;
-}
-
 export default function AuswertungAdmin() {
   // Aktiver Tab/Sektion
   const [activeTab, setActiveTab] = useState('live');
@@ -101,22 +91,13 @@ export default function AuswertungAdmin() {
 
   // State und Berechnete Daten
   const [isLoading, setIsLoading] = useState(true);
-  const [matrixDaten, setMatrixDaten] = useState<GruppeSpielStatus[]>([]);
   const [liveZwischenstand, setLiveZwischenstand] = useState<{
     kinder: any[];
     fortschritt: { abgeschlossen: number; gesamt: number };
   }>({ kinder: [], fortschritt: { abgeschlossen: 0, gesamt: 0 } });
   const [gesamtauswertungDaten, setGesamtauswertungDaten] = useState<any[]>([]);
   const [isLoadingGesamtauswertung, setIsLoadingGesamtauswertung] = useState(true);
-  
-  // Dialog für Detailansicht
-  const [detailViewOpen, setDetailViewOpen] = useState(false);
-  const [detailViewData, setDetailViewData] = useState<{
-    spielgruppe: Spielgruppe | null;
-    spiel: Spiel | null;
-    ergebnisse: Ergebnis[];
-  }>({ spielgruppe: null, spiel: null, ergebnisse: [] });
-  
+
   const supabase = createClient();
 
   // Lade Daten beim ersten Rendern
@@ -244,11 +225,6 @@ export default function AuswertungAdmin() {
         setSelectedKlasse(klassen[0]);
       }
 
-      // Verarbeite Daten für Matrix
-      if (spieleData && gruppenData && ergebnisseData && kinderData && zuordnungData) {
-        await berechneFortschrittMatrix(spieleData, gruppenData, ergebnisseData, zuordnungData, spielMap);
-      }
-      
     } catch (error) {
       console.error('Fehler beim Laden der Daten:', error);
     } finally {
@@ -356,56 +332,6 @@ export default function AuswertungAdmin() {
     return verfuegbareSpiele.filter((s) => spielIdsAusErgebnissen.has(s.id));
   };
   
-  // Berechnet die Fortschritt-Matrix für alle Gruppen und Spiele
-  const berechneFortschrittMatrix = (
-    spieleData: Spiel[],
-    gruppenData: Spielgruppe[],
-    ergebnisseData: Ergebnis[],
-    zuordnungData: KindSpielgruppeZuordnung[],
-    spielMap: Map<string, Set<string>>,
-  ) => {
-    const matrix: GruppeSpielStatus[] = [];
-
-    for (const gruppe of gruppenData) {
-      const spieleFuerKlasse = ermittleSpieleProKlasse(gruppe.klasse, ergebnisseData, spieleData, spielMap);
-      const zugewieseneIds = new Set(spieleFuerKlasse.map((s) => s.id));
-
-      const anzahlKinder = zuordnungData.filter((z) => z.spielgruppe_id === gruppe.id).length;
-
-      for (const spiel of spieleData) {
-        if (!zugewieseneIds.has(spiel.id)) {
-          matrix.push({
-            spielgruppe_id: gruppe.id,
-            spiel_id: spiel.id,
-            status: 'nicht_zugewiesen',
-            anzahlErgebnisse: 0,
-            anzahlKinder: 0,
-          });
-          continue;
-        }
-
-        const anzahlErgebnisse = ergebnisseData.filter(
-          (e) => e.spiel_id === spiel.id && e.spielgruppe_id === gruppe.id,
-        ).length;
-
-        let status: 'abgeschlossen' | 'teilweise' | 'offen' = 'offen';
-        if (anzahlErgebnisse > 0) {
-          status = anzahlErgebnisse >= anzahlKinder ? 'abgeschlossen' : 'teilweise';
-        }
-
-        matrix.push({
-          spielgruppe_id: gruppe.id,
-          spiel_id: spiel.id,
-          status,
-          anzahlErgebnisse,
-          anzahlKinder,
-        });
-      }
-    }
-
-    setMatrixDaten(matrix);
-  };
-
   // Berechnet Punkte für eine Reihe von Ergebnissen.
   // Pro (Kind, Spiel) gibt es genau einen Datensatz (Mehrfachversuche werden vor dem
   // Speichern bereits aggregiert), daher reicht eine einfache Summe der Rangpunkte.
@@ -637,66 +563,18 @@ export default function AuswertungAdmin() {
     });
   };
 
-  // Öffnet die Detailansicht für eine bestimmte Gruppe und ein Spiel
-  const oeffneDetailAnsicht = (gruppeId: string, spielId: string) => {
-    const gruppe = spielgruppen.find(g => g.id === gruppeId);
-    const spiel = spiele.find(s => s.id === spielId);
-    
-    if (!gruppe || !spiel) return;
-    
-    // Finde alle Ergebnisse für diese Kombination
-    const detailErgebnisse = ergebnisse.filter(
-      e => e.spielgruppe_id === gruppeId && e.spiel_id === spielId
-    ).map(ergebnis => {
-      const kind = kinder.find(k => k.id === ergebnis.kind_id);
-      return { ...ergebnis, kind };
-    });
-    
-    setDetailViewData({
-      spielgruppe: gruppe,
-      spiel,
-      ergebnisse: detailErgebnisse
-    });
-    
-    setDetailViewOpen(true);
-  };
-
-  // Statusanzeige für die Matrix (Farben und Symbole)
-  const StatusIcon = ({ status }: { status: 'abgeschlossen' | 'teilweise' | 'offen' | 'nicht_zugewiesen' }) => {
-    switch (status) {
-      case 'abgeschlossen':
-        return <CheckCircle className="text-green-500 h-5 w-5" aria-label="Abgeschlossen" />;
-      case 'teilweise':
-        return <AlertCircle className="text-amber-500 h-5 w-5" aria-label="Teilweise" />;
-      case 'offen':
-        return <XCircle className="text-red-500 h-5 w-5" aria-label="Offen" />;
-      case 'nicht_zugewiesen':
-        return <XCircle className="text-gray-300 h-5 w-5" aria-label="Nicht vorgesehen" />;
-      default:
-        return null;
-    }
-  };
-
   // UI-Darstellung
   return (
     <PageShell
       title="Auswertung & Ergebnisse"
-      description="Live-Zwischenstand, Fortschritt und Abschlussauswertung."
+      description="Live-Zwischenstand, Punktecheck und Königspaare."
       breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Auswertung' }]}
-      actions={
-        <Link
-          href="/admin/auswertung/details"
-          className="inline-flex items-center h-9 px-3.5 rounded-md bg-admin-ink text-white hover:bg-admin-ink/90 text-[0.85rem] font-medium transition-colors"
-        >
-          Punktecheck
-        </Link>
-      }
     >
       <Tabs defaultValue="live" value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="live">Live-Zwischenstand</TabsTrigger>
-          <TabsTrigger value="matrix">Fortschritt-Matrix</TabsTrigger>
-          <TabsTrigger value="auswertung">Abschlussauswertung</TabsTrigger>
+          <TabsTrigger value="punktecheck">Punktecheck</TabsTrigger>
+          <TabsTrigger value="auswertung">Königspaare</TabsTrigger>
         </TabsList>
         
         {/* 1. Tab: Live-Zwischenstand */}
@@ -811,108 +689,28 @@ export default function AuswertungAdmin() {
           </Card>
         </TabsContent>
         
-        {/* 2. Tab: Fortschritt-Matrix */}
-        <TabsContent value="matrix">
+        {/* 2. Tab: Punktecheck — pro Spiel oder pro Kind */}
+        <TabsContent value="punktecheck">
           <Card className="mb-8">
             <CardHeader>
-              <CardTitle>Fortschritt-Matrix</CardTitle>
-              <CardDescription>Status aller Spiele nach Gruppen</CardDescription>
+              <CardTitle>Punktecheck</CardTitle>
+              <CardDescription>
+                Detaillierte Nachvollziehbarkeit der Punkteberechnung pro Klasse
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {spielgruppen.length > 0 && spiele.length > 0 ? (
-                <div className="relative overflow-x-auto" style={{ maxWidth: '100%' }}>
-                  <div className="min-w-[800px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="sticky left-0 z-10 bg-white">Gruppe</TableHead>
-                          {spiele.map(spiel => (
-                            <TableHead key={spiel.id} className="min-w-[100px]">
-                              {spiel.name}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {spielgruppen.map(gruppe => (
-                          <TableRow key={gruppe.id}>
-                            <TableCell className="font-medium sticky left-0 z-10 bg-white">
-                              {gruppe.name} <span className="text-xs text-gray-500">(Klasse {gruppe.klasse})</span>
-                            </TableCell>
-                            
-                            {spiele.map(spiel => {
-                              const matrixItem = matrixDaten.find(
-                                item => item.spielgruppe_id === gruppe.id && item.spiel_id === spiel.id
-                              );
-                              
-                              // Wir können hier keinen async/await-Aufruf machen, da render-Funktionen nicht async sein können
-                              // Stattdessen zeigen wir den Status basierend auf matrixDaten an, welche bereits berechnet wurden
-                              const hatErgebnisse = matrixItem && matrixItem.status !== 'nicht_zugewiesen';
-                              
-                              return (
-                                <TableCell 
-                                  key={spiel.id}
-                                  className={`cursor-pointer ${hatErgebnisse ? 'hover:bg-gray-100' : 'bg-gray-50'}`}
-                                  onClick={() => hatErgebnisse && oeffneDetailAnsicht(gruppe.id, spiel.id)}
-                                  title={hatErgebnisse ? 'Details anzeigen' : 'Spiel nicht für diese Klasse vorgesehen'}
-                                >
-                                  <div className="flex flex-col items-center justify-center">
-                                    {!hatErgebnisse ? (
-                                      <>
-                                        <XCircle className="text-gray-300 h-5 w-5" aria-label="Spiel nicht für diese Klasse vorgesehen" />
-                                        <span className="text-xs text-gray-400 mt-1">Nicht vorgesehen</span>
-                                      </>
-                                    ) : matrixItem ? (
-                                      <>
-                                        <StatusIcon status={matrixItem.status} />
-                                        <span className="text-xs mt-1">
-                                          {matrixItem.anzahlErgebnisse}/{matrixItem.anzahlKinder}
-                                        </span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <XCircle className="text-gray-300 h-5 w-5" aria-label="Keine Daten" />
-                                        <span className="text-xs text-gray-400 mt-1">Keine Daten</span>
-                                      </>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+              {isLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
               ) : (
-                <div className="text-center py-6 text-gray-500">
-                  {isLoading ? 'Lade Daten...' : 'Keine Spiele oder Gruppen vorhanden.'}
-                </div>
+                <Punktecheck
+                  kinder={kinder}
+                  spiele={spiele}
+                  ergebnisse={ergebnisse}
+                  spielIdsProKlasse={spielIdsProKlasse}
+                />
               )}
-              
-              <div className="flex gap-4 items-center mt-6">
-                <div className="flex items-center flex-wrap gap-4 mt-4">
-                <div className="flex items-center">
-                  <CheckCircle className="text-green-500 h-4 w-4 mr-1" />
-                  <span className="text-sm">Abgeschlossen</span>
-                </div>
-                <div className="flex items-center">
-                  <AlertCircle className="text-amber-500 h-4 w-4 mr-1" />
-                  <span className="text-sm">Teilweise</span>
-                </div>
-                <div className="flex items-center">
-                  <XCircle className="text-red-500 h-4 w-4 mr-1" />
-                  <span className="text-sm">Offen</span>
-                </div>
-                <div className="flex items-center">
-                  <XCircle className="text-gray-300 h-4 w-4 mr-1" />
-                  <span className="text-sm">Nicht vorgesehen</span>
-                </div>
-              </div>
-              
-
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -982,59 +780,6 @@ export default function AuswertungAdmin() {
           </Card>
         </TabsContent>
       </Tabs>
-      
-      {/* Detailansicht Dialog */}
-      <Dialog open={detailViewOpen} onOpenChange={setDetailViewOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {detailViewData.spielgruppe?.name}: {detailViewData.spiel?.name}
-            </DialogTitle>
-            <DialogDescription>
-              Ergebnisse und Details
-            </DialogDescription>
-          </DialogHeader>
-          
-          {detailViewData.ergebnisse.length > 0 ? (
-            <div className="overflow-y-auto max-h-96">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Kind</TableHead>
-                    <TableHead>Wert</TableHead>
-                    <TableHead>Erfasst am</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detailViewData.ergebnisse.map(ergebnis => (
-                    <TableRow key={ergebnis.id}>
-                      <TableCell>
-                        {ergebnis.kind?.vorname} {ergebnis.kind?.nachname}
-                      </TableCell>
-                      <TableCell>
-                        {ergebnis.wert_numeric} {detailViewData.spiel?.einheit}
-                      </TableCell>
-                      <TableCell>
-                        {new Date(ergebnis.erfasst_am).toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-4 text-gray-500">
-              Keine Ergebnisse für diese Kombination vorhanden.
-            </div>
-          )}
-          
-          <div className="flex justify-end mt-4">
-            <Button onClick={() => setDetailViewOpen(false)}>
-              Schließen
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   );
 }
