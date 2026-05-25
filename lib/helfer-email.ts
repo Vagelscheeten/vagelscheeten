@@ -277,60 +277,59 @@ export function buildEmailFuerAnmeldung(
     <p>${familienZuteilungen.length > 1 ? `Folgende ${familienZuteilungen.length} Aufgaben wurden` : 'Folgende Aufgabe wurde'} zugeteilt:</p>
 
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
-      ${familienZuteilungen
-        .map(
-          (z, i) => `
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;${i > 0 ? ' margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e2e8f0;' : ''}">
-          <tr>
-            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
-            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.titel)}${z.slotStandort ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotStandort)})</span>` : ''}</td>
-          </tr>
-          ${z.beschreibung
-            ? `
-          <tr>
-            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
-            <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
-          </tr>`
-            : ''}
-          ${z.slotZeit
-            ? `
-          <tr>
-            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Einsatz-Zeit:</td>
-            <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.slotZeit)}${z.slotTitel ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotTitel)})</span>` : ''}</td>
-          </tr>`
-            : z.zeitfenster
-              ? `
-          <tr>
-            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
-            <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>
-          </tr>`
-              : ''}
-        </table>
-      `,
-        )
-        .join('')}
-      ${kindEssensspenden.length > 0
-        ? `
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-          ${kindEssensspenden
-            .map((e, i) => {
-              const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-              const titel = escapeHtml(spende?.titel || 'Essensspende');
-              const beschreibung = spende?.beschreibung
-                ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
-                : '';
-              const label = kindEssensspenden.length === 1
-                ? 'Essensspende:'
-                : `${i + 1}. Essensspende:`;
-              return `
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <colgroup>
+          <col style="width: 140px;">
+          <col>
+        </colgroup>
+        ${familienZuteilungen
+          .map((z, i) => {
+            const aufgabeSepStyle = i > 0 ? 'padding-top: 16px; border-top: 1px dashed #e2e8f0;' : '';
+            const aufgabeRow = `
               <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${label}</td>
-                <td style="padding: 8px 0;"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</td>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${aufgabeSepStyle}">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
+                <td style="padding: 8px 0; font-weight: 600; ${aufgabeSepStyle}">${escapeHtml(z.titel)}${z.slotStandort ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotStandort)})</span>` : ''}</td>
               </tr>`;
-            })
-            .join('')}
-        </table>`
-        : ''}
+            const detailsRow = z.beschreibung
+              ? `
+              <tr>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
+                <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
+              </tr>`
+              : '';
+            const zeitRow = z.slotZeit
+              ? `
+              <tr>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Einsatz-Zeit:</td>
+                <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.slotZeit)}${z.slotTitel ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotTitel)})</span>` : ''}</td>
+              </tr>`
+              : z.zeitfenster
+                ? `
+              <tr>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
+                <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>
+              </tr>`
+                : '';
+            return aufgabeRow + detailsRow + zeitRow;
+          })
+          .join('')}
+        ${kindEssensspenden
+          .map((e, i) => {
+            const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+            const titel = escapeHtml(spende?.titel || 'Essensspende');
+            const beschreibung = spende?.beschreibung
+              ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
+              : '';
+            const label = kindEssensspenden.length === 1 ? 'Essensspende:' : `${i + 1}. Essensspende:`;
+            const sepStyle = i === 0 ? 'padding-top: 16px; border-top: 1px solid #e2e8f0;' : '';
+            return `
+              <tr>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${sepStyle}">${label}</td>
+                <td style="padding: 8px 0; ${sepStyle}"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</td>
+              </tr>`;
+          })
+          .join('')}
+      </table>
     </div>
 
     ${kontext.mitbringHtml}
