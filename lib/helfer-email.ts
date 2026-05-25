@@ -144,7 +144,7 @@ export async function loadEmailKontext(
         .eq('event_id', eventId),
       supabaseAdmin
         .from('essensspenden_rueckmeldungen')
-        .select('anmeldung_id, kind_identifier, menge, anmerkung, spende:spende_id(titel, beschreibung)')
+        .select('anmeldung_id, spende_id, kind_identifier, menge, anmerkung, spende:spende_id(id, titel, beschreibung)')
         .eq('event_id', eventId)
         .eq('bestaetigt', true),
       supabaseAdmin
