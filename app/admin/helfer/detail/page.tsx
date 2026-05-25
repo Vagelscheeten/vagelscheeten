@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Check, X, GripVertical, ArrowLeft, AlertCircle } from 'lucide-react';
+import { Loader2, Check, X, GripVertical, ArrowLeft, AlertCircle, Search } from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -85,9 +85,6 @@ export default function DetailZuteilungPage() {
           .not('freitext', 'is', null),
       ]);
 
-      // Legacy: Alte 'springer'-Sondereinträge ausräumen — Pool ist jetzt der Springer-Pool.
-      await supabase.from('helfer_spiel_zuteilungen').delete().eq('spiel_id', 'springer');
-
       setSpiele(spieleRes.data || []);
 
       const freitextByKind: Record<string, string> = {};
@@ -159,17 +156,20 @@ export default function DetailZuteilungPage() {
       });
       setSaveState('saving');
 
-      const supabase = createClient();
       try {
-        await supabase.from('helfer_spiel_zuteilungen').delete().eq('helfer_id', helferId);
-        const { error } = await supabase
-          .from('helfer_spiel_zuteilungen')
-          .insert({ helfer_id: helferId, spiel_id: spielId });
-        if (error) throw error;
+        const res = await fetch('/api/helfer/spiel-zuteilungen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'assign', helferId, spielId }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({ error: 'Server-Fehler' }));
+          throw new Error(error);
+        }
         flashSaved();
       } catch (e: any) {
         setSaveState('error');
-        toast.error('Fehler beim Speichern: ' + e.message);
+        toast.error('Fehler beim Speichern: ' + (e.message || e));
         setZuteilungen((prev) => {
           const next = { ...prev };
           next[spielId] = (next[spielId] || []).filter((h) => h !== helferId);
@@ -193,17 +193,20 @@ export default function DetailZuteilungPage() {
       });
       setSaveState('saving');
 
-      const supabase = createClient();
       try {
-        const { error } = await supabase
-          .from('helfer_spiel_zuteilungen')
-          .delete()
-          .eq('helfer_id', helferId);
-        if (error) throw error;
+        const res = await fetch('/api/helfer/spiel-zuteilungen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove', helferId }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json().catch(() => ({ error: 'Server-Fehler' }));
+          throw new Error(error);
+        }
         flashSaved();
       } catch (e: any) {
         setSaveState('error');
-        toast.error('Fehler beim Speichern: ' + e.message);
+        toast.error('Fehler beim Speichern: ' + (e.message || e));
         setZuteilungen((prev) => {
           const next = { ...prev };
           next[currentSpiel] = [...(next[currentSpiel] || []), helferId];
@@ -258,8 +261,8 @@ export default function DetailZuteilungPage() {
   }
 
   return (
-    <main className="p-4 md:p-8 max-w-6xl">
-      <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
+    <main className="p-3 md:p-6 max-w-[1400px]">
+      <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
         <div className="min-w-0">
           <Link
             href="/admin/helfer"
@@ -269,52 +272,56 @@ export default function DetailZuteilungPage() {
           </Link>
           <h1 className="text-2xl font-bold text-slate-900">Spielbetreuer-Zuteilung</h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            Helfer per Drag &amp; Drop oder Dropdown den Spielen zuweisen. Maximal 2 Betreuer pro Spiel.
-            Nicht zugewiesene Helfer bleiben automatisch als Springer im Pool.
+            Helfer aus dem Pool per Drag &amp; Drop oder Dropdown auf die Spiele ziehen. Maximal 2
+            Betreuer pro Spiel. Nicht zugewiesene Helfer bleiben automatisch als Springer im Pool.
           </p>
         </div>
         <SaveIndicator state={saveState} />
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-700">Spiele ({spiele.length})</h2>
-            <div className="text-xs text-slate-400">
-              {countComplete(spiele, zuteilungen)} / {spiele.length} komplett
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {spiele.map((spiel) => {
-              const ids = zuteilungen[spiel.id] || [];
-              const cardHelfer = ids
-                .map((id) => helfer.find((h) => h.id === id))
-                .filter((h): h is Helfer => Boolean(h));
-              return (
-                <SpielCard
-                  key={spiel.id}
-                  spiel={spiel}
-                  helfer={cardHelfer}
-                  allSpiele={spiele}
-                  zuteilungen={zuteilungen}
-                  isFull={cardHelfer.length >= MAX_PER_SPIEL}
-                  onRemove={removeToPool}
-                  onReassign={assignToSpiel}
-                />
-              );
-            })}
-          </div>
-        </section>
+        <div className="flex flex-col lg:flex-row gap-3 lg:gap-5 items-start">
+          {/* Pool — sticky top on mobile, sticky left on desktop */}
+          <Pool
+            helfer={filteredPool}
+            totalInPool={poolHelfer.length}
+            filter={filter}
+            onFilterChange={setFilter}
+            spiele={spiele}
+            zuteilungen={zuteilungen}
+            onAssign={assignToSpiel}
+          />
 
-        <PoolSection
-          helfer={filteredPool}
-          totalInPool={poolHelfer.length}
-          filter={filter}
-          onFilterChange={setFilter}
-          spiele={spiele}
-          zuteilungen={zuteilungen}
-          onAssign={assignToSpiel}
-        />
+          {/* Spiele */}
+          <section className="flex-1 min-w-0 w-full">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-sm font-semibold text-slate-700">Spiele ({spiele.length})</h2>
+              <div className="text-xs text-slate-400">
+                {countComplete(spiele, zuteilungen)} / {spiele.length} komplett
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {spiele.map((spiel) => {
+                const ids = zuteilungen[spiel.id] || [];
+                const cardHelfer = ids
+                  .map((id) => helfer.find((h) => h.id === id))
+                  .filter((h): h is Helfer => Boolean(h));
+                return (
+                  <SpielCard
+                    key={spiel.id}
+                    spiel={spiel}
+                    helfer={cardHelfer}
+                    allSpiele={spiele}
+                    zuteilungen={zuteilungen}
+                    isFull={cardHelfer.length >= MAX_PER_SPIEL}
+                    onRemove={removeToPool}
+                    onReassign={assignToSpiel}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        </div>
 
         <DragOverlay dropAnimation={null}>
           {activeDragHelfer ? (
@@ -360,6 +367,155 @@ function SaveIndicator({ state }: { state: SaveState }) {
       <AlertCircle size={12} />
       Fehler beim Speichern
     </span>
+  );
+}
+
+function Pool({
+  helfer,
+  totalInPool,
+  filter,
+  onFilterChange,
+  spiele,
+  zuteilungen,
+  onAssign,
+}: {
+  helfer: Helfer[];
+  totalInPool: number;
+  filter: string;
+  onFilterChange: (s: string) => void;
+  spiele: Spiel[];
+  zuteilungen: Record<string, string[]>;
+  onAssign: (helferId: string, spielId: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: 'pool' });
+  return (
+    <aside
+      ref={setNodeRef}
+      className={`
+        w-full lg:w-72 lg:shrink-0
+        sticky top-0 z-20
+        lg:self-start lg:max-h-[calc(100vh-1.5rem)]
+        bg-white border rounded-xl
+        flex flex-col
+        transition-colors
+        ${isOver ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-slate-200'}
+      `}
+    >
+      <div className="p-3 border-b border-slate-100 shrink-0">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="text-sm font-semibold text-slate-700">
+            Pool <span className="text-xs font-normal text-slate-400">/ Springer</span>
+          </h2>
+          <span className="text-xs font-medium text-slate-500">{totalInPool}</span>
+        </div>
+        <div className="relative">
+          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => onFilterChange(e.target.value)}
+            placeholder="Suchen…"
+            className="w-full pl-6 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-300 bg-white"
+          />
+        </div>
+      </div>
+
+      {totalInPool === 0 ? (
+        <p className="text-xs text-slate-400 italic p-3">Alle Helfer sind zugewiesen.</p>
+      ) : helfer.length === 0 ? (
+        <p className="text-xs text-slate-400 italic p-3">Kein Treffer für „{filter}".</p>
+      ) : (
+        <div
+          className="
+            flex lg:flex-col gap-2
+            overflow-x-auto lg:overflow-y-auto
+            p-3
+            max-h-[160px] lg:max-h-none
+          "
+        >
+          {helfer.map((h) => (
+            <PoolHelferCard
+              key={h.id}
+              helfer={h}
+              spiele={spiele}
+              zuteilungen={zuteilungen}
+              onAssign={(spielId) => onAssign(h.id, spielId)}
+            />
+          ))}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function PoolHelferCard({
+  helfer,
+  spiele,
+  zuteilungen,
+  onAssign,
+}: {
+  helfer: Helfer;
+  spiele: Spiel[];
+  zuteilungen: Record<string, string[]>;
+  onAssign: (spielId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: helfer.id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`
+        bg-white border border-slate-200 rounded-lg p-2
+        shrink-0 lg:shrink min-w-[180px] lg:min-w-0
+        ${isDragging ? 'opacity-30' : ''}
+      `}
+    >
+      <div className="flex items-start gap-1.5 mb-1.5">
+        <button
+          {...attributes}
+          {...listeners}
+          className="touch-none text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-0.5 -ml-0.5 mt-0.5"
+          aria-label="Ziehen"
+        >
+          <GripVertical size={14} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="font-medium text-[13px] text-slate-800 truncate">{helfer.name}</span>
+            {helfer.klasse && (
+              <span className="text-[11px] text-slate-400">({helfer.klasse})</span>
+            )}
+            {helfer.istExtern && (
+              <span className="text-[9px] font-semibold uppercase tracking-wider bg-purple-100 text-purple-700 px-1 py-0.5 rounded">
+                extern
+              </span>
+            )}
+          </div>
+          {helfer.freitext && (
+            <div className="text-[10px] text-slate-500 italic mt-1 border-l-2 border-amber-200 pl-1.5 line-clamp-2">
+              „{helfer.freitext}"
+            </div>
+          )}
+        </div>
+      </div>
+      <select
+        className="w-full text-[11px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white"
+        value=""
+        onChange={(e) => {
+          if (e.target.value) onAssign(e.target.value);
+        }}
+      >
+        <option value="">Zuweisen…</option>
+        {spiele.map((s) => {
+          const full = (zuteilungen[s.id]?.length ?? 0) >= MAX_PER_SPIEL;
+          return (
+            <option key={s.id} value={s.id} disabled={full}>
+              {s.name}
+              {full ? ' (komplett)' : ''}
+            </option>
+          );
+        })}
+      </select>
+    </div>
   );
 }
 
@@ -500,138 +656,6 @@ function AssignedHelferRow({
       >
         <X size={14} />
       </button>
-    </div>
-  );
-}
-
-function PoolSection({
-  helfer,
-  totalInPool,
-  filter,
-  onFilterChange,
-  spiele,
-  zuteilungen,
-  onAssign,
-}: {
-  helfer: Helfer[];
-  totalInPool: number;
-  filter: string;
-  onFilterChange: (s: string) => void;
-  spiele: Spiel[];
-  zuteilungen: Record<string, string[]>;
-  onAssign: (helferId: string, spielId: string) => void;
-}) {
-  const { isOver, setNodeRef } = useDroppable({ id: 'pool' });
-  return (
-    <section
-      ref={setNodeRef}
-      className={`border rounded-xl p-4 transition-colors ${
-        isOver
-          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-200'
-          : 'bg-slate-50 border-slate-200'
-      }`}
-    >
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-700">
-            Pool / Springer ({totalInPool})
-          </h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            Diese Helfer bleiben als Reserve.
-          </p>
-        </div>
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => onFilterChange(e.target.value)}
-          placeholder="Suchen…"
-          className="px-2.5 py-1 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-300 bg-white"
-        />
-      </div>
-      {totalInPool === 0 ? (
-        <p className="text-xs text-slate-400 italic">Alle Helfer sind einem Spiel zugewiesen.</p>
-      ) : helfer.length === 0 ? (
-        <p className="text-xs text-slate-400 italic">Kein Treffer für „{filter}".</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {helfer.map((h) => (
-            <PoolHelferCard
-              key={h.id}
-              helfer={h}
-              spiele={spiele}
-              zuteilungen={zuteilungen}
-              onAssign={(spielId) => onAssign(h.id, spielId)}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function PoolHelferCard({
-  helfer,
-  spiele,
-  zuteilungen,
-  onAssign,
-}: {
-  helfer: Helfer;
-  spiele: Spiel[];
-  zuteilungen: Record<string, string[]>;
-  onAssign: (spielId: string) => void;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: helfer.id });
-  return (
-    <div
-      ref={setNodeRef}
-      className={`bg-white border border-slate-200 rounded-lg p-2.5 ${
-        isDragging ? 'opacity-30' : ''
-      }`}
-    >
-      <div className="flex items-start gap-1.5 mb-1.5">
-        <button
-          {...attributes}
-          {...listeners}
-          className="touch-none text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-0.5 -ml-0.5 mt-0.5"
-          aria-label="Ziehen"
-        >
-          <GripVertical size={14} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="font-medium text-sm text-slate-800 truncate">{helfer.name}</span>
-            {helfer.klasse && <span className="text-[11px] text-slate-400">({helfer.klasse})</span>}
-            {helfer.istExtern && (
-              <span className="text-[9px] font-semibold uppercase tracking-wider bg-purple-100 text-purple-700 px-1 py-0.5 rounded">
-                extern
-              </span>
-            )}
-          </div>
-          {helfer.freitext && (
-            <div className="text-[11px] text-slate-500 italic mt-1 border-l-2 border-amber-200 pl-2">
-              „{helfer.freitext}"
-            </div>
-          )}
-        </div>
-      </div>
-      <select
-        className="w-full text-xs border border-slate-200 rounded-md px-2 py-1.5 text-slate-600 bg-white"
-        value=""
-        onChange={(e) => {
-          if (e.target.value) onAssign(e.target.value);
-        }}
-      >
-        <option value="">Zuweisen…</option>
-        {spiele.map((s) => {
-          const full = (zuteilungen[s.id]?.length ?? 0) >= MAX_PER_SPIEL;
-          return (
-            <option key={s.id} value={s.id} disabled={full}>
-              {s.name}
-              {full ? ' (komplett)' : ''}
-            </option>
-          );
-        })}
-      </select>
     </div>
   );
 }
