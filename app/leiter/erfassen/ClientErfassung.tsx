@@ -5,7 +5,7 @@ import type { Database } from '@/lib/database.types'; // Korrekter Import der Da
 import { KindAuswahl, SpielAuswahl, ErgebnisErfassung } from './ErfassungsSchritte';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut } from 'lucide-react';
+import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -660,14 +660,15 @@ export default function ClientErfassung({
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
-                          {spiel.zeitlimit_sekunden && (
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              {spiel.zeitlimit_sekunden}s Zeitlimit{spiel.einheit ? ` · pro ${spiel.einheit} 1 Punkt` : ''}
+                          {spiel.ort ? (
+                            <div className="text-xs text-slate-500 mt-0.5 inline-flex items-center gap-1">
+                              <MapPin size={11} className="shrink-0" />
+                              {spiel.ort}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap">
-                          {count} {count === 1 ? 'Erg.' : 'Erg.'}
+                          {count} Erg.
                         </div>
                       </div>
                     </button>
@@ -698,8 +699,14 @@ export default function ClientErfassung({
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
-                            <div className="text-xs text-green-700 mt-0.5">
-                              ✓ Abgeschlossen · {count} Ergebnisse
+                            <div className="text-xs text-green-700 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span>✓ Abgeschlossen · {count} Ergebnisse</span>
+                              {spiel.ort && (
+                                <span className="inline-flex items-center gap-1 text-slate-500">
+                                  <MapPin size={11} className="shrink-0" />
+                                  {spiel.ort}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
