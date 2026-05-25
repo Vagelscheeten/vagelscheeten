@@ -448,7 +448,7 @@ export function buildEmailFuerAnmeldung(
                 <td colspan="2" style="padding-top: 14px;">
                   <div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; font-size: 14px; color: #78350f; border-radius: 4px;">
                     Bitte verseht alle eure Kannen und Kuchenbehälter mit Namen!<br>
-                    <strong>Kuchen- und Muffin-Abgabe von 9:00 - 12:00 Uhr in der Kaffeebar.</strong>
+                    <strong>Kuchen- und Muffin-Abgabe von 9:00 - 12:00 Uhr in der Cafeteria.</strong>
                   </div>
                 </td>
               </tr>`
