@@ -35,7 +35,7 @@ const adminGroups = [
         label: 'Helfer',
         icon: UserCheck,
         subItems: [
-          { href: '/admin/helfer/detail', label: 'Detail-Zuteilung' },
+          { href: '/admin/helfer/detail', label: 'Spielbetreuer' },
         ],
       },
       { href: '/admin/postfach', label: 'Postfach', icon: Inbox },
