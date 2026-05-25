@@ -49,6 +49,7 @@ export default function MainNavigation() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [liveAktiv, setLiveAktiv] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -63,6 +64,14 @@ export default function MainNavigation() {
           setIsAdmin(false);
           setIsLoggedIn(false);
         }
+        // Live-Stand-Link nur am Event-Tag (Berlin-Zeit)
+        const { data: event } = await supabase
+          .from('events')
+          .select('datum')
+          .eq('ist_aktiv', true)
+          .maybeSingle();
+        const heute = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
+        setLiveAktiv(!!event && event.datum === heute);
       } catch {
         setIsAdmin(false);
         setIsLoggedIn(false);
@@ -93,7 +102,8 @@ export default function MainNavigation() {
     pathname.startsWith('/leiter') ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/anmeldung') ||
-    pathname.startsWith('/spielbetreuer');
+    pathname.startsWith('/spielbetreuer') ||
+    pathname.startsWith('/live');
   if (isHidden) return null;
 
   const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -200,6 +210,19 @@ export default function MainNavigation() {
                 {link.label}
               </Link>
             ))}
+
+            {liveAktiv && (
+              <Link
+                href="/live"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-melsdorf-red/10 text-melsdorf-red text-sm font-semibold hover:bg-melsdorf-red/15 transition-colors"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-melsdorf-red opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-melsdorf-red"></span>
+                </span>
+                Live
+              </Link>
+            )}
           </div>
 
           {/* ── Rechte Seite ────────────────────────────────── */}
@@ -303,6 +326,19 @@ export default function MainNavigation() {
           }}
         >
           <div className="px-6 py-4 space-y-1">
+            {liveAktiv && (
+              <Link
+                href="/live"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 mb-2 py-2.5 px-3 -mx-1 rounded-lg bg-melsdorf-red/10 text-melsdorf-red font-semibold"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-melsdorf-red opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-melsdorf-red"></span>
+                </span>
+                Live-Stand
+              </Link>
+            )}
             <MobileDropdown label="Infos">
               {infoLinks.map((link) => (
                 <Link

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   HeroSection,
   AblaufSection,
@@ -13,6 +14,29 @@ import {
   DownloadsSection,
 } from '@/components/public';
 import type { AblaufSectionSettings } from '@/components/public/AblaufSection';
+
+function LiveBanner({ datum }: { datum: string | null }) {
+  if (!datum) return null;
+  const heute = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
+  if (datum !== heute) return null;
+  return (
+    <Link
+      href="/live"
+      className="block w-full bg-melsdorf-red text-paper-soft hover:bg-melsdorf-red-dark transition-colors"
+    >
+      <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-center gap-3 text-sm sm:text-base font-semibold">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-paper-soft opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-paper-soft"></span>
+        </span>
+        <span>Vagelscheeten läuft jetzt — Live-Stand anschauen</span>
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+          <path d="M5 12h14M13 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </Link>
+  );
+}
 
 // Types from server data
 type ActiveEvent = {
@@ -109,6 +133,7 @@ export function StartseiteClient({
 
   return (
     <div className="w-full bg-paper full-bleed -mt-6">
+      <LiveBanner datum={activeEvent?.datum ?? null} />
       <HeroSection
         event={activeEvent}
         heroSettings={heroSettings}

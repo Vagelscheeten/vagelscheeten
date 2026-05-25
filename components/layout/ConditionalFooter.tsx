@@ -8,7 +8,8 @@ export function ConditionalFooter() {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/leiter') ||
     pathname.startsWith('/anmeldung') ||
-    pathname.startsWith('/spielbetreuer')
+    pathname.startsWith('/spielbetreuer') ||
+    pathname.startsWith('/live')
   )
     return null;
   return <Footer />;
