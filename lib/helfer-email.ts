@@ -1,5 +1,5 @@
 import { escapeHtml } from '@/lib/email-utils';
-import { buildKinderIndex, findKindInIndex, type KindLite } from '@/lib/helfer-utils';
+import { buildKinderIndex, findKindInIndex, firstWord, type KindLite } from '@/lib/helfer-utils';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const FEST_DATUM = process.env.FEST_DATUM || 'Melsdörper Vagelscheeten';
@@ -142,7 +142,7 @@ export async function loadEmailKontext(
         .eq('event_id', eventId),
       supabaseAdmin
         .from('essensspenden_rueckmeldungen')
-        .select('kind_identifier, menge, anmerkung, spende:spende_id(titel, beschreibung)')
+        .select('anmeldung_id, kind_identifier, menge, anmerkung, spende:spende_id(titel, beschreibung)')
         .eq('event_id', eventId)
         .eq('bestaetigt', true),
       supabaseAdmin
@@ -218,18 +218,50 @@ export function buildFamilienKinderKeys(anmeldung: AnmeldungMail, kontext: Email
 }
 
 /**
- * Liefert für eine Familie alle Essensspenden-Einträge aus dem Kontext (über
- * mehrere kind_identifier-Varianten).
+ * Liefert für eine Familie alle Essensspenden-Einträge aus dem Kontext.
+ *
+ * Match-Strategie:
+ *  1. Primär: anmeldung_id Foreign Key (eindeutig, robust)
+ *  2. Fallback (für Legacy-Einträge ohne FK): kind_identifier-Match
+ *     mit Strict + Loose (Nachname + firstWord, Klasse egal).
  */
 export function essensspendenForFamilie(
   anmeldung: AnmeldungMail,
   kontext: EmailKontext,
 ): any[] {
-  const keys = buildFamilienKinderKeys(anmeldung, kontext);
-  return kontext.alleEssensspenden.filter((e: any) => {
+  // 1. Primär: über FK matchen
+  const perFk = kontext.alleEssensspenden.filter((e: any) => e.anmeldung_id === anmeldung.id);
+  if (perFk.length > 0) return perFk;
+
+  // 2. Fallback: String-Match nur für Einträge ohne FK (legacy/orphan)
+  const ohneFk = kontext.alleEssensspenden.filter((e: any) => !e.anmeldung_id);
+  if (ohneFk.length === 0) return [];
+
+  const strictKeys = buildFamilienKinderKeys(anmeldung, kontext);
+  const looseFamilyKeys = new Set<string>();
+  const addLoose = (vorname: string, nachname: string) => {
+    const v = firstWord(vorname).toLowerCase().trim();
+    const n = nachname.toLowerCase().trim();
+    if (v && n) looseFamilyKeys.add(`${n}|${v}`);
+  };
+  addLoose(anmeldung.kind_vorname, anmeldung.kind_nachname);
+  for (const w of anmeldung.weitere_kinder_json || []) {
+    if (w?.vorname && w?.nachname) addLoose(w.vorname, w.nachname);
+  }
+
+  const idRegex = /^(.+?),\s+(.+?)\s+\((.+?)\)$/;
+
+  return ohneFk.filter((e: any) => {
     if (!e.kind_identifier) return false;
-    const ks = e.kind_identifier.split(' + ');
-    return ks.some((k: string) => keys.has(k));
+    const kinder = e.kind_identifier.split(' + ');
+    return kinder.some((k: string) => {
+      if (strictKeys.has(k)) return true;
+      const m = k.match(idRegex);
+      if (!m) return false;
+      const [, nn, vn] = m;
+      const loose = `${nn.toLowerCase().trim()}|${firstWord(vn).toLowerCase().trim()}`;
+      return looseFamilyKeys.has(loose);
+    });
   });
 }
 

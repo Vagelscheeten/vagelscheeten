@@ -128,6 +128,7 @@ export async function POST(request: Request) {
                     .from("essensspenden_rueckmeldungen")
                     .insert({
                         spende_id: spende.spende_id,
+                        anmeldung_id: anmeldung.id,
                         kind_identifier: kindIdentifier,
                         menge: spende.menge || 1,
                         event_id: anmeldung.event_id,

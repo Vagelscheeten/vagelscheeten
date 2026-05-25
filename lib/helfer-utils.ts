@@ -187,7 +187,7 @@ export function normalizeKlasse(s: string | null | undefined): string {
   return s.trim().toLowerCase().replace(/\s+/g, '');
 }
 
-function firstWord(s: string | null | undefined): string {
+export function firstWord(s: string | null | undefined): string {
   if (!s) return '';
   // Split bei Leerzeichen ODER Bindestrich, damit sowohl "Hedi Liv" als auch
   // "Lio-Theodor" auf "Hedi" / "Lio" reduziert werden.

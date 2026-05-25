@@ -96,6 +96,7 @@ async function regeneriereAusAnmeldung(supabaseAdmin: SupabaseClient, a: Anmeldu
     if (!eintrag?.spende_id) continue;
     await supabaseAdmin.from('essensspenden_rueckmeldungen').insert({
       event_id: a.event_id,
+      anmeldung_id: a.id,
       kind_identifier: kindIdentifier,
       spende_id: eintrag.spende_id,
       menge: eintrag.menge ?? 1,
