@@ -141,7 +141,7 @@ export async function loadEmailKontext(
         .eq('event_id', eventId),
       supabaseAdmin
         .from('essensspenden_rueckmeldungen')
-        .select('kind_identifier, menge, anmerkung, spende:spende_id(titel)')
+        .select('kind_identifier, menge, anmerkung, spende:spende_id(titel, beschreibung)')
         .eq('event_id', eventId)
         .eq('bestaetigt', true),
       supabaseAdmin
@@ -317,8 +317,12 @@ export function buildEmailFuerAnmeldung(
             <td style="padding: 8px 0;">
               <ul style="margin: 0; padding-left: 18px;">${kindEssensspenden
                 .map((e) => {
-                  const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-                  return `<li>${e.menge}&times; ${escapeHtml(spende?.titel || 'Essensspende')}</li>`;
+                  const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+                  const titel = escapeHtml(spende?.titel || 'Essensspende');
+                  const beschreibung = spende?.beschreibung
+                    ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
+                    : '';
+                  return `<li style="margin-bottom: 6px;"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</li>`;
                 })
                 .join('')}</ul>
             </td>
