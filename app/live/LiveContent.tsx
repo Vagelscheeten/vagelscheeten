@@ -346,8 +346,8 @@ export default function LiveContent({
 
             {/* BESTLEISTUNGEN */}
             <section>
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <Trophy size={16} className="text-melsdorf-orange" />
+              <div className="flex items-center gap-2 mb-3 px-1 leading-none">
+                <Trophy size={14} className="text-melsdorf-orange shrink-0" />
                 <h2 className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
                   Bestleistungen
                 </h2>
@@ -400,8 +400,8 @@ export default function LiveContent({
 
             {/* KLASSEN */}
             <section>
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <Target size={16} className="text-melsdorf-orange" />
+              <div className="flex items-center gap-2 mb-3 px-1 leading-none">
+                <Target size={14} className="text-melsdorf-orange shrink-0" />
                 <h2 className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
                   Klassen
                 </h2>
