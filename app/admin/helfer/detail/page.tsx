@@ -550,39 +550,37 @@ function PoolHelferCard({
     <div
       ref={setNodeRef}
       className={`
-        bg-white border border-slate-200 rounded-lg p-2
-        shrink-0 lg:shrink min-w-[180px] lg:min-w-0
+        bg-white border border-slate-200 rounded-xl p-3
+        shrink-0 lg:shrink min-w-[200px] lg:min-w-0
         ${isDragging ? 'opacity-30' : ''}
       `}
     >
-      <div className="flex items-start gap-1.5 mb-1.5">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="min-w-0 flex items-center gap-1 flex-wrap">
+          <span className="font-medium text-sm text-slate-800 truncate">{helfer.name}</span>
+          {helfer.klasse && (
+            <span className="text-[11px] text-slate-400">({helfer.klasse})</span>
+          )}
+          {helfer.istExtern && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider bg-purple-100 text-purple-700 px-1 py-0.5 rounded">
+              extern
+            </span>
+          )}
+        </div>
         <button
           {...attributes}
           {...listeners}
-          className="touch-none text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-0.5 -ml-0.5 mt-0.5"
+          className="touch-none text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing p-0.5 -mr-0.5 shrink-0"
           aria-label="Ziehen"
         >
           <GripVertical size={14} />
         </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="font-medium text-[13px] text-slate-800 truncate">{helfer.name}</span>
-            {helfer.klasse && (
-              <span className="text-[11px] text-slate-400">({helfer.klasse})</span>
-            )}
-            {helfer.istExtern && (
-              <span className="text-[9px] font-semibold uppercase tracking-wider bg-purple-100 text-purple-700 px-1 py-0.5 rounded">
-                extern
-              </span>
-            )}
-          </div>
-          {helfer.freitext && (
-            <div className="text-[10px] text-slate-500 italic mt-1 border-l-2 border-amber-200 pl-1.5 line-clamp-2">
-              „{helfer.freitext}"
-            </div>
-          )}
-        </div>
       </div>
+      {helfer.freitext && (
+        <div className="text-[11px] text-slate-500 italic mb-2 border-l-2 border-amber-200 pl-2 line-clamp-2">
+          „{helfer.freitext}"
+        </div>
+      )}
       <select
         className="w-full text-[11px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white"
         value=""
