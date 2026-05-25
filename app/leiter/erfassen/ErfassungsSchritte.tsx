@@ -4,6 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import type { Database } from '@/lib/database.types';
+import { getWertGrenzen, istWertPlausibel } from '@/lib/ergebnis-limits';
+import { toast } from 'sonner';
 
 // Schritt 1: Kind auswählen
 export function KindAuswahl({ 
@@ -119,17 +121,29 @@ export function ErgebnisErfassung({
   onBack?: () => void  // Optional gemacht, da redundant mit "Anderes Spiel wählen"-Button
 }) {
   const [wert, setWert] = React.useState('');
-  
+  const grenzen = getWertGrenzen(spiel.wertungstyp);
+  const aktuellerNumWert = parseFloat(wert);
+  const liveCheck = wert !== '' && !isNaN(aktuellerNumWert)
+    ? istWertPlausibel(aktuellerNumWert, spiel.wertungstyp)
+    : { ok: true };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const numWert = parseFloat(wert);
-    if (!isNaN(numWert)) {
-      onErgebnisSubmit(numWert);
+    if (isNaN(numWert)) {
+      toast.error('Bitte eine gültige Zahl eingeben.');
+      return;
     }
+    const plaus = istWertPlausibel(numWert, spiel.wertungstyp);
+    if (!plaus.ok) {
+      toast.error(plaus.grund || 'Wert nicht plausibel.');
+      return;
+    }
+    onErgebnisSubmit(numWert);
   };
 
   return (
-    <div className="space-y-6"> 
+    <div className="space-y-6">
       <Card>
         <CardContent className="p-6">
           <div className="space-y-2 mb-6">
@@ -141,7 +155,6 @@ export function ErgebnisErfassung({
             </p>
           </div>
 
-          {/* Der "Zurück"-Button wurde entfernt, da er redundant mit dem "Anderes Spiel wählen"-Button ist */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               <label htmlFor="wert" className="text-lg font-medium block">
@@ -150,24 +163,36 @@ export function ErgebnisErfassung({
               <Input
                 id="wert"
                 type="number"
-                step="any"
+                inputMode="decimal"
+                min={grenzen.min}
+                max={grenzen.max}
+                step={grenzen.step}
                 value={wert}
                 onChange={(e) => setWert(e.target.value)}
-                className="text-3xl h-20 text-center font-bold"
+                className={`text-3xl h-20 text-center font-bold ${
+                  !liveCheck.ok ? 'border-red-500 focus-visible:ring-red-300' : ''
+                }`}
                 placeholder={getPlaceholder(spiel)}
                 required
               />
-              {spiel.einheit && (
-                <p className="text-base text-muted-foreground text-center">
-                  {spiel.einheit}
+              <p className="text-base text-muted-foreground text-center">
+                {spiel.einheit || grenzen.einheitDefault}
+                <span className="block text-sm text-slate-400 mt-1">
+                  Erlaubter Bereich: {grenzen.min}–{grenzen.max}
+                  {grenzen.hinweis ? ` · ${grenzen.hinweis}` : ''}
+                </span>
+              </p>
+              {!liveCheck.ok && (
+                <p className="text-sm text-red-600 text-center font-medium">
+                  {liveCheck.grund}
                 </p>
               )}
             </div>
-            
-            <Button 
-              type="submit" 
+
+            <Button
+              type="submit"
               className="w-full h-20 text-xl font-bold mt-6"
-              disabled={!wert}
+              disabled={!wert || !liveCheck.ok}
             >
               Ergebnis speichern
             </Button>

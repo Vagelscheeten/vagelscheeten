@@ -44,6 +44,7 @@ const adminGroups = [
   {
     title: 'Auswertung',
     items: [
+      { href: '/admin/spiel-status', label: 'Spielstatus (Live)', icon: ListChecks },
       { href: '/admin/auswertung', label: 'Auswertung', icon: BarChart3 },
       { href: '/admin/reporting', label: 'Reporting', icon: FileText },
       { href: '/admin/settings', label: 'Einstellungen', icon: Wrench },

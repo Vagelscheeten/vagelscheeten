@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Database } from '@/lib/database.types'; // Korrekter Import der Datenbanktypen
 import { KindAuswahl, SpielAuswahl, ErgebnisErfassung } from './ErfassungsSchritte';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -63,7 +64,179 @@ export default function ClientErfassung({
   const [editValue, setEditValue] = React.useState<string>('');
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
+  // Offline-/Verbindungs-State
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true,
+  );
+  const [queueLen, setQueueLen] = useState(0);
+  const [flushing, setFlushing] = useState(false);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const supabase = createClient();
+
+  // ----- Offline-Queue -----
+  type QueueItem =
+    | { id: string; type: 'ergebnis'; payload: { spielId: string; kindId: string; wert: number }; createdAt: number; attempts: number }
+    | { id: string; type: 'spielAbschliessen'; payload: { spielId: string }; createdAt: number; attempts: number };
+
+  const queueKey = `leiter_save_queue_${spielgruppe.id}`;
+  const readQueue = useCallback((): QueueItem[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem(queueKey) || '[]');
+    } catch {
+      return [];
+    }
+  }, [queueKey]);
+  const writeQueue = useCallback(
+    (items: QueueItem[]) => {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(queueKey, JSON.stringify(items));
+      setQueueLen(items.length);
+    },
+    [queueKey],
+  );
+
+  const callApi = useCallback(async (item: QueueItem): Promise<void> => {
+    const url = item.type === 'ergebnis' ? '/api/leiter/ergebnis' : '/api/leiter/spiel-status';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item.payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const err: any = new Error(data?.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+  }, []);
+
+  const flushQueue = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    let items = readQueue();
+    if (items.length === 0) return;
+    setFlushing(true);
+    try {
+      for (const item of [...items]) {
+        try {
+          await callApi(item);
+          items = items.filter((q) => q.id !== item.id);
+          writeQueue(items);
+        } catch (e: any) {
+          // Bei 4xx (Validierungsfehler): aus Queue raus, sonst läuft das ewig
+          if (e?.status && e.status >= 400 && e.status < 500) {
+            items = items.filter((q) => q.id !== item.id);
+            writeQueue(items);
+            toast.error(`Eintrag verworfen: ${e.message}`);
+          } else {
+            // Netz/Server-Fehler → in Queue lassen, später nochmal
+            item.attempts++;
+            writeQueue(items);
+            break;
+          }
+        }
+      }
+    } finally {
+      setFlushing(false);
+      // Reload Ergebnis-Counts wenn Queue leer ist (UI synchron halten)
+      if (items.length === 0) setRefreshKey((r) => r + 1);
+    }
+  }, [callApi, readQueue, writeQueue]);
+
+  const enqueue = useCallback(
+    (item: Omit<QueueItem, 'id' | 'createdAt' | 'attempts'>) => {
+      const items = readQueue();
+      const full: QueueItem = {
+        ...(item as any),
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}-${Math.random()}`),
+        createdAt: Date.now(),
+        attempts: 0,
+      };
+      items.push(full);
+      writeQueue(items);
+    },
+    [readQueue, writeQueue],
+  );
+
+  // Connectivity-Listener
+  useEffect(() => {
+    setQueueLen(readQueue().length);
+    const onOnline = () => {
+      setIsOnline(true);
+      flushQueue();
+    };
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    // Initial Flush versuchen, falls Queue beim Start nicht leer ist
+    if (navigator.onLine) flushQueue();
+    // Periodisch erneut versuchen (z. B. nach kurzen Verbindungs-Aussetzern, die kein offline-Event auslösen)
+    const interval = setInterval(() => {
+      if (navigator.onLine && readQueue().length > 0) flushQueue();
+    }, 15000);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      clearInterval(interval);
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, [flushQueue, readQueue]);
+
+  // Save mit Online-Versuch + Fallback in Queue
+  const saveErgebnis = useCallback(
+    async (payload: { spielId: string; kindId: string; wert: number }): Promise<{ ok: boolean; queued?: boolean; error?: string }> => {
+      const item: QueueItem = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}`),
+        type: 'ergebnis',
+        payload,
+        createdAt: Date.now(),
+        attempts: 0,
+      };
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        enqueue({ type: 'ergebnis', payload });
+        return { ok: true, queued: true };
+      }
+      try {
+        await callApi(item);
+        return { ok: true };
+      } catch (e: any) {
+        if (e?.status && e.status >= 400 && e.status < 500) {
+          return { ok: false, error: e.message };
+        }
+        enqueue({ type: 'ergebnis', payload });
+        return { ok: true, queued: true };
+      }
+    },
+    [callApi, enqueue],
+  );
+
+  const saveSpielAbschliessen = useCallback(
+    async (payload: { spielId: string }): Promise<{ ok: boolean; queued?: boolean; error?: string }> => {
+      const item: QueueItem = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `q-${Date.now()}`),
+        type: 'spielAbschliessen',
+        payload,
+        createdAt: Date.now(),
+        attempts: 0,
+      };
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        enqueue({ type: 'spielAbschliessen', payload });
+        return { ok: true, queued: true };
+      }
+      try {
+        await callApi(item);
+        return { ok: true };
+      } catch (e: any) {
+        if (e?.status && e.status >= 400 && e.status < 500) {
+          return { ok: false, error: e.message };
+        }
+        enqueue({ type: 'spielAbschliessen', payload });
+        return { ok: true, queued: true };
+      }
+    },
+    [callApi, enqueue],
+  );
 
   // Lade die Spiele und setze die Leiter-Gruppe in der Datenbank-Session
   React.useEffect(() => {
@@ -334,48 +507,33 @@ export default function ClientErfassung({
   const handleSpielAbschliessenConfirm = async () => {
     if (!ausgewaehltesSpiel) return;
 
-    try {
-      // Neuen Eintrag in spielgruppe_spiel_status erstellen
-      const { error } = await supabase
-        .from('spielgruppe_spiel_status')
-        .insert({ 
-          spiel_id: ausgewaehltesSpiel.id, 
-          spielgruppe_id: spielgruppe.id,
-          event_id: spielgruppe.event_id
-          // abgeschlossen_am wird durch DB default gesetzt
-        });
+    const aktuellesSpiel = ausgewaehltesSpiel;
+    const res = await saveSpielAbschliessen({ spielId: aktuellesSpiel.id });
 
-      if (error) {
-        // Fehlerbehandlung: Was wenn der Eintrag schon existiert (Constraint)?
-        if (error.code === '23505') { // Unique violation
-          console.warn('Spiel wurde bereits von dieser Gruppe abgeschlossen.');
-          // Kein Fehler anzeigen, da es nur ein erneuter Versuch war?
-        } else {
-          throw error; // Anderen Fehler werfen
-        }
-      } else {
-         toast.success(`${ausgewaehltesSpiel.name} für Gruppe ${spielgruppe.name} abgeschlossen.`);
-          
-        // Lokalen Status aktualisieren für sofortiges UI-Feedback
-        setSpiele(prevSpiele => 
-        prevSpiele.map(s => 
-          s.id === ausgewaehltesSpiel.id 
-            ? { ...s, status: 'abgeschlossen', abgeschlossen_am: new Date().toISOString() } // Zeitstempel setzen
-            : s
-        )
-      );
-      // Nach Erfolg Übersicht aktualisieren
-      setRefreshKey(prev => prev + 1);
-      setSchritt('spiel');
-      setAusgewaehltesSpiel(null);
-      setVorhandeneErgebnisse(new Map());
-    }
-  } catch (error: any) {
-      console.error('Fehler beim Abschließen des Spiels:', error);
-      toast.error('Fehler beim Abschließen des Spiels: ' + error.message);
-    } finally {
+    if (!res.ok) {
+      toast.error('Fehler beim Abschließen: ' + res.error);
       setDialogOpen(false);
+      return;
     }
+
+    setSpiele(prevSpiele =>
+      prevSpiele.map(s =>
+        s.id === aktuellesSpiel.id
+          ? { ...s, status: 'abgeschlossen', abgeschlossen_am: new Date().toISOString() }
+          : s,
+      ),
+    );
+
+    if (res.queued) {
+      toast.warning(`${aktuellesSpiel.name} offline abgeschlossen — wird übertragen sobald online`);
+    } else {
+      toast.success(`${aktuellesSpiel.name} für Gruppe ${spielgruppe.name} abgeschlossen.`);
+      setRefreshKey(prev => prev + 1);
+    }
+    setSchritt('spiel');
+    setAusgewaehltesSpiel(null);
+    setVorhandeneErgebnisse(new Map());
+    setDialogOpen(false);
   };
 
   const handleEditStart = (kindId: string, currentValue: number) => {
@@ -394,82 +552,83 @@ export default function ClientErfassung({
       toast.error('Bitte gib eine gültige Zahl ein');
       return;
     }
-
     if (!ausgewaehltesSpiel) return;
 
-    try {
-      const { error } = await supabase
-        .from('ergebnisse')
-        .update({ 
-          wert_numeric: numValue,
-          erfasst_am: new Date().toISOString()
-        })
-        .eq('kind_id', kindId)
-        .eq('spiel_id', ausgewaehltesSpiel.id)
-        .eq('spielgruppe_id', spielgruppe.id)
-        .eq('event_id', spielgruppe.event_id);
+    // Vorheriger Wert für Rollback
+    const previousValue = vorhandeneErgebnisse.get(kindId);
 
-      if (error) throw error;
+    setVorhandeneErgebnisse(prev => {
+      const next = new Map(prev);
+      next.set(kindId, numValue);
+      return next;
+    });
 
-      // Aktualisiere die lokale Map
+    const res = await saveErgebnis({
+      spielId: ausgewaehltesSpiel.id,
+      kindId,
+      wert: numValue,
+    });
+
+    if (!res.ok) {
       setVorhandeneErgebnisse(prev => {
         const next = new Map(prev);
-        next.set(kindId, numValue);
+        if (previousValue !== undefined) next.set(kindId, previousValue);
+        else next.delete(kindId);
         return next;
       });
-
-      toast.success('Ergebnis aktualisiert');
-      setEditingKindId(null);
-      setEditValue('');
-
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren:', error);
-      toast.error('Fehler beim Speichern der Änderung');
+      toast.error('Fehler beim Speichern', { description: res.error });
+      return;
     }
+
+    if (res.queued) {
+      toast.warning('Offline gespeichert — wird übertragen sobald online');
+    } else {
+      toast.success('Ergebnis aktualisiert');
+    }
+    setEditingKindId(null);
+    setEditValue('');
   };
 
   const handleErgebnisSubmit = async (wert: number) => {
     if (!ausgewaehltesKind || !ausgewaehltesSpiel) return;
 
-    try {
-      const { error } = await supabase
-        .from('ergebnisse')
-        .upsert({
-          // Provide columns for the unique constraint to identify the row
-          kind_id: ausgewaehltesKind.id,
-          spiel_id: ausgewaehltesSpiel.id,
-          // Provide columns to insert/update
-          spielgruppe_id: spielgruppe.id, // Make sure this is included on insert/update
-          event_id: spielgruppe.event_id, // Wichtig: Event-ID hinzufügen
-          wert_numeric: wert,
-          erfasst_am: new Date().toISOString(),
-          // 'id' column is usually omitted for upsert unless you want to force a specific ID on insert
-        }, {
-          onConflict: 'kind_id, spiel_id' // Zurück zu ursprünglichem Conflict target
-        });
+    // Optimistic Update: lokal direkt speichern, damit der Leiter sieht dass der Wert ankam
+    setVorhandeneErgebnisse(prev => {
+      const next = new Map(prev);
+      next.set(ausgewaehltesKind.id, wert);
+      return next;
+    });
 
-      if (error) throw error; // Throw error to be caught below
+    const res = await saveErgebnis({
+      spielId: ausgewaehltesSpiel.id,
+      kindId: ausgewaehltesKind.id,
+      wert,
+    });
 
-      // Success handling remains the same
-      // Aktualisiere die lokale Map der Ergebnisse
+    if (!res.ok) {
+      // Server-Validierung schlug fehl → Rollback
       setVorhandeneErgebnisse(prev => {
         const next = new Map(prev);
-        next.set(ausgewaehltesKind.id, wert);
+        next.delete(ausgewaehltesKind.id);
         return next;
       });
-
-      toast.success('Ergebnis gespeichert!', {
-        description: `${ausgewaehltesKind.vorname} ${ausgewaehltesKind.nachname}: ${wert} ${ausgewaehltesSpiel.einheit || ''}`
-      });
-      setSchritt('kind');
-      setAusgewaehltesKind(null);
-
-    } catch (error: any) {
-      console.error('Fehler beim Speichern (Upsert):', error);
       toast.error('Fehler beim Speichern', {
-        description: error.message || 'Bitte versuche es noch einmal.'
+        description: res.error || 'Bitte versuche es noch einmal.',
+      });
+      return;
+    }
+
+    if (res.queued) {
+      toast.warning('Offline gespeichert', {
+        description: `${ausgewaehltesKind.vorname} ${ausgewaehltesKind.nachname}: ${wert} ${ausgewaehltesSpiel.einheit || ''} — wird übertragen sobald Verbindung besteht.`,
+      });
+    } else {
+      toast.success('Ergebnis gespeichert!', {
+        description: `${ausgewaehltesKind.vorname} ${ausgewaehltesKind.nachname}: ${wert} ${ausgewaehltesSpiel.einheit || ''}`,
       });
     }
+    setSchritt('kind');
+    setAusgewaehltesKind(null);
   };
 
   // Rendere den aktuellen Schritt
@@ -655,6 +814,41 @@ export default function ClientErfassung({
 
   return (
     <div className="container mx-auto py-6 px-4">
+      {(!isOnline || queueLen > 0) && (
+        <div
+          className={`sticky top-0 z-30 -mx-4 mb-4 px-4 py-2 flex items-center gap-2 text-sm shadow-sm ${
+            !isOnline
+              ? 'bg-amber-100 border-b border-amber-300 text-amber-900'
+              : 'bg-blue-50 border-b border-blue-300 text-blue-900'
+          }`}
+        >
+          {!isOnline ? (
+            <>
+              <WifiOff size={16} className="shrink-0" />
+              <span className="font-medium">Keine Verbindung.</span>
+              <span>Deine Eingaben werden gespeichert und übertragen, sobald wieder Empfang da ist.</span>
+            </>
+          ) : (
+            <>
+              {flushing ? (
+                <RefreshCw size={16} className="shrink-0 animate-spin" />
+              ) : (
+                <AlertTriangle size={16} className="shrink-0" />
+              )}
+              <span className="font-medium">{queueLen} Eingabe{queueLen === 1 ? '' : 'n'} warten auf Übertragung.</span>
+              {!flushing && (
+                <button
+                  onClick={() => flushQueue()}
+                  className="ml-auto underline underline-offset-2 font-medium"
+                >
+                  Jetzt versuchen
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="mb-6 flex justify-between items-center">
         <h1 className="text-2xl font-bold">
           Ergebniserfassung: {spielgruppe.name}
