@@ -56,17 +56,31 @@ export async function POST(req: NextRequest) {
 
     let gesendet = 0;
     let fehler = 0;
+    const fehlerDetails: { email: string; grund: string }[] = [];
+
+    // Rate-Limit-Schutz: Resend erlaubt 10 req/s. Wir bleiben mit ~250ms Abstand sicher darunter.
+    const RATE_LIMIT_MS = 250;
+    let lastSendAt = 0;
 
     for (const anmeldung of anmeldungen as AnmeldungMail[]) {
       try {
+        // Drossel: warte, falls letzter Send weniger als RATE_LIMIT_MS her ist
+        const wartet = lastSendAt + RATE_LIMIT_MS - Date.now();
+        if (wartet > 0) await new Promise((r) => setTimeout(r, wartet));
+
         const mail = buildEmailFuerAnmeldung(anmeldung, kontext);
 
-        await resend.emails.send({
+        const { data, error: resendError } = await resend.emails.send({
           from: ABSENDER,
           to: [anmeldung.eltern_email!],
           subject: mail.subject,
           html: mail.html,
         });
+        lastSendAt = Date.now();
+
+        if (resendError || !data) {
+          throw new Error(resendError?.message || 'Resend lieferte keine Mail-ID zurück');
+        }
 
         await supabaseAdmin
           .from('anmeldungen')
@@ -74,13 +88,15 @@ export async function POST(req: NextRequest) {
           .eq('id', anmeldung.id);
 
         gesendet++;
-      } catch (mailError) {
-        console.error(`Fehler beim Senden an ${anmeldung.eltern_email}:`, mailError);
+      } catch (mailError: any) {
+        const grund = mailError?.message || String(mailError);
+        console.error(`Fehler beim Senden an ${anmeldung.eltern_email}:`, grund);
         fehler++;
+        fehlerDetails.push({ email: anmeldung.eltern_email!, grund });
       }
     }
 
-    return NextResponse.json({ erfolg: true, gesendet, fehler });
+    return NextResponse.json({ erfolg: true, gesendet, fehler, fehlerDetails });
   } catch (error: any) {
     console.error('Fehler bei Benachrichtigung:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
