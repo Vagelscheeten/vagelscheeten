@@ -2,7 +2,9 @@
 
 import React, { useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Search, X } from 'lucide-react';
 import {
   berechneRangePunkteProBucket,
   istKleinerBesser,
@@ -302,6 +304,8 @@ function ProKindView({
   kinder: Kind[];
   rangMap: Map<string, { rang: number; punkte: number }>;
 }) {
+  const [suche, setSuche] = useState('');
+
   if (kinder.length === 0) {
     return <div className="text-center py-8 text-slate-500">Keine Kinder in dieser Klasse.</div>;
   }
@@ -315,13 +319,57 @@ function ProKindView({
     return { kind: k, kindErgebnisse, gesamtpunkte };
   };
 
-  const jungen = kinder.filter((k) => istJunge(k.geschlecht)).map(compute).sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
-  const maedchen = kinder.filter((k) => istMaedchen(k.geschlecht)).map(compute).sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+  const term = suche.trim().toLowerCase();
+  const passt = (k: Kind) =>
+    term === '' || `${k.vorname} ${k.nachname}`.toLowerCase().includes(term);
+
+  const jungen = kinder
+    .filter((k) => istJunge(k.geschlecht) && passt(k))
+    .map(compute)
+    .sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+  const maedchen = kinder
+    .filter((k) => istMaedchen(k.geschlecht) && passt(k))
+    .map(compute)
+    .sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+
+  const treffer = jungen.length + maedchen.length;
 
   return (
-    <div className="space-y-8">
-      <KinderListe titel="Jungen" farbe="text-blue-700" eintraege={jungen} spiele={spiele} rangMap={rangMap} />
-      <KinderListe titel="Mädchen" farbe="text-pink-700" eintraege={maedchen} spiele={spiele} rangMap={rangMap} />
+    <div className="space-y-6">
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <Input
+          type="search"
+          placeholder="Kind suchen…"
+          value={suche}
+          onChange={(e) => setSuche(e.target.value)}
+          className="pl-9 pr-9"
+        />
+        {suche && (
+          <button
+            onClick={() => setSuche('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+            aria-label="Suche löschen"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {term && (
+        <p className="text-xs text-slate-500">
+          {treffer === 0
+            ? 'Keine Treffer.'
+            : `${treffer} ${treffer === 1 ? 'Treffer' : 'Treffer'} für "${suche}"`}
+        </p>
+      )}
+
+      {treffer === 0 ? null : (
+        <div className="space-y-8">
+          <KinderListe titel="Jungen" farbe="text-blue-700" eintraege={jungen} spiele={spiele} rangMap={rangMap} />
+          <KinderListe titel="Mädchen" farbe="text-pink-700" eintraege={maedchen} spiele={spiele} rangMap={rangMap} />
+        </div>
+      )}
     </div>
   );
 }
