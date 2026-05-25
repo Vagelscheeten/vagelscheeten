@@ -3,7 +3,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Check, X, GripVertical, ArrowLeft, AlertCircle, Search } from 'lucide-react';
+import {
+  Loader2,
+  Check,
+  X,
+  GripVertical,
+  ArrowLeft,
+  AlertCircle,
+  Search,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import {
   DndContext,
   DragEndEvent,
@@ -38,11 +49,14 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 export default function DetailZuteilungPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [eventId, setEventId] = useState<string | null>(null);
   const [spiele, setSpiele] = useState<Spiel[]>([]);
   const [helfer, setHelfer] = useState<Helfer[]>([]);
   const [zuteilungen, setZuteilungen] = useState<Record<string, string[]>>({});
+  const [notifiedHelferIds, setNotifiedHelferIds] = useState<Set<string>>(new Set());
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [mailModalOpen, setMailModalOpen] = useState(false);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,6 +71,7 @@ export default function DetailZuteilungPage() {
         setIsLoading(false);
         return;
       }
+      setEventId(event.id);
 
       const { data: aufgabe } = await supabase
         .from('helferaufgaben')
@@ -77,7 +92,7 @@ export default function DetailZuteilungPage() {
               .eq('event_id', event.id)
               .eq('aufgabe_id', aufgabe.id)
           : Promise.resolve({ data: [] as any[] }),
-        supabase.from('helfer_spiel_zuteilungen').select('helfer_id, spiel_id'),
+        supabase.from('helfer_spiel_zuteilungen').select('helfer_id, spiel_id, benachrichtigt_am'),
         supabase
           .from('helfer_rueckmeldungen')
           .select('kind_id, freitext')
@@ -110,12 +125,15 @@ export default function DetailZuteilungPage() {
       setHelfer(transformedHelfer);
 
       const initZuteilungen: Record<string, string[]> = {};
+      const initNotified = new Set<string>();
       (zuteilRes.data || []).forEach((z: any) => {
         if (z.spiel_id === 'springer') return;
         if (!initZuteilungen[z.spiel_id]) initZuteilungen[z.spiel_id] = [];
         initZuteilungen[z.spiel_id].push(z.helfer_id);
+        if (z.benachrichtigt_am) initNotified.add(z.helfer_id);
       });
       setZuteilungen(initZuteilungen);
+      setNotifiedHelferIds(initNotified);
 
       setIsLoading(false);
     })();
@@ -154,6 +172,13 @@ export default function DetailZuteilungPage() {
         next[spielId] = [...(next[spielId] || []), helferId];
         return next;
       });
+      // Neue/verschobene Zuteilung = ungesendet
+      setNotifiedHelferIds((prev) => {
+        if (!prev.has(helferId)) return prev;
+        const next = new Set(prev);
+        next.delete(helferId);
+        return next;
+      });
       setSaveState('saving');
 
       try {
@@ -189,6 +214,12 @@ export default function DetailZuteilungPage() {
       setZuteilungen((prev) => {
         const next = { ...prev };
         next[currentSpiel] = (next[currentSpiel] || []).filter((h) => h !== helferId);
+        return next;
+      });
+      setNotifiedHelferIds((prev) => {
+        if (!prev.has(helferId)) return prev;
+        const next = new Set(prev);
+        next.delete(helferId);
         return next;
       });
       setSaveState('saving');
@@ -252,6 +283,25 @@ export default function DetailZuteilungPage() {
 
   const activeDragHelfer = activeDragId ? helfer.find((h) => h.id === activeDragId) : null;
 
+  const assignedHelferIds = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(zuteilungen).forEach((ids) => ids.forEach((id) => set.add(id)));
+    return set;
+  }, [zuteilungen]);
+  const pendingCount = useMemo(() => {
+    let n = 0;
+    assignedHelferIds.forEach((id) => {
+      if (!notifiedHelferIds.has(id)) n++;
+    });
+    return n;
+  }, [assignedHelferIds, notifiedHelferIds]);
+  const assignedCount = assignedHelferIds.size;
+
+  const handleMailsSent = useCallback(() => {
+    // Nach erfolgreichem Versand sind alle aktuell zugewiesenen Helfer benachrichtigt
+    setNotifiedHelferIds(new Set(assignedHelferIds));
+  }, [assignedHelferIds]);
+
   if (isLoading) {
     return (
       <main className="p-4 md:p-8 flex justify-center items-center min-h-[50vh]">
@@ -276,8 +326,44 @@ export default function DetailZuteilungPage() {
             Betreuer pro Spiel. Nicht zugewiesene Helfer bleiben automatisch als Springer im Pool.
           </p>
         </div>
-        <SaveIndicator state={saveState} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <SaveIndicator state={saveState} />
+          <button
+            onClick={() => setMailModalOpen(true)}
+            disabled={assignedCount === 0}
+            className={`inline-flex items-center gap-1.5 text-sm rounded-md px-3 py-2 transition-colors whitespace-nowrap ${
+              assignedCount === 0
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : pendingCount > 0
+                  ? 'bg-orange-500 text-white hover:bg-orange-600'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+            title={
+              assignedCount === 0
+                ? 'Keine Helfer zugeteilt'
+                : pendingCount > 0
+                  ? `${pendingCount} ungesendete Zuteilung(en)`
+                  : 'Alle Zuteilungen wurden bereits per Mail mitgeteilt'
+            }
+          >
+            <Mail size={14} />
+            Mails versenden
+            {pendingCount > 0 && (
+              <span className="inline-flex items-center justify-center bg-white/20 rounded-full px-1.5 py-0.5 text-[11px] font-semibold">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
+
+      {mailModalOpen && eventId && (
+        <MailModal
+          eventId={eventId}
+          onClose={() => setMailModalOpen(false)}
+          onSent={handleMailsSent}
+        />
+      )}
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex flex-col lg:flex-row gap-3 lg:gap-5 items-start">
@@ -656,6 +742,218 @@ function AssignedHelferRow({
       >
         <X size={14} />
       </button>
+    </div>
+  );
+}
+
+interface VorschauMail {
+  anmeldungId: string;
+  empfaenger: string;
+  subject: string;
+  html: string;
+  zuteilungen: { kindName: string; kindKlasse: string | null; spielName: string; schonBenachrichtigt: boolean }[];
+}
+
+function MailModal({
+  eventId,
+  onClose,
+  onSent,
+}: {
+  eventId: string;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [mails, setMails] = useState<VorschauMail[]>([]);
+  const [index, setIndex] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [bestaetigung, setBestaetigung] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/helfer/spielbetreuer-benachrichtigung', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'vorschau', eventId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error);
+        setMails(data.mails || []);
+      } catch (e: any) {
+        toast.error('Vorschau-Fehler: ' + (e.message || e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [eventId]);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const res = await fetch('/api/helfer/spielbetreuer-benachrichtigung', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', eventId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error);
+      const fehler = data.fehler || 0;
+      if (fehler > 0) {
+        toast.warning(`${data.gesendet} Mail(s) versendet, ${fehler} Fehler.`);
+      } else {
+        toast.success(`${data.gesendet} Mail(s) erfolgreich versendet`);
+      }
+      onSent();
+      onClose();
+    } catch (e: any) {
+      toast.error('Versand-Fehler: ' + (e.message || e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const mail = mails[index];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-900">
+              Spielbetreuer-Mails – Vorschau
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {loading
+                ? 'Lade Vorschau…'
+                : mails.length === 0
+                  ? 'Keine ungesendeten Zuteilungen'
+                  : `${mails.length} Mail${mails.length === 1 ? '' : 's'} bereit zum Versand`}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1"
+            aria-label="Schließen"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center p-10">
+            <Loader2 className="animate-spin text-slate-400" size={20} />
+          </div>
+        ) : mails.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center p-10 text-sm text-slate-500">
+            Alle aktuellen Zuteilungen wurden bereits per Mail mitgeteilt.
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 bg-slate-50 shrink-0 gap-2">
+              <button
+                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                disabled={index === 0}
+                className="text-slate-500 hover:text-slate-700 disabled:text-slate-300 p-1"
+                aria-label="Vorherige"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="flex-1 min-w-0 text-center">
+                <div className="text-xs text-slate-400">
+                  Mail {index + 1} von {mails.length}
+                </div>
+                <div className="text-sm font-medium text-slate-700 truncate">
+                  {mail?.empfaenger}
+                </div>
+              </div>
+              <button
+                onClick={() => setIndex((i) => Math.min(mails.length - 1, i + 1))}
+                disabled={index === mails.length - 1}
+                className="text-slate-500 hover:text-slate-700 disabled:text-slate-300 p-1"
+                aria-label="Nächste"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="px-4 py-2 border-b border-slate-100 shrink-0 bg-white">
+              <div className="text-xs text-slate-400 mb-1">Betreff</div>
+              <div className="text-sm text-slate-700 font-medium">{mail?.subject}</div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-slate-100 p-3 min-h-0">
+              <iframe
+                title="Mail-Vorschau"
+                srcDoc={mail?.html}
+                className="w-full h-full min-h-[400px] bg-white rounded border border-slate-200"
+              />
+            </div>
+          </>
+        )}
+
+        <div className="border-t border-slate-200 px-4 py-3 shrink-0 bg-white flex items-center justify-between gap-3 flex-wrap">
+          {mails.length > 0 && !bestaetigung ? (
+            <>
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bestaetigung}
+                  onChange={(e) => setBestaetigung(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300"
+                />
+                Ich habe die Vorschau geprüft.
+              </label>
+              <button
+                onClick={onClose}
+                className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5"
+              >
+                Schließen
+              </button>
+            </>
+          ) : mails.length > 0 ? (
+            <>
+              <div className="text-xs text-slate-500">
+                Es werden {mails.length} Mail{mails.length === 1 ? '' : 's'} verschickt.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onClose}
+                  disabled={sending}
+                  className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 disabled:opacity-50"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={send}
+                  disabled={sending}
+                  className="inline-flex items-center gap-1.5 text-sm bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-md px-4 py-1.5"
+                >
+                  {sending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Mail size={14} />
+                  )}
+                  Jetzt senden
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={onClose}
+              className="ml-auto text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md px-3 py-1.5"
+            >
+              Schließen
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
