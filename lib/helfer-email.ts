@@ -1,4 +1,5 @@
 import { escapeHtml } from '@/lib/email-utils';
+import { buildKinderIndex, findKindInIndex, type KindLite } from '@/lib/helfer-utils';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const FEST_DATUM = process.env.FEST_DATUM || 'Melsdörper Vagelscheeten';
@@ -242,12 +243,27 @@ export function buildEmailFuerAnmeldung(
   const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
   const weitereKinder = anmeldung.weitere_kinder_json || [];
 
-  // Alle möglichen Sub-Identifier dieser Familie: Hauptkind + jedes Geschwister einzeln
-  // (Essensspenden können auch nachträglich für nur ein Geschwisterkind eingetragen sein.)
+  // Alle möglichen Sub-Identifier dieser Familie sammeln.
+  // Wichtig: Essensspenden können mit dem VOLLEN Namen aus der kinder-Tabelle
+  // gespeichert sein (z.B. 'Bargob, Anna Marlene (4b)'), während die Anmeldung
+  // nur den Rufnamen enthält ('Anna'). Wir matchen daher über kinder-Index
+  // mit firstWord-Fallback und nehmen beide Namensformen als Keys auf.
   const familienKinderKeys = new Set<string>();
-  familienKinderKeys.add(`${anmeldung.kind_nachname}, ${anmeldung.kind_vorname} (${anmeldung.kind_klasse})`);
+  const kinderIdx = buildKinderIndex(kontext.kinder as KindLite[]);
+  const familienEintraege: { vorname: string; nachname: string; klasse: string }[] = [
+    { vorname: anmeldung.kind_vorname, nachname: anmeldung.kind_nachname, klasse: anmeldung.kind_klasse },
+  ];
   for (const w of weitereKinder) {
-    familienKinderKeys.add(`${w.nachname}, ${w.vorname} (${w.klasse})`);
+    if (w?.vorname && w?.nachname) {
+      familienEintraege.push({ vorname: w.vorname, nachname: w.nachname, klasse: w.klasse || '' });
+    }
+  }
+  for (const e of familienEintraege) {
+    familienKinderKeys.add(`${e.nachname}, ${e.vorname} (${e.klasse})`);
+    const matchedKind = findKindInIndex(e.vorname, e.nachname, e.klasse, kinderIdx);
+    if (matchedKind) {
+      familienKinderKeys.add(`${matchedKind.nachname}, ${matchedKind.vorname} (${matchedKind.klasse || e.klasse})`);
+    }
   }
 
   const kindEssensspenden = kontext.alleEssensspenden.filter((e) => {
