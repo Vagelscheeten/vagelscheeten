@@ -30,7 +30,14 @@ const adminGroups = [
       { href: '/admin/spiele', label: 'Spiele', icon: Gamepad2 },
       { href: '/admin/klassen', label: 'Klassen', icon: GraduationCap },
       { href: '/admin/gruppen', label: 'Kinder & Gruppen', icon: GraduationCap },
-      { href: '/admin/helfer', label: 'Helfer', icon: UserCheck },
+      {
+        href: '/admin/helfer',
+        label: 'Helfer',
+        icon: UserCheck,
+        subItems: [
+          { href: '/admin/helfer/detail', label: 'Detail-Zuteilung' },
+        ],
+      },
       { href: '/admin/postfach', label: 'Postfach', icon: Inbox },
     ],
   },
@@ -199,32 +206,70 @@ export default function AdminSidebar() {
                 >
                   {group.items.map((item) => {
                     const Icon = item.icon;
-                    const active = isActive(item.href);
+                    const subItems = (item as { subItems?: { href: string; label: string }[] }).subItems;
+                    const exactActive = pathname === item.href;
+                    const sectionActive = isActive(item.href);
+                    const showSubs = subItems && subItems.length > 0 && sectionActive;
                     return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={handleMobileClose}
-                        className="relative block"
-                      >
-                        <div
-                          className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[0.88rem] font-medium transition-all ${
-                            active
-                              ? 'text-admin-accent bg-admin-accent-bg'
-                              : 'text-admin-ink-soft hover:text-admin-ink hover:bg-admin-surface-hover'
-                          }`}
+                      <div key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={handleMobileClose}
+                          className="relative block"
                         >
-                          {active && (
-                            <span
-                              aria-hidden
-                              className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
-                              style={{ backgroundColor: 'var(--color-admin-accent)' }}
-                            />
-                          )}
-                          <Icon size={14} className="shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                        </div>
-                      </Link>
+                          <div
+                            className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[0.88rem] font-medium transition-all ${
+                              exactActive
+                                ? 'text-admin-accent bg-admin-accent-bg'
+                                : sectionActive
+                                  ? 'text-admin-ink hover:bg-admin-surface-hover'
+                                  : 'text-admin-ink-soft hover:text-admin-ink hover:bg-admin-surface-hover'
+                            }`}
+                          >
+                            {exactActive && (
+                              <span
+                                aria-hidden
+                                className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
+                                style={{ backgroundColor: 'var(--color-admin-accent)' }}
+                              />
+                            )}
+                            <Icon size={14} className="shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </div>
+                        </Link>
+                        {showSubs && (
+                          <div className="ml-6 mt-0.5 space-y-0.5 border-l border-admin-border pl-2">
+                            {subItems!.map((sub) => {
+                              const subActive = pathname === sub.href || pathname.startsWith(sub.href + '/');
+                              return (
+                                <Link
+                                  key={sub.href}
+                                  href={sub.href}
+                                  onClick={handleMobileClose}
+                                  className="relative block"
+                                >
+                                  <div
+                                    className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[0.82rem] font-medium transition-all ${
+                                      subActive
+                                        ? 'text-admin-accent bg-admin-accent-bg'
+                                        : 'text-admin-ink-soft hover:text-admin-ink hover:bg-admin-surface-hover'
+                                    }`}
+                                  >
+                                    {subActive && (
+                                      <span
+                                        aria-hidden
+                                        className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r"
+                                        style={{ backgroundColor: 'var(--color-admin-accent)' }}
+                                      />
+                                    )}
+                                    <span className="truncate">{sub.label}</span>
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

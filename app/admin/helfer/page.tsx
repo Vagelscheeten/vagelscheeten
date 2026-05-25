@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, ExternalLink } from 'lucide-react';
-import Link from 'next/link';
+import { Loader2 } from 'lucide-react';
 import { WorkflowDashboard, WorkflowStats } from './_components/WorkflowDashboard';
 import { ElternInfoPDFDownload } from './_components/ElternInfoPDFDownload';
 import { PageShell, EmptyState } from '@/components/admin';
@@ -132,18 +131,7 @@ export default function HelferPage() {
       title="Helfer-Workflow"
       description="Geführter 5-Schritte-Prozess: Von der Rückmeldungs-Übersicht bis zur Eltern-Kommunikation."
       breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Helfer' }]}
-      actions={
-        <>
-          <ElternInfoPDFDownload />
-          <Link
-            href="/admin/helfer/detail"
-            className="inline-flex items-center gap-1.5 text-sm text-admin-ink-soft hover:text-admin-ink border border-admin-border bg-admin-surface rounded-md px-3 h-9 hover:bg-admin-surface-hover transition-colors whitespace-nowrap"
-          >
-            <ExternalLink size={14} />
-            Detail-Zuteilung
-          </Link>
-        </>
-      }
+      actions={<ElternInfoPDFDownload />}
     >
       <WorkflowDashboard stats={stats} onRefresh={ladeStats} />
     </PageShell>
