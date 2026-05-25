@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -437,30 +438,51 @@ function countComplete(spiele: Spiel[], zuteilungen: Record<string, string[]>): 
 }
 
 function KommentarBadge({ text }: { text: string }) {
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const show = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const tooltipMaxWidth = 280;
+    const viewportMargin = 8;
+
+    let left = rect.left + rect.width / 2 - tooltipMaxWidth / 2;
+    if (left < viewportMargin) left = viewportMargin;
+    if (left + tooltipMaxWidth > window.innerWidth - viewportMargin) {
+      left = window.innerWidth - tooltipMaxWidth - viewportMargin;
+    }
+    setPosition({ top: rect.bottom + 4, left });
+  }, []);
+
+  const hide = useCallback(() => setPosition(null), []);
+
   return (
-    <span
-      tabIndex={0}
-      className="relative group inline-flex items-center cursor-help text-amber-500 hover:text-amber-600 focus:text-amber-600 focus:outline-none"
-      aria-label={`Eltern-Kommentar: ${text}`}
-    >
-      <MessageSquareText size={13} />
+    <>
       <span
-        className="
-          invisible group-hover:visible group-focus:visible
-          opacity-0 group-hover:opacity-100 group-focus:opacity-100
-          transition-opacity duration-100
-          absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1
-          w-max max-w-[280px]
-          bg-slate-800 text-white text-[11px] leading-snug
-          rounded-md p-2 shadow-lg
-          whitespace-normal break-words text-left
-          pointer-events-none
-        "
-        role="tooltip"
+        ref={triggerRef}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        tabIndex={0}
+        className="inline-flex items-center cursor-help text-amber-500 hover:text-amber-600 focus:text-amber-600 focus:outline-none"
+        aria-label={`Eltern-Kommentar: ${text}`}
       >
-        {text}
+        <MessageSquareText size={13} />
       </span>
-    </span>
+      {position && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="fixed z-[100] max-w-[280px] bg-slate-800 text-white text-[11px] leading-snug rounded-md p-2 shadow-lg whitespace-normal break-words text-left pointer-events-none"
+            style={{ top: position.top, left: position.left }}
+          >
+            {text}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
