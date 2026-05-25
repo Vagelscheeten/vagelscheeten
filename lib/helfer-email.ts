@@ -238,16 +238,6 @@ export function buildEmailFuerAnmeldung(
   }
 
   const hatZuteilung = familienZuteilungen.length > 0;
-  if (!hatZuteilung) {
-    familienZuteilungen.push({
-      titel: 'Helfer',
-      beschreibung: null,
-      zeitfenster: '',
-      slotTitel: null,
-      slotStandort: null,
-      slotZeit: null,
-    });
-  }
 
   const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
   const weitereKinder = anmeldung.weitere_kinder_json || [];
@@ -281,7 +271,7 @@ export function buildEmailFuerAnmeldung(
 
     <p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
 
-    <p>${familienZuteilungen.length > 1 ? `Folgende ${familienZuteilungen.length} Aufgaben wurden` : 'Folgende Aufgabe wurde'} zugeteilt:</p>
+    <p>Hier eure Beteiligung beim ${FEST_DATUM} im Überblick:</p>
 
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
@@ -289,62 +279,73 @@ export function buildEmailFuerAnmeldung(
           <col style="width: 140px;">
           <col>
         </colgroup>
-        ${familienZuteilungen
-          .map((z, i) => {
-            const aufgabeSepStyle = i > 0 ? 'padding-top: 16px; border-top: 1px dashed #e2e8f0;' : '';
-            const aufgabeRow = `
+        ${hatZuteilung
+          ? familienZuteilungen
+              .map((z, i) => {
+                const aufgabeSepStyle = i > 0 ? 'padding-top: 16px; border-top: 1px dashed #e2e8f0;' : '';
+                const aufgabeRow = `
+                  <tr>
+                    <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${aufgabeSepStyle}">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
+                    <td style="padding: 8px 0; font-weight: 600; ${aufgabeSepStyle}">${escapeHtml(z.titel)}${z.slotStandort ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotStandort)})</span>` : ''}</td>
+                  </tr>`;
+                const detailsRow = z.beschreibung
+                  ? `
+                  <tr>
+                    <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
+                    <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
+                  </tr>`
+                  : '';
+                const zeitRow = z.slotZeit
+                  ? `
+                  <tr>
+                    <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Einsatz-Zeit:</td>
+                    <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.slotZeit)}${z.slotTitel ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotTitel)})</span>` : ''}</td>
+                  </tr>`
+                  : z.zeitfenster
+                    ? `
+                  <tr>
+                    <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
+                    <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>
+                  </tr>`
+                    : '';
+                return aufgabeRow + detailsRow + zeitRow;
+              })
+              .join('')
+          : `
               <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${aufgabeSepStyle}">${familienZuteilungen.length > 1 ? `${i + 1}. Aufgabe:` : 'Aufgabe:'}</td>
-                <td style="padding: 8px 0; font-weight: 600; ${aufgabeSepStyle}">${escapeHtml(z.titel)}${z.slotStandort ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotStandort)})</span>` : ''}</td>
-              </tr>`;
-            const detailsRow = z.beschreibung
-              ? `
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Aufgabe:</td>
+                <td style="padding: 8px 0;">Keine Aufgabe</td>
+              </tr>`}
+        ${kindEssensspenden.length > 0
+          ? kindEssensspenden
+              .map((e, i) => {
+                const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+                const titel = escapeHtml(spende?.titel || 'Essensspende');
+                const beschreibung = spende?.beschreibung
+                  ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
+                  : '';
+                const label = kindEssensspenden.length === 1 ? 'Essensspende:' : `${i + 1}. Essensspende:`;
+                const sepStyle = i === 0 ? 'padding-top: 16px; border-top: 1px solid #e2e8f0;' : '';
+                return `
+                  <tr>
+                    <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${sepStyle}">${label}</td>
+                    <td style="padding: 8px 0; ${sepStyle}"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</td>
+                  </tr>`;
+              })
+              .join('') + `
               <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Details:</td>
-                <td style="padding: 8px 0;">${escapeHtml(z.beschreibung)}</td>
+                <td colspan="2" style="padding-top: 14px;">
+                  <div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; font-size: 14px; color: #78350f; border-radius: 4px;">
+                    Bitte verseht alle eure Kannen und Kuchenbehälter mit Namen!<br>
+                    <strong>Abgabe von 9:00 - 12:00 Uhr in der Kaffeebar.</strong>
+                  </div>
+                </td>
               </tr>`
-              : '';
-            const zeitRow = z.slotZeit
-              ? `
+          : `
               <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Einsatz-Zeit:</td>
-                <td style="padding: 8px 0; font-weight: 600;">${escapeHtml(z.slotZeit)}${z.slotTitel ? ` <span style="color: #64748b; font-weight: 400;">(${escapeHtml(z.slotTitel)})</span>` : ''}</td>
-              </tr>`
-              : z.zeitfenster
-                ? `
-              <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">Zeitfenster:</td>
-                <td style="padding: 8px 0; font-weight: 600;">${z.zeitfenster}</td>
-              </tr>`
-                : '';
-            return aufgabeRow + detailsRow + zeitRow;
-          })
-          .join('')}
-        ${kindEssensspenden
-          .map((e, i) => {
-            const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-            const titel = escapeHtml(spende?.titel || 'Essensspende');
-            const beschreibung = spende?.beschreibung
-              ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
-              : '';
-            const label = kindEssensspenden.length === 1 ? 'Essensspende:' : `${i + 1}. Essensspende:`;
-            const sepStyle = i === 0 ? 'padding-top: 16px; border-top: 1px solid #e2e8f0;' : '';
-            return `
-              <tr>
-                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; ${sepStyle}">${label}</td>
-                <td style="padding: 8px 0; ${sepStyle}"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</td>
-              </tr>`;
-          })
-          .join('')}
-        ${kindEssensspenden.length > 0 ? `
-          <tr>
-            <td colspan="2" style="padding-top: 14px;">
-              <div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; font-size: 14px; color: #78350f; border-radius: 4px;">
-                Bitte verseht alle eure Kannen und Kuchenbehälter mit Namen!<br>
-                <strong>Abgabe von 9:00 - 12:00 Uhr in der Kaffeebar.</strong>
-              </div>
-            </td>
-          </tr>` : ''}
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap; padding-top: 16px; border-top: 1px solid #e2e8f0;">Essensspende:</td>
+                <td style="padding: 8px 0; padding-top: 16px; border-top: 1px solid #e2e8f0;">Keine Essensspende</td>
+              </tr>`}
       </table>
     </div>
 
