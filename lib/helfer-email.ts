@@ -312,21 +312,23 @@ export function buildEmailFuerAnmeldung(
       ${kindEssensspenden.length > 0
         ? `
         <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">
-          <tr>
-            <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${kindEssensspenden.length === 1 ? 'Essensspende:' : 'Essensspenden:'}</td>
-            <td style="padding: 8px 0;">
-              <ul style="margin: 0; padding-left: 18px;">${kindEssensspenden
-                .map((e) => {
-                  const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
-                  const titel = escapeHtml(spende?.titel || 'Essensspende');
-                  const beschreibung = spende?.beschreibung
-                    ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
-                    : '';
-                  return `<li style="margin-bottom: 6px;"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</li>`;
-                })
-                .join('')}</ul>
-            </td>
-          </tr>
+          ${kindEssensspenden
+            .map((e, i) => {
+              const spende: any = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+              const titel = escapeHtml(spende?.titel || 'Essensspende');
+              const beschreibung = spende?.beschreibung
+                ? `<div style="font-size: 13px; color: #64748b; margin-top: 2px;">${escapeHtml(spende.beschreibung)}</div>`
+                : '';
+              const label = kindEssensspenden.length === 1
+                ? 'Essensspende:'
+                : `${i + 1}. Essensspende:`;
+              return `
+              <tr>
+                <td style="padding: 8px 12px 8px 0; color: #64748b; vertical-align: top; white-space: nowrap;">${label}</td>
+                <td style="padding: 8px 0;"><strong>${e.menge}&times; ${titel}</strong>${beschreibung}</td>
+              </tr>`;
+            })
+            .join('')}
         </table>`
         : ''}
     </div>
