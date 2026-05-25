@@ -252,15 +252,22 @@ export function buildEmailFuerAnmeldung(
   const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
   const weitereKinder = anmeldung.weitere_kinder_json || [];
 
-  let kindIdentifier = `${anmeldung.kind_nachname}, ${anmeldung.kind_vorname} (${anmeldung.kind_klasse})`;
-  if (weitereKinder.length > 0) {
-    kindIdentifier += weitereKinder
-      .map((k) => ` + ${k.nachname}, ${k.vorname} (${k.klasse})`)
-      .join('');
+  // Alle möglichen Sub-Identifier dieser Familie: Hauptkind + jedes Geschwister einzeln
+  // (Essensspenden können auch nachträglich für nur ein Geschwisterkind eingetragen sein.)
+  const familienKinderKeys = new Set<string>();
+  familienKinderKeys.add(`${anmeldung.kind_nachname}, ${anmeldung.kind_vorname} (${anmeldung.kind_klasse})`);
+  for (const w of weitereKinder) {
+    familienKinderKeys.add(`${w.nachname}, ${w.vorname} (${w.klasse})`);
   }
-  const kindEssensspenden = kontext.alleEssensspenden.filter(
-    (e) => e.kind_identifier === kindIdentifier,
-  );
+
+  const kindEssensspenden = kontext.alleEssensspenden.filter((e) => {
+    if (!e.kind_identifier) return false;
+    // kind_identifier kann ein einzelnes Kind sein ('Nachname, Vorname (Klasse)')
+    // oder mehrere mit ' + ' verkettet. Match wenn IRGENDEINES der enthaltenen
+    // Kinder zur Familie der Anmeldung gehört.
+    const kinderInIdentifier = e.kind_identifier.split(' + ');
+    return kinderInIdentifier.some((k: string) => familienKinderKeys.has(k));
+  });
 
   const html = `
 <!DOCTYPE html>
