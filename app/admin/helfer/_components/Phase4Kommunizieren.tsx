@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink, RotateCw } from 'lucide-react';
+import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Phase4KommunizierenProps {
@@ -23,21 +23,33 @@ interface MitbringStatus {
   hatPdf: boolean;
 }
 
+interface FilterOption { id: string; titel: string }
+
 interface VorschauData {
-  anmeldungId: string;
-  kindName: string;
-  kindKlasse: string;
-  elternEmail: string;
-  subject: string;
-  html: string;
-  hatZuteilung: boolean;
+  anmeldungId?: string;
+  kindName?: string;
+  kindKlasse?: string;
+  elternEmail?: string;
+  subject?: string;
+  html?: string;
+  hatZuteilung?: boolean;
   poolSize: number;
+  currentIndex?: number;
+  filterOptions?: {
+    klassen: string[];
+    aufgaben: FilterOption[];
+    spenden: FilterOption[];
+  };
+  error?: string;
 }
 
 export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenProps) {
   const [stats, setStats] = useState<BenachrichtigungsStats | null>(null);
   const [vorschau, setVorschau] = useState<VorschauData | null>(null);
-  const [vorschauSkip, setVorschauSkip] = useState(0);
+  const [vorschauIndex, setVorschauIndex] = useState(0);
+  const [filterKlasse, setFilterKlasse] = useState('');
+  const [filterAufgabe, setFilterAufgabe] = useState('');
+  const [filterSpende, setFilterSpende] = useState('');
   const [vorschauLoading, setVorschauLoading] = useState(false);
   const [mitbringStatus, setMitbringStatus] = useState<MitbringStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,10 +98,14 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
   }, [eventId]);
 
   const ladeVorschau = useCallback(
-    async (skip: number) => {
+    async (index: number, klasse: string, aufgabe: string, spende: string) => {
       setVorschauLoading(true);
       try {
-        const res = await fetch(`/api/helfer/benachrichtigung/vorschau?eventId=${eventId}&skip=${skip}`);
+        const params = new URLSearchParams({ eventId, index: String(index) });
+        if (klasse) params.set('klasse', klasse);
+        if (aufgabe) params.set('aufgabe', aufgabe);
+        if (spende) params.set('spende', spende);
+        const res = await fetch(`/api/helfer/benachrichtigung/vorschau?${params.toString()}`);
         if (res.ok) {
           const data: VorschauData = await res.json();
           setVorschau(data);
@@ -109,9 +125,14 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
     ladeStats();
   }, [ladeStats]);
 
+  // Bei Filter-Änderung Index auf 0 zurücksetzen
   useEffect(() => {
-    ladeVorschau(vorschauSkip);
-  }, [ladeVorschau, vorschauSkip]);
+    setVorschauIndex(0);
+  }, [filterKlasse, filterAufgabe, filterSpende]);
+
+  useEffect(() => {
+    ladeVorschau(vorschauIndex, filterKlasse, filterAufgabe, filterSpende);
+  }, [ladeVorschau, vorschauIndex, filterKlasse, filterAufgabe, filterSpende]);
 
   const handleSenden = async () => {
     setConfirming(false);
@@ -131,7 +152,7 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
         setErgebnis({ gesendet: data.gesendet, fehler: data.fehler || 0 });
         toast.success(`${data.gesendet} E-Mails gesendet`);
         ladeStats();
-        ladeVorschau(vorschauSkip);
+        ladeVorschau(vorschauIndex, filterKlasse, filterAufgabe, filterSpende);
         onRefresh();
       } else {
         toast.error(data.error || 'Fehler beim Senden');
@@ -206,36 +227,84 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
         </div>
       )}
 
-      {/* Echte E-Mail-Vorschau */}
+      {/* Echte E-Mail-Vorschau mit Filter + Navigation */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold text-slate-700">
-            E-Mail-Vorschau
-            {vorschau && (
-              <span className="font-normal text-slate-400 ml-2">
-                — Beispiel-Anmeldung {vorschau.poolSize > 1 ? `(1 von ${vorschau.poolSize})` : ''}
-              </span>
-            )}
-          </h3>
-          {vorschau && vorschau.poolSize > 1 && (
+        <h3 className="text-sm font-semibold text-slate-700 mb-2">E-Mail-Vorschau</h3>
+
+        {/* Filter-Leiste */}
+        <div className="flex flex-wrap items-center gap-2 mb-3 bg-white border rounded-xl p-3">
+          <select
+            value={filterKlasse}
+            onChange={(e) => setFilterKlasse(e.target.value)}
+            className="text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white"
+          >
+            <option value="">Alle Klassen</option>
+            {(vorschau?.filterOptions?.klassen || []).map((k) => (
+              <option key={k} value={k}>Klasse {k}</option>
+            ))}
+          </select>
+          <select
+            value={filterAufgabe}
+            onChange={(e) => setFilterAufgabe(e.target.value)}
+            className="text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white"
+          >
+            <option value="">Alle Aufgaben</option>
+            <option value="keine">— Keine Aufgabe —</option>
+            {(vorschau?.filterOptions?.aufgaben || []).map((a) => (
+              <option key={a.id} value={a.id}>Aufgabe: {a.titel}</option>
+            ))}
+          </select>
+          <select
+            value={filterSpende}
+            onChange={(e) => setFilterSpende(e.target.value)}
+            className="text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white"
+          >
+            <option value="">Alle Essensspenden</option>
+            <option value="keine">— Keine Essensspende —</option>
+            {(vorschau?.filterOptions?.spenden || []).map((s) => (
+              <option key={s.id} value={s.id}>Spende: {s.titel}</option>
+            ))}
+          </select>
+          {(filterKlasse || filterAufgabe || filterSpende) && (
+            <button
+              onClick={() => { setFilterKlasse(''); setFilterAufgabe(''); setFilterSpende(''); }}
+              className="text-xs text-slate-500 hover:text-slate-800 underline underline-offset-2"
+            >
+              Filter zurücksetzen
+            </button>
+          )}
+
+          {/* Navigation */}
+          <div className="ml-auto flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setVorschauSkip((s) => s + 1)}
-              disabled={vorschauLoading}
-              className="gap-1.5"
+              onClick={() => setVorschauIndex((i) => Math.max(0, i - 1))}
+              disabled={vorschauLoading || !vorschau || vorschau.poolSize === 0 || (vorschau.currentIndex || 0) === 0}
             >
-              {vorschauLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
-              Andere Anmeldung
+              <ChevronLeft size={14} />
             </Button>
-          )}
+            <span className="text-xs text-slate-600 px-2 min-w-[80px] text-center">
+              {vorschau && vorschau.poolSize > 0
+                ? `${(vorschau.currentIndex || 0) + 1} / ${vorschau.poolSize}`
+                : '0 / 0'}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVorschauIndex((i) => i + 1)}
+              disabled={vorschauLoading || !vorschau || vorschau.poolSize === 0 || ((vorschau.currentIndex || 0) + 1) >= vorschau.poolSize}
+            >
+              <ChevronRight size={14} />
+            </Button>
+          </div>
         </div>
 
         {vorschauLoading && !vorschau ? (
           <div className="bg-white border rounded-xl p-8 flex justify-center">
             <Loader2 className="animate-spin text-gray-400" size={24} />
           </div>
-        ) : vorschau ? (
+        ) : vorschau && vorschau.html ? (
           <div className="bg-white border rounded-xl overflow-hidden">
             <div className="bg-slate-50 border-b px-4 py-3 text-sm space-y-0.5">
               <div className="flex gap-2">
@@ -251,10 +320,10 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
                 <span className="text-slate-700 font-medium">{vorschau.subject}</span>
               </div>
               <div className="flex gap-2 pt-1 mt-1 border-t text-xs text-slate-500">
-                <span className="w-16 shrink-0">Beispiel:</span>
+                <span className="w-16 shrink-0">Familie:</span>
                 <span>
                   {vorschau.kindName}{vorschau.kindKlasse ? ` (Klasse ${vorschau.kindKlasse})` : ''}
-                  {!vorschau.hatZuteilung && (
+                  {vorschau.hatZuteilung === false && (
                     <span className="ml-2 text-amber-600">— ohne Helfer-Zuteilung</span>
                   )}
                 </span>
@@ -271,7 +340,7 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
         ) : (
           <div className="bg-white border rounded-xl p-8 text-center text-sm text-slate-500">
             <Mail size={32} className="mx-auto mb-2 text-slate-300" />
-            Keine Anmeldung für Vorschau verfügbar.
+            {vorschau?.error || 'Keine Anmeldung für Vorschau verfügbar.'}
           </div>
         )}
       </div>
