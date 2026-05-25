@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  berechneRangePunkteProKlasse,
+  berechneRangePunkteProBucket,
   istKleinerBesser,
   vergleicheNachWertungstyp,
 } from '@/lib/points';
@@ -13,6 +13,7 @@ interface Kind {
   id: string;
   vorname: string;
   nachname: string;
+  geschlecht: string;
   klasse: string;
 }
 
@@ -31,6 +32,9 @@ interface Ergebnis {
 }
 
 type ViewMode = 'pro-spiel' | 'pro-kind';
+
+const istJunge = (g: string) => g === 'Junge' || g === 'männlich';
+const istMaedchen = (g: string) => g === 'Mädchen' || g === 'weiblich';
 
 export function Punktecheck({
   kinder,
@@ -52,20 +56,19 @@ export function Punktecheck({
   const [selectedKlasse, setSelectedKlasse] = useState<string>(verfuegbareKlassen[0] ?? '');
   const [viewMode, setViewMode] = useState<ViewMode>('pro-spiel');
 
-  // Wenn sich die verfügbaren Klassen ändern (nach erstem Daten-Load), Default setzen
   React.useEffect(() => {
     if (!selectedKlasse && verfuegbareKlassen.length > 0) {
       setSelectedKlasse(verfuegbareKlassen[0]);
     }
   }, [verfuegbareKlassen, selectedKlasse]);
 
-  // Rang+Punkte klassenweit vorberechnen
+  // Rang+Punkte klassenweit, getrennt nach Geschlecht
   const rangMap = useMemo(() => {
-    const kindKlasseMap = new Map(kinder.map((k) => [k.id, k.klasse]));
+    const kindBucketMap = new Map(kinder.map((k) => [k.id, `${k.klasse}|${k.geschlecht}`]));
     const spielWertungstypMap = new Map(spiele.map((s) => [s.id, s.wertungstyp]));
-    return berechneRangePunkteProKlasse(
+    return berechneRangePunkteProBucket(
       ergebnisse,
-      (e) => kindKlasseMap.get(e.kind_id),
+      (e) => kindBucketMap.get(e.kind_id),
       (e) => spielWertungstypMap.get(e.spiel_id),
     );
   }, [ergebnisse, kinder, spiele]);
@@ -94,9 +97,10 @@ export function Punktecheck({
     <div>
       <div className="rounded-lg border bg-amber-50/60 px-4 py-3 mb-5 text-sm text-slate-700">
         <strong className="font-semibold">So funktioniert die Punktevergabe:</strong> Rang und
-        Punkte werden klassenweit pro Spiel berechnet — alle Spielgruppen einer Klasse zählen
-        zusammen. Formel: <span className="font-mono">11 − Rang</span> für Rang 1–10, sonst 0
-        Punkte. Bei Gleichstand erhalten Kinder denselben Rang.
+        Punkte werden klassenweit pro Spiel berechnet, dabei werden Jungen und Mädchen{' '}
+        <strong>getrennt</strong> gerankt (König- und Königinnen-Wertung parallel). Formel:{' '}
+        <span className="font-mono">11 − Rang</span> für Rang 1–10, sonst 0 Punkte. Bei
+        Gleichstand erhalten Kinder denselben Rang.
       </div>
 
       <div className="flex flex-wrap items-end gap-4 mb-5">
@@ -161,6 +165,8 @@ export function Punktecheck({
   );
 }
 
+// ─── Pro Spiel ────────────────────────────────────────────────────────────────
+
 function ProSpielView({
   spiele,
   ergebnisse,
@@ -176,76 +182,114 @@ function ProSpielView({
     return <div className="text-center py-8 text-slate-500">Keine Spiele für diese Klasse.</div>;
   }
   const kindMap = new Map(kinder.map((k) => [k.id, k]));
+  const jungen = kinder.filter((k) => istJunge(k.geschlecht));
+  const maedchen = kinder.filter((k) => istMaedchen(k.geschlecht));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {spiele.map((spiel) => {
-        const spielErgebnisse = ergebnisse
+        const alle = ergebnisse
           .filter((e) => e.spiel_id === spiel.id)
           .map((e) => ({
             ...e,
             rang: rangMap.get(e.id)?.rang,
             punkte: rangMap.get(e.id)?.punkte ?? 0,
             kind: kindMap.get(e.kind_id),
-          }))
-          .sort((a, b) => {
-            if (a.rang !== undefined && b.rang !== undefined && a.rang !== b.rang) {
-              return a.rang - b.rang;
-            }
-            return vergleicheNachWertungstyp(a.wert_numeric, b.wert_numeric, spiel.wertungstyp);
-          });
+          }));
+
+        const erfasstJungen = alle.filter((e) => e.kind && istJunge(e.kind.geschlecht));
+        const erfasstMaedchen = alle.filter((e) => e.kind && istMaedchen(e.kind.geschlecht));
 
         return (
           <div key={spiel.id} className="border rounded-lg overflow-hidden">
-            <div className="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-slate-900">{spiel.name}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {istKleinerBesser(spiel.wertungstyp) ? 'weniger ist besser' : 'mehr ist besser'}
-                </p>
-              </div>
-              <div className="text-xs text-slate-500">
-                {spielErgebnisse.length} / {kinder.length} erfasst
-              </div>
+            <div className="bg-slate-50 px-4 py-3 border-b">
+              <h3 className="font-semibold text-slate-900">{spiel.name}</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {istKleinerBesser(spiel.wertungstyp) ? 'weniger ist besser' : 'mehr ist besser'}
+              </p>
             </div>
-            {spielErgebnisse.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-slate-500 text-center">
-                Noch keine Ergebnisse erfasst.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">Rang</TableHead>
-                    <TableHead>Kind</TableHead>
-                    <TableHead className="text-right">
-                      Wert {spiel.einheit ? `(${spiel.einheit})` : ''}
-                    </TableHead>
-                    <TableHead className="text-right">Punkte</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {spielErgebnisse.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="font-medium tabular-nums">{e.rang ?? '—'}</TableCell>
-                      <TableCell>
-                        {e.kind ? `${e.kind.vorname} ${e.kind.nachname}` : 'Unbekannt'}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{e.wert_numeric}</TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {e.punkte}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x">
+              <GeschlechtsTabelle
+                titel="Jungen"
+                farbe="text-blue-700"
+                spiel={spiel}
+                erfasst={erfasstJungen}
+                gesamt={jungen.length}
+              />
+              <GeschlechtsTabelle
+                titel="Mädchen"
+                farbe="text-pink-700"
+                spiel={spiel}
+                erfasst={erfasstMaedchen}
+                gesamt={maedchen.length}
+              />
+            </div>
           </div>
         );
       })}
     </div>
   );
 }
+
+function GeschlechtsTabelle({
+  titel,
+  farbe,
+  spiel,
+  erfasst,
+  gesamt,
+}: {
+  titel: string;
+  farbe: string;
+  spiel: Spiel;
+  erfasst: Array<Ergebnis & { rang?: number; punkte: number; kind?: Kind }>;
+  gesamt: number;
+}) {
+  const sorted = [...erfasst].sort((a, b) => {
+    if (a.rang !== undefined && b.rang !== undefined && a.rang !== b.rang) return a.rang - b.rang;
+    return vergleicheNachWertungstyp(a.wert_numeric, b.wert_numeric, spiel.wertungstyp);
+  });
+
+  return (
+    <div>
+      <div className="px-4 py-2 bg-slate-50/60 border-b flex items-center justify-between">
+        <span className={`text-sm font-semibold ${farbe}`}>{titel}</span>
+        <span className="text-xs text-slate-500">
+          {erfasst.length} / {gesamt} erfasst
+        </span>
+      </div>
+      {erfasst.length === 0 ? (
+        <div className="px-4 py-6 text-sm text-slate-500 text-center">
+          Noch keine Ergebnisse erfasst.
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-12">#</TableHead>
+              <TableHead>Kind</TableHead>
+              <TableHead className="text-right">Wert {spiel.einheit ? `(${spiel.einheit})` : ''}</TableHead>
+              <TableHead className="text-right w-16">Pkt.</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((e) => (
+              <TableRow key={e.id}>
+                <TableCell className="font-medium tabular-nums">{e.rang ?? '—'}</TableCell>
+                <TableCell>
+                  {e.kind ? `${e.kind.vorname} ${e.kind.nachname}` : 'Unbekannt'}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{e.wert_numeric}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{e.punkte}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+// ─── Pro Kind ─────────────────────────────────────────────────────────────────
 
 function ProKindView({
   spiele,
@@ -262,79 +306,106 @@ function ProKindView({
     return <div className="text-center py-8 text-slate-500">Keine Kinder in dieser Klasse.</div>;
   }
 
-  const kinderMitPunkten = kinder
-    .map((kind) => {
-      const kindErgebnisse = ergebnisse.filter((e) => e.kind_id === kind.id);
-      const gesamtpunkte = kindErgebnisse.reduce(
-        (sum, e) => sum + (rangMap.get(e.id)?.punkte ?? 0),
-        0,
-      );
-      return { kind, kindErgebnisse, gesamtpunkte };
-    })
-    .sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+  const compute = (k: Kind) => {
+    const kindErgebnisse = ergebnisse.filter((e) => e.kind_id === k.id);
+    const gesamtpunkte = kindErgebnisse.reduce(
+      (sum, e) => sum + (rangMap.get(e.id)?.punkte ?? 0),
+      0,
+    );
+    return { kind: k, kindErgebnisse, gesamtpunkte };
+  };
+
+  const jungen = kinder.filter((k) => istJunge(k.geschlecht)).map(compute).sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+  const maedchen = kinder.filter((k) => istMaedchen(k.geschlecht)).map(compute).sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
 
   return (
-    <div className="space-y-4">
-      {kinderMitPunkten.map(({ kind, kindErgebnisse, gesamtpunkte }) => {
-        const rowsBySpielId = new Map(kindErgebnisse.map((e) => [e.spiel_id, e]));
-        return (
-          <div key={kind.id} className="border rounded-lg overflow-hidden">
-            <div className="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">
-                {kind.vorname} {kind.nachname}
-              </h3>
-              <div className="text-sm">
-                <span className="text-slate-500">Gesamtpunkte:</span>{' '}
-                <span className="font-bold text-melsdorf-orange tabular-nums">
-                  {gesamtpunkte}
-                </span>
+    <div className="space-y-8">
+      <KinderListe titel="Jungen" farbe="text-blue-700" eintraege={jungen} spiele={spiele} rangMap={rangMap} />
+      <KinderListe titel="Mädchen" farbe="text-pink-700" eintraege={maedchen} spiele={spiele} rangMap={rangMap} />
+    </div>
+  );
+}
+
+function KinderListe({
+  titel,
+  farbe,
+  eintraege,
+  spiele,
+  rangMap,
+}: {
+  titel: string;
+  farbe: string;
+  eintraege: Array<{ kind: Kind; kindErgebnisse: Ergebnis[]; gesamtpunkte: number }>;
+  spiele: Spiel[];
+  rangMap: Map<string, { rang: number; punkte: number }>;
+}) {
+  if (eintraege.length === 0) return null;
+  return (
+    <div>
+      <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${farbe}`}>
+        {titel} ({eintraege.length})
+      </h2>
+      <div className="space-y-3">
+        {eintraege.map(({ kind, kindErgebnisse, gesamtpunkte }, idx) => {
+          const rowsBySpielId = new Map(kindErgebnisse.map((e) => [e.spiel_id, e]));
+          return (
+            <div key={kind.id} className="border rounded-lg overflow-hidden">
+              <div className="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900">
+                  <span className="text-slate-400 mr-2 tabular-nums">{idx + 1}.</span>
+                  {kind.vorname} {kind.nachname}
+                </h3>
+                <div className="text-sm">
+                  <span className="text-slate-500">Gesamtpunkte:</span>{' '}
+                  <span className="font-bold text-melsdorf-orange tabular-nums">{gesamtpunkte}</span>
+                </div>
               </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Spiel</TableHead>
+                    <TableHead className="text-right">Wert</TableHead>
+                    <TableHead className="w-16 text-right">Rang</TableHead>
+                    <TableHead className="w-16 text-right">Pkt.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {spiele.map((spiel) => {
+                    const e = rowsBySpielId.get(spiel.id);
+                    const r = e ? rangMap.get(e.id) : undefined;
+                    return (
+                      <TableRow key={spiel.id}>
+                        <TableCell>
+                          {spiel.name}
+                          {!e && (
+                            <span className="ml-2 text-xs text-slate-400 italic">
+                              kein Ergebnis
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {e ? (
+                            <>
+                              {e.wert_numeric}
+                              {spiel.einheit ? ` ${spiel.einheit}` : ''}
+                            </>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{r?.rang ?? '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {r?.punkte ?? 0}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Spiel</TableHead>
-                  <TableHead className="text-right">Wert</TableHead>
-                  <TableHead className="w-16 text-right">Rang</TableHead>
-                  <TableHead className="w-16 text-right">Punkte</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {spiele.map((spiel) => {
-                  const e = rowsBySpielId.get(spiel.id);
-                  const r = e ? rangMap.get(e.id) : undefined;
-                  return (
-                    <TableRow key={spiel.id}>
-                      <TableCell>
-                        {spiel.name}
-                        {!e && (
-                          <span className="ml-2 text-xs text-slate-400 italic">
-                            kein Ergebnis
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {e ? (
-                          <>
-                            {e.wert_numeric}
-                            {spiel.einheit ? ` ${spiel.einheit}` : ''}
-                          </>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{r?.rang ?? '—'}</TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">
-                        {r?.punkte ?? 0}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -46,34 +46,37 @@ export function berechnePunkteFuerRang(rang: number | undefined): number {
 }
 
 /**
- * Berechnet pro Klasse und Spiel den Rang jedes Ergebnisses. Innerhalb einer
- * Klasse werden alle Spielgruppen gemeinsam gerankt — Spielgruppen sind nur
- * eine organisatorische Aufteilung, der Wettbewerb läuft klassenweit.
+ * Berechnet pro Wettbewerbs-Bucket (Spiel + Klasse + Geschlecht) den Rang jedes
+ * Ergebnisses. Spielgruppen sind nur eine organisatorische Aufteilung — der
+ * Wettbewerb läuft klassenweit. Geschlechter werden getrennt gerankt, weil
+ * König (bester Junge) und Königin (bestes Mädchen) parallel ermittelt werden.
  *
  * Gleichstand → gleicher Rang (Standard-Konkurrenz-Ranking, "1224").
  *
  * @param ergebnisse  Zu rankende Ergebnisse
- * @param klasseFuer  Funktion, die für ein Ergebnis die Klasse zurückgibt (oder null/undefined, wenn unbekannt)
+ * @param bucketFuer  Funktion, die für ein Ergebnis einen Bucket-Key zurückgibt
+ *                    (typisch: `${klasse}|${geschlecht}`). Wenn null/undefined,
+ *                    wird das Ergebnis übersprungen.
  * @param wertungstypFuer Funktion, die für ein Ergebnis den Wertungstyp zurückgibt
  * @returns Eine Map ergebnis.id → { rang, punkte }
  */
-export function berechneRangePunkteProKlasse<E extends { id: string; spiel_id: string; wert_numeric: number }>(
+export function berechneRangePunkteProBucket<E extends { id: string; spiel_id: string; wert_numeric: number }>(
   ergebnisse: E[],
-  klasseFuer: (e: E) => string | null | undefined,
+  bucketFuer: (e: E) => string | null | undefined,
   wertungstypFuer: (e: E) => string | null | undefined,
 ): Map<string, { rang: number; punkte: number }> {
-  // Gruppieren nach (spiel_id, klasse)
+  // Gruppieren nach (spiel_id, bucket)
   const buckets = new Map<string, E[]>();
   for (const e of ergebnisse) {
-    const klasse = klasseFuer(e);
-    if (!klasse) continue;
-    const key = `${e.spiel_id}__${klasse}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = [];
-      buckets.set(key, bucket);
+    const bucket = bucketFuer(e);
+    if (!bucket) continue;
+    const key = `${e.spiel_id}__${bucket}`;
+    let group = buckets.get(key);
+    if (!group) {
+      group = [];
+      buckets.set(key, group);
     }
-    bucket.push(e);
+    group.push(e);
   }
 
   const result = new Map<string, { rang: number; punkte: number }>();

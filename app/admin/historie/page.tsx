@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageShell } from '@/components/admin';
-import { berechneRangePunkteProKlasse } from '@/lib/points';
+import { berechneRangePunkteProBucket } from '@/lib/points';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,9 +69,9 @@ function calculateKoenigspaare(ergebnisse: ErgebnisRaw[]): Koenigspaar[] {
     id: `${e.kind_id}_${e.spiel_id}_${e.spielgruppe_id}_${i}`,
   }));
 
-  const rangMap = berechneRangePunkteProKlasse(
+  const rangMap = berechneRangePunkteProBucket(
     ergMitId,
-    (e) => e.kind?.klasse ?? null,
+    (e) => (e.kind && e.kind.klasse ? `${e.kind.klasse}|${e.kind.geschlecht}` : null),
     (e) => e.spiel?.wertungstyp ?? null,
   );
 

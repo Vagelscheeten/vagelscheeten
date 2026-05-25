@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Crown, Loader2 } from 'lucide-react';
 import { PageShell } from '@/components/admin';
-import { berechnePunkteFuerRang, berechneRangePunkteProKlasse } from '@/lib/points';
+import { berechnePunkteFuerRang, berechneRangePunkteProBucket } from '@/lib/points';
 import { Punktecheck } from './_components/Punktecheck';
 
 // Datenmodelle/Interfaces
@@ -263,12 +263,12 @@ export default function AuswertungAdmin() {
       // Spiele für diese Klasse ermitteln
       const spieleFuerKlasse = ermittleSpieleProKlasse(klasse, ergebnisse, spiele);
 
-      // Rang klassenweit pro Spiel (Spielgruppen sind nur organisatorische Aufteilung)
-      const kindKlasseMap = new Map(kinder.map((k) => [k.id, k.klasse]));
+      // Rang klassenweit pro Spiel, getrennt nach Geschlecht (König/Königin parallel)
+      const kindBucketMap = new Map(kinder.map((k) => [k.id, `${k.klasse}|${k.geschlecht}`]));
       const spielWertungstypMap = new Map(spiele.map((s) => [s.id, s.wertungstyp]));
-      const rangMap = berechneRangePunkteProKlasse(
+      const rangMap = berechneRangePunkteProBucket(
         klassenErgebnisse,
-        (e) => kindKlasseMap.get(e.kind_id),
+        (e) => kindBucketMap.get(e.kind_id),
         (e) => spielWertungstypMap.get(e.spiel_id),
       );
 
@@ -544,16 +544,16 @@ export default function AuswertungAdmin() {
     }
   };
   
-  // Hilfsfunktion zum Berechnen der Ränge — klassenweit, nicht pro Spielgruppe.
-  // Spielgruppen sind nur eine organisatorische Aufteilung; alle Kinder einer Klasse
-  // konkurrieren bei einem Spiel gemeinsam.
+  // Hilfsfunktion zum Berechnen der Ränge — klassenweit pro Geschlecht.
+  // Spielgruppen sind nur organisatorisch; König (bester Junge) und Königin
+  // (bestes Mädchen) werden parallel ermittelt, daher Trennung nach Geschlecht.
   const berechneRaenge = (ergebnisseData: Ergebnis[], kinderData: Kind[], spieleData: Spiel[]): Ergebnis[] => {
-    const kindKlasseMap = new Map(kinderData.map(k => [k.id, k.klasse]));
+    const kindBucketMap = new Map(kinderData.map(k => [k.id, `${k.klasse}|${k.geschlecht}`]));
     const spielWertungstypMap = new Map(spieleData.map(s => [s.id, s.wertungstyp]));
 
-    const rangMap = berechneRangePunkteProKlasse(
+    const rangMap = berechneRangePunkteProBucket(
       ergebnisseData,
-      (e) => kindKlasseMap.get(e.kind_id),
+      (e) => kindBucketMap.get(e.kind_id),
       (e) => spielWertungstypMap.get(e.spiel_id),
     );
 
