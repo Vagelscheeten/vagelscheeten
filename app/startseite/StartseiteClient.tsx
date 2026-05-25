@@ -16,9 +16,24 @@ import {
 import type { AblaufSectionSettings } from '@/components/public/AblaufSection';
 
 function LiveBanner({ datum }: { datum: string | null }) {
+  const [istAdmin, setIstAdmin] = React.useState(false);
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const supabase = (await import('@/lib/supabase/client')).createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        setIstAdmin(!!user);
+      } catch {
+        setIstAdmin(false);
+      }
+    })();
+  }, []);
+
   if (!datum) return null;
   const heute = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
-  if (datum !== heute) return null;
+  const istEventTag = datum === heute;
+  if (!istEventTag && !istAdmin) return null;
+
   return (
     <Link
       href="/live"
@@ -29,7 +44,11 @@ function LiveBanner({ datum }: { datum: string | null }) {
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-paper-soft opacity-75"></span>
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-paper-soft"></span>
         </span>
-        <span>Vagelscheeten läuft jetzt — Live-Stand anschauen</span>
+        <span>
+          {istEventTag
+            ? 'Vagelscheeten läuft jetzt — Live-Stand anschauen'
+            : 'Admin-Vorschau: Live-Stand öffnen'}
+        </span>
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
           <path d="M5 12h14M13 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
         </svg>

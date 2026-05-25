@@ -317,7 +317,7 @@ export default function LiveContent({
               <div className="text-7xl font-bold text-melsdorf-orange tabular-nums leading-none">
                 {globalStats.prozent}%
               </div>
-              <div className="text-sm text-slate-600 mt-2">Fortschritt am Vagelscheeten</div>
+              <div className="text-sm text-slate-600 mt-2">der Spiele beim Vagelscheeten erledigt</div>
               <div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-melsdorf-orange transition-all duration-500"

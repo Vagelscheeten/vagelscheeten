@@ -71,7 +71,9 @@ export default function MainNavigation() {
           .eq('ist_aktiv', true)
           .maybeSingle();
         const heute = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
-        setLiveAktiv(!!event && event.datum === heute);
+        const istEventTag = !!event && event.datum === heute;
+        // Admin sieht den Link auch außerhalb des Event-Tags (Vorab-Test)
+        setLiveAktiv(istEventTag || !!user);
       } catch {
         setIsAdmin(false);
         setIsLoggedIn(false);
