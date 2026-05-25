@@ -365,6 +365,8 @@ export function buildEmailFuerAnmeldung(
   const weitereKinder = anmeldung.weitere_kinder_json || [];
 
   const kindEssensspenden = essensspendenForFamilie(anmeldung, kontext);
+  const hatEssensspende = kindEssensspenden.length > 0;
+  const nurBestaetigung = !hatZuteilung && !hatEssensspende;
 
   const html = `
 <!DOCTYPE html>
@@ -372,13 +374,15 @@ export function buildEmailFuerAnmeldung(
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-    <h2 style="color: #F2A03D;">Helfer-Zuteilung beim ${FEST_DATUM}</h2>
+    <h2 style="color: #F2A03D;">${nurBestaetigung ? 'Anmeldebestätigung' : 'Helfer-Zuteilung'} beim ${FEST_DATUM}</h2>
 
     <p>Hallo!</p>
 
-    <p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
-
-    <p>Hier eure Beteiligung beim ${FEST_DATUM} im Überblick:</p>
+    ${nurBestaetigung
+      ? `<p>Dies ist die Bestätigung eurer Anmeldung zum ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
+    <p>Eure Beteiligung im Überblick:</p>`
+      : `<p>Vielen Dank für die Anmeldung als Helfer beim ${FEST_DATUM} (${weitereKinder.length > 0 ? 'Kinder' : 'Kind'}: <strong>${kindName}</strong>, Klasse ${escapeHtml(anmeldung.kind_klasse)}${weitereKinder.map((k) => `; <strong>${escapeHtml(k.vorname)} ${escapeHtml(k.nachname)}</strong>, Klasse ${escapeHtml(k.klasse)}`).join('')}).</p>
+    <p>Hier eure Beteiligung beim ${FEST_DATUM} im Überblick:</p>`}
 
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin: 20px 0;">
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
@@ -471,7 +475,7 @@ export function buildEmailFuerAnmeldung(
 </body>
 </html>`;
 
-  const subject = `Helfer-Zuteilung beim ${FEST_DATUM} (${weitereKinder.length > 0 ? `Familie ${anmeldung.kind_nachname}` : `${anmeldung.kind_vorname} ${anmeldung.kind_nachname}`})`;
+  const subject = `${nurBestaetigung ? 'Anmeldebestätigung' : 'Helfer-Zuteilung'} beim ${FEST_DATUM} (${weitereKinder.length > 0 ? `Familie ${anmeldung.kind_nachname}` : `${anmeldung.kind_vorname} ${anmeldung.kind_nachname}`})`;
 
   return {
     subject,
