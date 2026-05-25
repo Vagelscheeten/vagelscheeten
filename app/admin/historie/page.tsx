@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageShell } from '@/components/admin';
+import { berechneRangePunkteProKlasse } from '@/lib/points';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,62 +55,34 @@ type HistorieEintrag = {
 // ─── Königspaar-Berechnung ────────────────────────────────────────────────────
 // Identische Logik wie ladeGesamtauswertung in app/admin/auswertung/page.tsx:
 //
-// 1. berechneRaenge: Gruppierung nach spiel_id + spielgruppe_id
-//    Sortierung: nur ZEIT_MIN_STRAFE aufsteigend, alle anderen absteigend.
-//    Gleichstand → gleicher Rang (letzterRang / letzterWert-Logik).
-//
-// 2. Punkte = 11 − rang für rang 1–10, sonst 0.
-//
-// 3. Gesamtpunkte pro Kind = Summe aller Rang-Punkte über alle Spiele.
-//
-// 4. Pro Klasse: Junge mit höchsten Gesamtpunkten = König,
-//    Mädchen mit höchsten Gesamtpunkten = Königin.
+// 1. Rang klassenweit pro Spiel via berechneRangePunkteProKlasse (lib/points.ts).
+//    Spielgruppen sind nur organisatorische Aufteilung, Wettbewerb klassenweit.
+//    Gleichstand → gleicher Rang.
+// 2. Gesamtpunkte pro Kind = Summe aller Rang-Punkte.
+// 3. Pro Klasse: bester Junge = König, bestes Mädchen = Königin.
 
 function calculateKoenigspaare(ergebnisse: ErgebnisRaw[]): Koenigspaar[] {
-  // Schritt 1: Rang-Berechnung pro Spiel + Spielgruppe (wie berechneRaenge)
-  const byGroup = new Map<string, ErgebnisRaw[]>();
-  for (const e of ergebnisse) {
-    const key = `${e.spiel_id}_${e.spielgruppe_id}`;
-    if (!byGroup.has(key)) byGroup.set(key, []);
-    byGroup.get(key)!.push(e);
-  }
+  // ErgebnisRaw hat keine id — synthetischen Key bauen, damit der Helper greift.
+  type ErgebnisMitId = ErgebnisRaw & { id: string };
+  const ergMitId: ErgebnisMitId[] = ergebnisse.map((e, i) => ({
+    ...e,
+    id: `${e.kind_id}_${e.spiel_id}_${e.spielgruppe_id}_${i}`,
+  }));
 
-  // kind_id → akkumulierte Rangpunkte
+  const rangMap = berechneRangePunkteProKlasse(
+    ergMitId,
+    (e) => e.kind?.klasse ?? null,
+    (e) => e.spiel?.wertungstyp ?? null,
+  );
+
+  // Punkte pro Kind aufsummieren
   const kindPoints = new Map<string, { info: KindInfo; punkte: number }>();
-
-  for (const [, gruppe] of byGroup) {
-    const wertungstyp = gruppe[0]?.spiel?.wertungstyp ?? '';
-
-    // Nur ZEIT_MIN_STRAFE ist aufsteigend — alle anderen absteigend
-    // (identisch mit berechneRaenge in auswertung/page.tsx, Zeile 1017-1024)
-    const sorted = [...gruppe].sort((a, b) =>
-      wertungstyp === 'ZEIT_MIN_STRAFE'
-        ? a.wert_numeric - b.wert_numeric
-        : b.wert_numeric - a.wert_numeric
-    );
-
-    // Gleichstand: gleicher Rang für gleiche Werte (letzterRang/letzterWert-Logik)
-    let letzterRang = 1;
-    let letzterWert = sorted.length > 0 ? sorted[0].wert_numeric : 0;
-
-    sorted.forEach((e, index) => {
-      if (!e.kind) return;
-
-      if (index > 0) {
-        const anderesErgebnis =
-          wertungstyp === 'ZEIT_MIN_STRAFE'
-            ? e.wert_numeric > letzterWert   // größer = schlechter bei Zeit
-            : e.wert_numeric < letzterWert;  // kleiner = schlechter sonst
-        if (anderesErgebnis) {
-          letzterRang = index + 1;
-          letzterWert = e.wert_numeric;
-        }
-      }
-
-      const pts = letzterRang <= 10 ? (11 - letzterRang) : 0;
-      const prev = kindPoints.get(e.kind_id) ?? { info: e.kind, punkte: 0 };
-      kindPoints.set(e.kind_id, { info: e.kind, punkte: prev.punkte + pts });
-    });
+  for (const e of ergMitId) {
+    if (!e.kind) continue;
+    const r = rangMap.get(e.id);
+    if (!r) continue;
+    const prev = kindPoints.get(e.kind_id) ?? { info: e.kind, punkte: 0 };
+    kindPoints.set(e.kind_id, { info: e.kind, punkte: prev.punkte + r.punkte });
   }
 
   // Schritt 2: Pro Klasse besten Jungen (König) und bestes Mädchen (Königin) finden

@@ -1,38 +1,32 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Download, RefreshCw } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, RefreshCw, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
-import { berechnePunkteFuerRang, erklaerePunkteberechnung } from '@/lib/points';
+import { PageShell } from '@/components/admin';
+import {
+  berechneRangePunkteProKlasse,
+  istKleinerBesser,
+  vergleicheNachWertungstyp,
+} from '@/lib/points';
 
-// Datenmodelle/Interfaces
 interface Kind {
   id: string;
   vorname: string;
   nachname: string;
-  geschlecht: string;
   klasse: string;
 }
 
 interface Spiel {
   id: string;
   name: string;
-  beschreibung: string | null;
   wertungstyp: string;
   einheit: string | null;
-}
-
-interface Spielgruppe {
-  id: string;
-  name: string;
-  klasse: string;
-  event_id: string;
 }
 
 interface Ergebnis {
@@ -40,510 +34,407 @@ interface Ergebnis {
   kind_id: string;
   spiel_id: string;
   spielgruppe_id: string;
-  event_id: string;
-  wert: string;
   wert_numeric: number;
-  erfasst_am: string;
-  rang?: number;
-  punkte?: number;
 }
 
-interface ErgebnisDetail {
-  ergebnis_id: string;
-  kind_name: string;
-  spiel_name: string;
-  wert: string;
-  wert_numeric: number;
-  wertungstyp: string;
-  einheit: string | null | undefined;
-  rang: number | null | undefined;
-  punkte: number;
-  berechnungsmethode: string;
-  rohwert_vergleich: string;
-}
+type ViewMode = 'pro-spiel' | 'pro-kind';
 
 export default function AuswertungDetailsPage() {
-  // Daten aus der Datenbank
   const [spiele, setSpiele] = useState<Spiel[]>([]);
-  const [spielgruppen, setSpielgruppen] = useState<Spielgruppe[]>([]);
   const [ergebnisse, setErgebnisse] = useState<Ergebnis[]>([]);
   const [kinder, setKinder] = useState<Kind[]>([]);
-  
-  // Filter
-  const [selectedKlasse, setSelectedKlasse] = useState<string>('');
-  const [selectedSpielId, setSelectedSpielId] = useState<string>('alle');
-  const [selectedGruppeId, setSelectedGruppeId] = useState<string>('');
-  
-  // Berechnete Daten
-  const [isLoading, setIsLoading] = useState(true);
-  const [ergebnisDetails, setErgebnisDetails] = useState<ErgebnisDetail[]>([]);
+  const [spielIdsProKlasse, setSpielIdsProKlasse] = useState<Map<string, Set<string>>>(new Map());
   const [verfuegbareKlassen, setVerfuegbareKlassen] = useState<string[]>([]);
-  const [filteredGruppen, setFilteredGruppen] = useState<Spielgruppe[]>([]);
-  const [filteredSpiele, setFilteredSpiele] = useState<Spiel[]>([]);
-  
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedKlasse, setSelectedKlasse] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('pro-spiel');
+
   const supabase = createClient();
-  
-  // Lade Daten beim ersten Rendern
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-  
-  // Aktualisiere gefilterte Gruppen, wenn sich die Klasse ändert
-  useEffect(() => {
-    if (selectedKlasse) {
-      const filtered = spielgruppen.filter(gruppe => gruppe.klasse === selectedKlasse);
-      setFilteredGruppen(filtered);
-      
-      if (filtered.length > 0 && (!selectedGruppeId || !filtered.some(g => g.id === selectedGruppeId))) {
-        setSelectedGruppeId(filtered[0].id);
-      }
-    }
-  }, [selectedKlasse, spielgruppen, selectedGruppeId]);
-  
-  // Lade alle Daten
+
   const loadInitialData = async () => {
     setIsLoading(true);
     try {
-      // Lade Spiele
-      const { data: spieleData, error: spieleError } = await supabase
-        .from('spiele')
-        .select('*')
-        .order('name');
-      
-      if (spieleError) throw spieleError;
-      setSpiele(spieleData || []);
-      setFilteredSpiele(spieleData || []);
-      
-      // Lade Spielgruppen
-      const { data: gruppenData, error: gruppenError } = await supabase
-        .from('spielgruppen')
-        .select('*')
-        .order('name');
-      
-      if (gruppenError) throw gruppenError;
-      setSpielgruppen(gruppenData || []);
-      
-      // Extrahiere verfügbare Klassen
-      const klassen = [...new Set(gruppenData?.map(g => g.klasse) || [])].sort();
-      setVerfuegbareKlassen(klassen);
-      
-      if (klassen.length > 0) {
-        setSelectedKlasse(klassen[0]);
+      const { data: event } = await supabase
+        .from('events')
+        .select('id')
+        .eq('ist_aktiv', true)
+        .maybeSingle();
+      if (!event) {
+        setIsLoading(false);
+        return;
       }
-      
-      // Lade Kinder
-      const { data: kinderData, error: kinderError } = await supabase
-        .from('kinder')
-        .select('*');
-      
-      if (kinderError) throw kinderError;
-      setKinder(kinderData || []);
-      
-      // Lade Ergebnisse
-      const { data: ergebnisseData, error: ergebnisseError } = await supabase
-        .from('ergebnisse')
-        .select('*');
-      
-      if (ergebnisseError) throw ergebnisseError;
-      setErgebnisse(ergebnisseData || []);
-      
+      const eventId = event.id;
+
+      const [{ data: spieleData }, { data: kinderData }, { data: ergebnisseData }, { data: klasseSpieleData }] =
+        await Promise.all([
+          supabase.from('spiele').select('id, name, wertungstyp, einheit').order('name'),
+          supabase.from('kinder').select('id, vorname, nachname, klasse').eq('event_id', eventId),
+          supabase
+            .from('ergebnisse')
+            .select('id, kind_id, spiel_id, spielgruppe_id, wert_numeric')
+            .eq('event_id', eventId),
+          supabase.from('klasse_spiele').select('spiel_id, klasse:klassen!inner(name)'),
+        ]);
+
+      setSpiele((spieleData ?? []) as Spiel[]);
+      setKinder((kinderData ?? []) as Kind[]);
+      setErgebnisse((ergebnisseData ?? []) as Ergebnis[]);
+
+      const map = new Map<string, Set<string>>();
+      for (const row of klasseSpieleData ?? []) {
+        const klasseName = (row as any).klasse?.name as string | undefined;
+        if (!klasseName) continue;
+        if (!map.has(klasseName)) map.set(klasseName, new Set());
+        map.get(klasseName)!.add(row.spiel_id);
+      }
+      setSpielIdsProKlasse(map);
+
+      const klassenMitKindern = Array.from(
+        new Set((kinderData ?? []).map((k) => k.klasse).filter(Boolean) as string[]),
+      ).sort();
+      setVerfuegbareKlassen(klassenMitKindern);
+      if (klassenMitKindern.length > 0 && !selectedKlasse) {
+        setSelectedKlasse(klassenMitKindern[0]);
+      }
     } catch (error) {
       console.error('Fehler beim Laden der Daten:', error);
     } finally {
       setIsLoading(false);
     }
   };
-  
-  // Berechne Ränge für Ergebnisse
-  const berechneRaenge = (ergebnisseData: Ergebnis[], spieleData: Spiel[]) => {
-    // Gruppiere Ergebnisse nach Spiel und Spielgruppe
-    const gruppiertNachSpielUndGruppe: Record<string, Ergebnis[]> = {};
-    
-    ergebnisseData.forEach(ergebnis => {
-      const key = `${ergebnis.spiel_id}_${ergebnis.spielgruppe_id}`;
-      if (!gruppiertNachSpielUndGruppe[key]) {
-        gruppiertNachSpielUndGruppe[key] = [];
-      }
-      gruppiertNachSpielUndGruppe[key].push(ergebnis);
-    });
-    
-    // Berechne Rang für jedes Ergebnis innerhalb seiner Gruppe
-    const ergebnisseMitRang = [...ergebnisseData];
-    
-    Object.entries(gruppiertNachSpielUndGruppe).forEach(([key, gruppenErgebnisse]) => {
-      const [spielId] = key.split('_');
-      const spiel = spieleData.find(s => s.id === spielId);
-      
-      if (!spiel) return;
-      
-      // Sortiere Ergebnisse basierend auf dem Wertungstyp
-      const sortierteErgebnisse = [...gruppenErgebnisse].sort((a, b) => {
-        if (spiel.wertungstyp === 'ZEIT_MIN_STRAFE') {
-          // Für Zeit: Kleinerer Wert ist besser
-          return a.wert_numeric - b.wert_numeric;
-        } else {
-          // Für andere Wertungen: Größerer Wert ist besser
-          return b.wert_numeric - a.wert_numeric;
-        }
-      });
-      
-      // Weise Ränge zu
-      let letzterRang = 1;
-      let letzterWert = sortierteErgebnisse.length > 0 ? sortierteErgebnisse[0].wert_numeric : 0;
-      
-      sortierteErgebnisse.forEach((ergebnis, index) => {
-        // Wenn der Wert sich vom vorherigen unterscheidet, erhöhe den Rang
-        if (index > 0 && (
-          (spiel.wertungstyp === 'ZEIT_MIN_STRAFE' && ergebnis.wert_numeric > letzterWert) ||
-          (spiel.wertungstyp !== 'ZEIT_MIN_STRAFE' && ergebnis.wert_numeric < letzterWert)
-        )) {
-          letzterRang = index + 1;
-          letzterWert = ergebnis.wert_numeric;
-        }
-        
-        // Finde das entsprechende Ergebnis in der Originalliste und setze den Rang
-        const originalIndex = ergebnisseMitRang.findIndex(e => e.id === ergebnis.id);
-        if (originalIndex !== -1) {
-          ergebnisseMitRang[originalIndex] = {
-            ...ergebnisseMitRang[originalIndex],
-            rang: letzterRang
-          };
-        }
-      });
-    });
-    
-    return ergebnisseMitRang;
-  };
-  
-  // Berechne Punkte für ein Ergebnis
-  // Verwendet die zentrale Punkteberechnungsfunktion für konsistente Ergebnisse
-  const berechnePunkteFuerErgebnis = (ergebnis: Ergebnis, spiel: Spiel | undefined): { punkte: number, methode: string } => {
-    if (!spiel) return { punkte: 0, methode: 'FEHLER: Spiel nicht gefunden' };
-    
-    // Berechne Punkte mit der zentralen Funktion
-    const punkte = berechnePunkteFuerRang(ergebnis.rang);
-    
-    // Erhalte eine Erklärung für die Berechnung
-    const methode = erklaerePunkteberechnung(ergebnis.rang);
-    
-    return { punkte, methode };
-  };
-  
-  // Berechne Ergebnisdetails für die aktuelle Auswahl
-  const berechneErgebnisDetails = () => {
-    if (!selectedKlasse || !selectedGruppeId) return;
-    
-    // Berechne Ränge für alle Ergebnisse
-    const ergebnisseMitRang = berechneRaenge(ergebnisse, spiele);
-    
-    // Filtere Ergebnisse nach ausgewählter Gruppe und optional nach Spiel
-    let filteredErgebnisse = ergebnisseMitRang.filter(e => e.spielgruppe_id === selectedGruppeId);
-    
-    if (selectedSpielId && selectedSpielId !== 'alle') {
-      filteredErgebnisse = filteredErgebnisse.filter(e => e.spiel_id === selectedSpielId);
-    }
-    
-    // Erstelle detaillierte Ergebnisobjekte
-    const details: ErgebnisDetail[] = filteredErgebnisse.map(ergebnis => {
-      const kind = kinder.find(k => k.id === ergebnis.kind_id);
-      const spiel = spiele.find(s => s.id === ergebnis.spiel_id);
-      const { punkte, methode } = berechnePunkteFuerErgebnis(ergebnis, spiel);
-      
-      // Erstelle einen String für den Rohwertvergleich
-      let rohwertVergleich = '';
-      if (spiel) {
-        if (spiel.wertungstyp === 'ZEIT_MIN_STRAFE') {
-          rohwertVergleich = 'Weniger ist besser';
-        } else {
-          rohwertVergleich = 'Mehr ist besser';
-        }
-      }
-      
-      return {
-        ergebnis_id: ergebnis.id,
-        kind_name: kind ? `${kind.vorname} ${kind.nachname}` : 'Unbekannt',
-        spiel_name: spiel?.name || 'Unbekannt',
-        wert: ergebnis.wert,
-        wert_numeric: ergebnis.wert_numeric,
-        wertungstyp: spiel?.wertungstyp || '',
-        einheit: spiel?.einheit,
-        rang: ergebnis.rang,
-        punkte,
-        berechnungsmethode: methode,
-        rohwert_vergleich: rohwertVergleich
-      };
-    });
-    
-    // Sortiere nach Spiel und Rang
-    details.sort((a, b) => {
-      // Zuerst nach Spiel
-      const spielVergleich = a.spiel_name.localeCompare(b.spiel_name);
-      if (spielVergleich !== 0) return spielVergleich;
-      
-      // Dann nach Rang (falls vorhanden)
-      if (a.rang !== null && a.rang !== undefined && b.rang !== null && b.rang !== undefined) {
-        return a.rang - b.rang;
-      }
-      
-      // Fallback: Nach Wert sortieren
-      if (a.wertungstyp === 'ZEIT_MIN_STRAFE') {
-        return a.wert_numeric - b.wert_numeric;
-      } else {
-        return b.wert_numeric - a.wert_numeric;
-      }
-    });
-    
-    setErgebnisDetails(details);
-  };
-  
-  // Exportiere die Daten als CSV
-  const exportToCSV = () => {
-    if (ergebnisDetails.length === 0) return;
-    
-    const headers = [
-      'Kind', 'Spiel', 'Wert', 'Einheit', 'Wertungstyp', 
-      'Vergleich', 'Rang', 'Punkte', 'Berechnungsmethode'
-    ];
-    
-    const csvRows = [
-      headers.join(','),
-      ...ergebnisDetails.map(detail => [
-        `"${detail.kind_name}"`,
-        `"${detail.spiel_name}"`,
-        detail.wert_numeric,
-        detail.einheit || '',
-        `"${detail.wertungstyp}"`,
-        `"${detail.rohwert_vergleich}"`,
-        detail.rang || '',
-        detail.punkte,
-        `"${detail.berechnungsmethode}"`
-      ].join(','))
-    ];
-    
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `punkteberechnung_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-  
-  // Effekt zum Berechnen der Ergebnisdetails, wenn sich die Filter ändern
+
   useEffect(() => {
-    berechneErgebnisDetails();
-  }, [selectedKlasse, selectedGruppeId, selectedSpielId, ergebnisse, spiele, kinder]);
-  
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Rang+Punkte klassenweit über alle Ergebnisse vorberechnen
+  const rangMap = useMemo(() => {
+    const kindKlasseMap = new Map(kinder.map((k) => [k.id, k.klasse]));
+    const spielWertungstypMap = new Map(spiele.map((s) => [s.id, s.wertungstyp]));
+    return berechneRangePunkteProKlasse(
+      ergebnisse,
+      (e) => kindKlasseMap.get(e.kind_id),
+      (e) => spielWertungstypMap.get(e.spiel_id),
+    );
+  }, [ergebnisse, kinder, spiele]);
+
+  // Filterung auf gewählte Klasse
+  const klassenKinder = useMemo(
+    () => kinder.filter((k) => k.klasse === selectedKlasse),
+    [kinder, selectedKlasse],
+  );
+
+  const klassenSpiele = useMemo(() => {
+    const ids = spielIdsProKlasse.get(selectedKlasse);
+    if (ids && ids.size > 0) return spiele.filter((s) => ids.has(s.id));
+    // Fallback: aus tatsächlich erfassten Ergebnissen ableiten
+    const kindIds = new Set(klassenKinder.map((k) => k.id));
+    const spielIdsAusErgebnissen = new Set(
+      ergebnisse.filter((e) => kindIds.has(e.kind_id)).map((e) => e.spiel_id),
+    );
+    return spiele.filter((s) => spielIdsAusErgebnissen.has(s.id));
+  }, [spielIdsProKlasse, selectedKlasse, spiele, klassenKinder, ergebnisse]);
+
+  const klassenErgebnisse = useMemo(() => {
+    const kindIds = new Set(klassenKinder.map((k) => k.id));
+    return ergebnisse.filter((e) => kindIds.has(e.kind_id));
+  }, [ergebnisse, klassenKinder]);
+
   return (
-    <main className="p-4 md:p-8 space-y-8">
-      <Tabs defaultValue="details" className="w-full">
-        <div className="flex justify-between items-center mb-4">
-          <TabsList>
-            <TabsTrigger value="uebersicht" asChild>
-              <Link href="/admin/auswertung">Übersicht</Link>
-            </TabsTrigger>
-            <TabsTrigger value="details">Detailansicht</TabsTrigger>
-          </TabsList>
+    <PageShell
+      title="Punktecheck"
+      description="Detaillierte Validierung der Punkteberechnung pro Klasse"
+      breadcrumbs={[
+        { label: 'Admin', href: '/admin' },
+        { label: 'Auswertung', href: '/admin/auswertung' },
+        { label: 'Punktecheck' },
+      ]}
+      actions={
+        <div className="flex gap-2">
+          <Link
+            href="/admin/auswertung"
+            className="inline-flex items-center h-9 px-3.5 rounded-md border border-slate-200 hover:bg-slate-50 text-[0.85rem] font-medium transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" /> Zurück zur Auswertung
+          </Link>
+          <Button variant="outline" size="sm" onClick={loadInitialData} disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Neu laden
+          </Button>
         </div>
-        
-        <TabsContent value="details" className="mt-0">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Detailansicht der Punkteberechnung</CardTitle>
-                  <CardDescription>Detaillierte Ansicht aller Ergebnisse und Punkteberechnungen</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={loadInitialData}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Daten neu laden
-                  </Button>
-                  
-                  <Button 
-                    size="sm" 
-                    onClick={exportToCSV}
-                    disabled={ergebnisDetails.length === 0}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Als CSV exportieren
-                  </Button>
-                </div>
+      }
+    >
+      <Card>
+        <CardHeader>
+          <CardTitle>Punkteberechnung im Detail</CardTitle>
+          <CardDescription>
+            Rang und Punkte werden klassenweit pro Spiel berechnet. Formel:{' '}
+            <span className="font-mono">11 − Rang</span> für Rang 1–10, sonst 0 Punkte. Bei
+            Gleichstand erhalten Kinder denselben Rang.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Filter */}
+          <div className="flex flex-wrap items-end gap-4 mb-6">
+            <div className="min-w-[180px]">
+              <label className="block text-sm font-medium mb-2">Klasse</label>
+              <Select
+                value={selectedKlasse}
+                onValueChange={setSelectedKlasse}
+                disabled={isLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Klasse auswählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {verfuegbareKlassen.map((klasse) => (
+                    <SelectItem key={klasse} value={klasse}>
+                      Klasse {klasse}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-1 bg-slate-100 rounded-md p-1">
+              <button
+                onClick={() => setViewMode('pro-spiel')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'pro-spiel'
+                    ? 'bg-white shadow-sm text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Pro Spiel
+              </button>
+              <button
+                onClick={() => setViewMode('pro-kind')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  viewMode === 'pro-kind'
+                    ? 'bg-white shadow-sm text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Pro Kind
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            </div>
+          ) : !selectedKlasse ? (
+            <div className="text-center py-8 text-slate-500">Bitte Klasse wählen.</div>
+          ) : viewMode === 'pro-spiel' ? (
+            <ProSpielView
+              spiele={klassenSpiele}
+              ergebnisse={klassenErgebnisse}
+              kinder={klassenKinder}
+              rangMap={rangMap}
+            />
+          ) : (
+            <ProKindView
+              spiele={klassenSpiele}
+              ergebnisse={klassenErgebnisse}
+              kinder={klassenKinder}
+              rangMap={rangMap}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </PageShell>
+  );
+}
+
+// ─── Pro Spiel ────────────────────────────────────────────────────────────────
+
+function ProSpielView({
+  spiele,
+  ergebnisse,
+  kinder,
+  rangMap,
+}: {
+  spiele: Spiel[];
+  ergebnisse: Ergebnis[];
+  kinder: Kind[];
+  rangMap: Map<string, { rang: number; punkte: number }>;
+}) {
+  if (spiele.length === 0) {
+    return <div className="text-center py-8 text-slate-500">Keine Spiele für diese Klasse.</div>;
+  }
+  const kindMap = new Map(kinder.map((k) => [k.id, k]));
+
+  return (
+    <div className="space-y-6">
+      {spiele.map((spiel) => {
+        const spielErgebnisse = ergebnisse
+          .filter((e) => e.spiel_id === spiel.id)
+          .map((e) => ({
+            ...e,
+            rang: rangMap.get(e.id)?.rang,
+            punkte: rangMap.get(e.id)?.punkte ?? 0,
+            kind: kindMap.get(e.kind_id),
+          }))
+          .sort((a, b) => {
+            if (a.rang !== undefined && b.rang !== undefined && a.rang !== b.rang) {
+              return a.rang - b.rang;
+            }
+            return vergleicheNachWertungstyp(a.wert_numeric, b.wert_numeric, spiel.wertungstyp);
+          });
+
+        return (
+          <div key={spiel.id} className="border rounded-lg overflow-hidden">
+            <div className="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900">{spiel.name}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {spiel.wertungstyp} ·{' '}
+                  {istKleinerBesser(spiel.wertungstyp) ? 'weniger ist besser' : 'mehr ist besser'}
+                </p>
               </div>
-            </CardHeader>
-            
-            <CardContent>
-              {/* Filter */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Klasse</label>
-                  <Select
-                    value={selectedKlasse}
-                    onValueChange={setSelectedKlasse}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Klasse auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {verfuegbareKlassen.map(klasse => (
-                        <SelectItem key={klasse} value={klasse}>
-                          Klasse {klasse}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Gruppe</label>
-                  <Select
-                    value={selectedGruppeId}
-                    onValueChange={setSelectedGruppeId}
-                    disabled={isLoading || filteredGruppen.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Gruppe auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredGruppen.map(gruppe => (
-                        <SelectItem key={gruppe.id} value={gruppe.id}>
-                          {gruppe.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Spiel (optional)</label>
-                  <Select
-                    value={selectedSpielId}
-                    onValueChange={setSelectedSpielId}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Alle Spiele" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="alle">Alle Spiele</SelectItem>
-                      {filteredSpiele.map(spiel => (
-                        <SelectItem key={spiel.id} value={spiel.id}>
-                          {spiel.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="text-xs text-slate-500">
+                {spielErgebnisse.length} / {kinder.length} erfasst
               </div>
-              
-              {/* Ergebnistabelle */}
-              {isLoading ? (
-                <div className="flex justify-center items-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : ergebnisDetails.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Kind</TableHead>
-                        <TableHead>Spiel</TableHead>
-                        <TableHead>Spielergebnis (Rohwert)</TableHead>
-                        <TableHead>Wertungstyp</TableHead>
-                        <TableHead className="text-center">Rang</TableHead>
-                        <TableHead className="text-center">Punkte</TableHead>
-                        <TableHead>Berechnungsmethode</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {ergebnisDetails.map((detail) => (
-                        <TableRow key={detail.ergebnis_id}>
-                          <TableCell className="font-medium">{detail.kind_name}</TableCell>
-                          <TableCell>{detail.spiel_name}</TableCell>
-                          <TableCell>
-                            <div className="font-medium text-lg">{detail.wert_numeric} {detail.einheit}</div>
-                            <div className="text-xs text-gray-500">{detail.rohwert_vergleich}</div>
-                          </TableCell>
-                          <TableCell>
-                            {detail.wertungstyp === 'ZEIT_MIN_STRAFE' 
-                              ? 'Zeit (weniger ist besser)' 
-                              : 'Standard (mehr ist besser)'}
-                          </TableCell>
-                          <TableCell className="text-center font-medium">
-                            {detail.rang || '-'}
-                          </TableCell>
-                          <TableCell className="text-center font-bold">
-                            {detail.punkte}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {detail.berechnungsmethode}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  {selectedKlasse && selectedGruppeId 
-                    ? 'Keine Ergebnisse für die ausgewählten Filter gefunden.' 
-                    : 'Bitte wähle eine Klasse und Gruppe aus, um die Punkteberechnung anzuzeigen.'}
-                </div>
-              )}
-              
-              {/* Zusammenfassung */}
-              {ergebnisDetails.length > 0 && (
-                <div className="mt-8 bg-gray-50 p-4 rounded-lg border">
-                  <h3 className="text-lg font-medium mb-4">Zusammenfassung der Punkteberechnung</h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium">Rangberechnung:</h4>
-                      <p className="text-sm text-gray-700">
-                        1. Ergebnisse werden nach Spiel und Gruppe gruppiert<br />
-                        2. Innerhalb jeder Gruppe werden Ergebnisse nach Wert sortiert (abhängig vom Wertungstyp)<br />
-                        3. Ränge werden zugewiesen: Platz 1 für das beste Ergebnis, Platz 2 für das zweitbeste, usw.<br />
-                        4. Bei Gleichstand erhalten alle betroffenen Kinder den gleichen Rang
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h4 className="font-medium">Punkteberechnung:</h4>
-                      <p className="text-sm text-gray-700">
-                        - Formel: <span className="font-mono">11 - Rang</span> (Rang 1 = 10 Punkte, Rang 2 = 9 Punkte, usw.)<br />
-                        - Maximale Punktzahl pro Spiel: 10 Punkte<br />
-                        - Minimale Punktzahl pro Spiel: 0 Punkte (für Rang 11 oder schlechter)<br />
-                        - Rang 10: 1 Punkt<br />
-                        - Bei fehlendem Rang: FEHLER (0 Punkte)
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <h4 className="font-medium">Gesamtpunkte:</h4>
-                      <p className="text-sm text-gray-700">
-                        Die Gesamtpunkte eines Kindes sind die Summe aller Punkte aus allen Spielen.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </main>
+            </div>
+            {spielErgebnisse.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-slate-500 text-center">
+                Noch keine Ergebnisse erfasst.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">Rang</TableHead>
+                    <TableHead>Kind</TableHead>
+                    <TableHead className="text-right">
+                      Wert {spiel.einheit ? `(${spiel.einheit})` : ''}
+                    </TableHead>
+                    <TableHead className="text-right">Punkte</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {spielErgebnisse.map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell className="font-medium tabular-nums">{e.rang ?? '—'}</TableCell>
+                      <TableCell>
+                        {e.kind ? `${e.kind.vorname} ${e.kind.nachname}` : 'Unbekannt'}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{e.wert_numeric}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {e.punkte}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Pro Kind ─────────────────────────────────────────────────────────────────
+
+function ProKindView({
+  spiele,
+  ergebnisse,
+  kinder,
+  rangMap,
+}: {
+  spiele: Spiel[];
+  ergebnisse: Ergebnis[];
+  kinder: Kind[];
+  rangMap: Map<string, { rang: number; punkte: number }>;
+}) {
+  if (kinder.length === 0) {
+    return <div className="text-center py-8 text-slate-500">Keine Kinder in dieser Klasse.</div>;
+  }
+  const spielMap = new Map(spiele.map((s) => [s.id, s]));
+
+  // Berechne Gesamtpunkte pro Kind, sortiere absteigend
+  const kinderMitPunkten = kinder
+    .map((kind) => {
+      const kindErgebnisse = ergebnisse.filter((e) => e.kind_id === kind.id);
+      const gesamtpunkte = kindErgebnisse.reduce(
+        (sum, e) => sum + (rangMap.get(e.id)?.punkte ?? 0),
+        0,
+      );
+      return { kind, kindErgebnisse, gesamtpunkte };
+    })
+    .sort((a, b) => b.gesamtpunkte - a.gesamtpunkte);
+
+  return (
+    <div className="space-y-4">
+      {kinderMitPunkten.map(({ kind, kindErgebnisse, gesamtpunkte }) => {
+        const rowsBySpielId = new Map(kindErgebnisse.map((e) => [e.spiel_id, e]));
+        return (
+          <div key={kind.id} className="border rounded-lg overflow-hidden">
+            <div className="bg-slate-50 px-4 py-3 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">
+                {kind.vorname} {kind.nachname}
+              </h3>
+              <div className="text-sm">
+                <span className="text-slate-500">Gesamtpunkte:</span>{' '}
+                <span className="font-bold text-melsdorf-orange tabular-nums">
+                  {gesamtpunkte}
+                </span>
+              </div>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Spiel</TableHead>
+                  <TableHead className="text-right">Wert</TableHead>
+                  <TableHead className="w-16 text-right">Rang</TableHead>
+                  <TableHead className="w-16 text-right">Punkte</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {spiele.map((spiel) => {
+                  const e = rowsBySpielId.get(spiel.id);
+                  const r = e ? rangMap.get(e.id) : undefined;
+                  return (
+                    <TableRow key={spiel.id}>
+                      <TableCell>
+                        {spiel.name}
+                        {!e && (
+                          <span className="ml-2 text-xs text-slate-400 italic">
+                            kein Ergebnis
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {e ? (
+                          <>
+                            {e.wert_numeric}
+                            {spiel.einheit ? ` ${spiel.einheit}` : ''}
+                          </>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r?.rang ?? '—'}</TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        {r?.punkte ?? 0}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        );
+      })}
+    </div>
   );
 }

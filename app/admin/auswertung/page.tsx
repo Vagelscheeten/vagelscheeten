@@ -10,12 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowDown, ArrowUp, Download, FileText, RefreshCw, CheckCircle, AlertCircle, XCircle, Crown, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, XCircle, Crown, Loader2 } from 'lucide-react';
 import { PageShell } from '@/components/admin';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
-import { exportSpielPunkteCSV, exportSpielPunktePDF, exportGesamtauswertungPDF, exportGesamtauswertungCSV } from './exportHelpers';
-import { berechnePunkteFuerRang, erklaerePunkteberechnung } from '@/lib/points';
+import { berechnePunkteFuerRang, berechneRangePunkteProKlasse } from '@/lib/points';
 
 // Datenmodelle/Interfaces
 interface Kind {
@@ -80,25 +77,6 @@ interface GruppeSpielStatus {
   anzahlKinder: number;
 }
 
-interface KlassenStatistik {
-  klasse: string;
-  gruppenIds: string[];
-  spieleIds: string[];
-  kinder: {
-    id: string;
-    vorname: string;
-    nachname: string;
-    geschlecht: string;
-    gesamtPunkte: number;
-    platz: number;
-    spielgruppe_name: string;
-    status?: 'koenig' | 'koenigin' | null;
-  }[];
-  koenig: { kind_id: string; punkte: number } | null;
-  koenigin: { kind_id: string; punkte: number } | null;
-  alleErgebnisseVorhanden: boolean;
-}
-
 export default function AuswertungAdmin() {
   // Aktiver Tab/Sektion
   const [activeTab, setActiveTab] = useState('live');
@@ -109,6 +87,8 @@ export default function AuswertungAdmin() {
   const [ergebnisse, setErgebnisse] = useState<Ergebnis[]>([]);
   const [kinder, setKinder] = useState<Kind[]>([]);
   const [kinderSpielgruppenZuordnungen, setKinderSpielgruppenZuordnungen] = useState<KindSpielgruppeZuordnung[]>([]);
+  // Klassen-Name → Set zugewiesener Spiel-IDs (aus klasse_spiele)
+  const [spielIdsProKlasse, setSpielIdsProKlasse] = useState<Map<string, Set<string>>>(new Map());
   
   // Filter für Live-Zwischenstand
   const [verfuegbareKlassen, setVerfuegbareKlassen] = useState<string[]>([]);
@@ -122,7 +102,6 @@ export default function AuswertungAdmin() {
   // State und Berechnete Daten
   const [isLoading, setIsLoading] = useState(true);
   const [matrixDaten, setMatrixDaten] = useState<GruppeSpielStatus[]>([]);
-  const [klassenStatistik, setKlassenStatistik] = useState<KlassenStatistik[]>([]);
   const [liveZwischenstand, setLiveZwischenstand] = useState<{
     kinder: any[];
     fortschritt: { abgeschlossen: number; gesamt: number };
@@ -242,19 +221,32 @@ export default function AuswertungAdmin() {
 
       if (ergebnisseError) throw ergebnisseError;
       setErgebnisse(ergebnisseData || []);
-      
+
+      // Lade Spiel-Zuweisungen pro Klasse aus der DB (einmalig)
+      const { data: klasseSpieleData, error: klasseSpieleError } = await supabase
+        .from('klasse_spiele')
+        .select('spiel_id, klasse:klassen!inner(name)');
+      if (klasseSpieleError) throw klasseSpieleError;
+      const spielMap = new Map<string, Set<string>>();
+      for (const row of klasseSpieleData ?? []) {
+        const klasseName = (row as any).klasse?.name as string | undefined;
+        if (!klasseName) continue;
+        if (!spielMap.has(klasseName)) spielMap.set(klasseName, new Set());
+        spielMap.get(klasseName)!.add(row.spiel_id);
+      }
+      setSpielIdsProKlasse(spielMap);
+
       // Bestimme verfügbare Klassen und setze eine Standardauswahl
       const klassen = [...new Set(gruppenData?.map(g => g.klasse) || [])];
       setVerfuegbareKlassen(klassen.sort());
-      
+
       if (klassen.length > 0) {
         setSelectedKlasse(klassen[0]);
       }
-      
-      // Verarbeite Daten für Matrix und Statistik
+
+      // Verarbeite Daten für Matrix
       if (spieleData && gruppenData && ergebnisseData && kinderData && zuordnungData) {
-        await berechneFortschrittMatrix(spieleData, gruppenData, ergebnisseData, zuordnungData);
-        await berechneKlassenStatistik(spieleData, gruppenData, ergebnisseData, kinderData, zuordnungData);
+        await berechneFortschrittMatrix(spieleData, gruppenData, ergebnisseData, zuordnungData, spielMap);
       }
       
     } catch (error) {
@@ -265,95 +257,69 @@ export default function AuswertungAdmin() {
   };
   
   // Lade Live-Zwischenstand für eine Spielgruppe
-  const loadLiveZwischenstand = async (gruppeId: string) => {
+  const loadLiveZwischenstand = (gruppeId: string) => {
     try {
-      console.log(`DEBUG: loadLiveZwischenstand für Gruppe ${gruppeId}`);
       const gruppe = spielgruppen.find(g => g.id === gruppeId);
       if (!gruppe) {
         console.error(`Gruppe mit ID ${gruppeId} nicht gefunden`);
         return;
       }
-      console.log(`DEBUG: Gruppe gefunden: ${gruppe.name}, Klasse: ${gruppe.klasse}`);
-      
-      // Alle Ergebnisse für diese Gruppe laden
-      const gruppenErgebnisse = ergebnisse.filter(e => e.spielgruppe_id === gruppeId);
-      console.log(`DEBUG: Gefundene Ergebnisse für Gruppe: ${gruppenErgebnisse.length}`);
-      
-      // Zugehörige Kinder für diese Gruppe laden
-      let gruppenKinder = kinder.filter(kind => kind.spielgruppe_id === gruppeId);
-      console.log(`DEBUG: Gefundene Kinder mit direkter Gruppenzuordnung: ${gruppenKinder.length}`);
-      
-      // Wenn keine Kinder direkt mit der Gruppe verknüpft sind, aber Ergebnisse vorhanden sind,
-      // ermittle die Kinder anhand der Ergebnisse
+
+      // Klasse der gewählten Gruppe
+      const klasse = gruppe.klasse;
+
+      // Alle Ergebnisse der Klasse — Basis für die klassenweite Rangberechnung
+      const klassenGruppenIds = new Set(
+        spielgruppen.filter((g) => g.klasse === klasse).map((g) => g.id),
+      );
+      const klassenErgebnisse = ergebnisse.filter((e) => klassenGruppenIds.has(e.spielgruppe_id));
+
+      // Nur Ergebnisse + Kinder der ausgewählten Gruppe für die Anzeige
+      const gruppenErgebnisse = klassenErgebnisse.filter((e) => e.spielgruppe_id === gruppeId);
+      let gruppenKinder = kinder.filter((k) => k.spielgruppe_id === gruppeId);
+
+      // Fallback, falls Kinder keine direkte Gruppen-Verknüpfung haben
       if (gruppenKinder.length === 0 && gruppenErgebnisse.length > 0) {
-        const kindIdsInErgebnisse = [...new Set(gruppenErgebnisse.map(e => e.kind_id))];
-        console.log(`DEBUG: Ermittle Kinder aus Ergebnissen - gefundene Kind-IDs: ${kindIdsInErgebnisse.length}`);
-        
-        // Suche die vollständigen Kind-Objekte basierend auf den IDs
-        gruppenKinder = kinder.filter(kind => kindIdsInErgebnisse.includes(kind.id));
-        console.log(`DEBUG: Gefundene Kinder aus Ergebnissen: ${gruppenKinder.length}`);
+        const kindIds = new Set(gruppenErgebnisse.map((e) => e.kind_id));
+        gruppenKinder = kinder.filter((k) => kindIds.has(k.id));
       }
-      
-      console.log('DEBUG: Gruppenkinder:', gruppenKinder.map(k => ({ id: k.id, name: `${k.vorname} ${k.nachname}` })));
-      
-      // Diese Zeile wurde nach oben verschoben, damit wir zuerst die Ergebnisse haben
-      // und dann gegebenenfalls die Kinder aus den Ergebnissen ermitteln können
-      
+
       // Spiele für diese Klasse ermitteln
-      const spieleFuerKlasse = await ermittleSpieleProKlasse(gruppe.klasse, ergebnisse, spiele);
-      
-      // Hier verwenden wir die tatsächlichen Ergebnisse, um die Spielzuweisung zu bestimmen
-      // Das stellt sicher, dass auch die "Schatzsuche" berücksichtigt wird, wenn Ergebnisse dafür vorliegen
-      // const spieleFuerKlasse = await ermittleSpieleProKlasse(klasseDesKindes, ergebnisse);
-      
-      // Berechne Ränge für jedes Spiel
-      const ergebnisseMitRang = berechneRaengeFuerGruppe(gruppenErgebnisse, spieleFuerKlasse);
-      
-      // Berechne die Gesamtpunkte pro Kind
-      const kinderMitPunkten = gruppenKinder.map(kind => {
-        // Finde alle Ergebnisse dieses Kindes, auch mit Wert 0
-        const alleKindErgebnisse = gruppenErgebnisse.filter(e => e.kind_id === kind.id);
-        
-        // Finde die Ergebnisse mit Rang für die Punkteberechnung
-        const kindErgebnisseMitRang = ergebnisseMitRang.filter(e => e.kind_id === kind.id);
-        
-        // Berechne Gesamtpunkte direkt aus den Ergebniswerten, wenn keine Rangpunkte vorhanden sind
-        let gesamtPunkte = 0;
-        
-        if (kindErgebnisseMitRang.length > 0 && kindErgebnisseMitRang.some(e => e.punkte !== undefined)) {
-          // Wenn Rangpunkte vorhanden sind, verwende diese
-          gesamtPunkte = berechnePunkteFuerErgebnisseMitRang(kindErgebnisseMitRang);
-        } else {
-          // Sonst summiere die Werte direkt auf
-          gesamtPunkte = alleKindErgebnisse.reduce((sum, ergebnis) => {
-            // Verwende wert_numeric, falls vorhanden, sonst versuche wert zu parsen
-            const wert = ergebnis.wert_numeric !== undefined ? 
-              ergebnis.wert_numeric : 
-              (ergebnis.wert ? parseFloat(ergebnis.wert) || 0 : 0);
-            return sum + wert;
-          }, 0);
-        }
-        
-        // Zähle die Anzahl der Spiele, an denen das Kind teilgenommen hat (auch mit Wert 0)
-        const anzahlErgebnisse = new Set(alleKindErgebnisse.map(e => e.spiel_id)).size;
-        
+      const spieleFuerKlasse = ermittleSpieleProKlasse(klasse, ergebnisse, spiele);
+
+      // Rang klassenweit pro Spiel (Spielgruppen sind nur organisatorische Aufteilung)
+      const kindKlasseMap = new Map(kinder.map((k) => [k.id, k.klasse]));
+      const spielWertungstypMap = new Map(spiele.map((s) => [s.id, s.wertungstyp]));
+      const rangMap = berechneRangePunkteProKlasse(
+        klassenErgebnisse,
+        (e) => kindKlasseMap.get(e.kind_id),
+        (e) => spielWertungstypMap.get(e.spiel_id),
+      );
+
+      // Gesamtpunkte pro Kind in der Gruppe
+      const kinderMitPunkten = gruppenKinder.map((kind) => {
+        const alleKindErgebnisse = gruppenErgebnisse.filter((e) => e.kind_id === kind.id);
+        const gesamtPunkte = alleKindErgebnisse.reduce(
+          (sum, e) => sum + (rangMap.get(e.id)?.punkte ?? 0),
+          0,
+        );
+        const anzahlErgebnisse = new Set(alleKindErgebnisse.map((e) => e.spiel_id)).size;
+
         return {
           ...kind,
           gesamtPunkte,
           anzahlErgebnisse,
-          gesamt_spiele: spieleFuerKlasse.length // Füge die korrekte Anzahl der Spiele hinzu
+          gesamt_spiele: spieleFuerKlasse.length,
         };
       });
-      
+
       // Sortiere nach Gesamtpunkten (absteigend)
       const sortierteKinder = [...kinderMitPunkten].sort((a, b) => b.gesamtPunkte - a.gesamtPunkte);
-      
+
       // Berechne Fortschritt
-      const abgeschlosseneSpiele = new Set(gruppenErgebnisse.map(e => e.spiel_id)).size;
+      const abgeschlosseneSpiele = new Set(gruppenErgebnisse.map((e) => e.spiel_id)).size;
       const gesamtSpiele = spieleFuerKlasse.length;
-      
-      console.log(`DEBUG: Setze Live-Zwischenstand - Kinder: ${sortierteKinder.length}, Spiele: ${abgeschlosseneSpiele}/${gesamtSpiele}`);
-      
+
       setLiveZwischenstand({
         kinder: sortierteKinder,
         fortschritt: {
@@ -366,467 +332,86 @@ export default function AuswertungAdmin() {
     }
   };
   
-  // Ermittelt die Spiele, die einer bestimmten Klasse zugewiesen sind
-  const ermittleSpieleProKlasse = async (klasse: string, alleErgebnisse: Ergebnis[], verfuegbareSpiele: Spiel[]): Promise<Spiel[]> => {
-    console.log(`DEBUG: ermittleSpieleProKlasse aufgerufen für Klasse '${klasse}'`);
-    console.log(`DEBUG: Anzahl verfügbarer Spiele: ${verfuegbareSpiele.length}`);
-    
-    // 1. Prüfe zuerst, ob Zuweisungen in der klasse_spiele Tabelle existieren
-    try {
-      // Finde alle Klassen-IDs, die mit dem Klassennamen übereinstimmen
-      const { data: klassenData, error: klassenError } = await supabase
-        .from('klassen')
-        .select('id, name')
-        .eq('name', klasse);
-      
-      if (klassenError) throw klassenError;
-      
-      if (klassenData && klassenData.length > 0) {
-        const klassenIds = klassenData.map(k => k.id);
-        console.log(`DEBUG: Gefundene Klassen-IDs für '${klasse}':`, klassenIds);
-        
-        // Hole alle Spiel-Zuweisungen für diese Klassen-IDs
-        const { data: klasseSpiele, error: spieleError } = await supabase
-          .from('klasse_spiele')
-          .select('spiel_id, klasse_id')
-          .in('klasse_id', klassenIds);
-        
-        if (spieleError) throw spieleError;
-        
-        if (klasseSpiele && klasseSpiele.length > 0) {
-          // Spiele wurden in der Tabelle gefunden
-          const spielIds = klasseSpiele.map(ks => ks.spiel_id);
-          console.log(`DEBUG: Gefundene Spiel-IDs aus Datenbank:`, spielIds);
-          
-          // Verwende einen robusten ID-Vergleich, der String- und Zahl-Vergleiche unterstützt
-          const gefundeneSpiele = verfuegbareSpiele.filter(spiel => {
-            return spielIds.some(dbId => {
-              const matchFound = String(dbId) === String(spiel.id);
-              if (matchFound) {
-                console.log(`DEBUG: Treffer! DB-ID ${dbId} stimmt mit App-ID ${spiel.id} (${spiel.name}) überein`);
-              }
-              return matchFound;
-            });
-          });
-          
-          console.log(`DEBUG: ${gefundeneSpiele.length} Spiele nach Filterung gefunden:`, 
-                      gefundeneSpiele.map(s => `${s.name} (ID: ${s.id})`));
-          
-          return gefundeneSpiele;
-        } else {
-          console.log(`DEBUG: Keine Spielzuweisungen in der Datenbank für Klasse '${klasse}' gefunden`);
-        }
-      } else {
-        console.log(`DEBUG: Keine Klasse mit Namen '${klasse}' in der Datenbank gefunden`);
-      }
-    } catch (error) {
-      console.error('Fehler beim Abrufen von klasse_spiele:', error);
-      return [];
+  // Ermittelt die Spiele, die einer bestimmten Klasse zugewiesen sind.
+  // Quelle: einmalig geladene spielIdsProKlasse-Map (klasse_spiele aus DB).
+  // Fallback: falls keine Zuweisung in DB, leite aus tatsächlichen Ergebnissen ab.
+  const ermittleSpieleProKlasse = (
+    klasse: string,
+    alleErgebnisse: Ergebnis[],
+    verfuegbareSpiele: Spiel[],
+    spielMap: Map<string, Set<string>> = spielIdsProKlasse,
+  ): Spiel[] => {
+    const zugewieseneIds = spielMap.get(klasse);
+    if (zugewieseneIds && zugewieseneIds.size > 0) {
+      return verfuegbareSpiele.filter((s) => zugewieseneIds.has(s.id));
     }
-    
-    // 2. Wenn keine Zuweisungen in der Tabelle gefunden wurden, 
-    // prüfe, ob Ergebnisse existieren, aus denen wir Zuweisungen ableiten können
-    console.log(`DEBUG: Keine Zuweisungen in der Tabelle gefunden, prüfe Ergebnisse...`);
-    const klassenGruppen = spielgruppen.filter(g => g.klasse === klasse);
-    const klassenGruppenIds = klassenGruppen.map(g => g.id);
-    
-    // Finde alle Ergebnisse für diese Klasse
-    const klassenErgebnisse = alleErgebnisse.filter(e => klassenGruppenIds.includes(e.spielgruppe_id));
-    
-    // Sammle alle einzigartigen Spiel-IDs aus den Ergebnissen
-    const spielIdsAusErgebnissen = new Set(klassenErgebnisse.map(e => e.spiel_id));
-    console.log(`DEBUG: ${spielIdsAusErgebnissen.size} unterschiedliche Spiel-IDs aus Ergebnissen gefunden`);
-    
-    // Wenn Ergebnisse vorhanden sind, verwende diese zur Bestimmung der zugewiesenen Spiele
-    if (spielIdsAusErgebnissen.size > 0) {
-      // Nutze hier verfuegbareSpiele statt der globalen spiele-Variable
-      const spieleAusErgebnissen = verfuegbareSpiele.filter(spiel => 
-        spielIdsAusErgebnissen.has(spiel.id));
-        
-      console.log(`DEBUG: ${spieleAusErgebnissen.length} Spiele aus Ergebnissen zugeordnet`);
-      return spieleAusErgebnissen;
-    }
-    
-    console.log(`DEBUG: Keine Spiele für Klasse '${klasse}' gefunden, gebe leere Liste zurück`);
-    // 3. Fallback: Wenn keine Zuweisungen oder Ergebnisse gefunden wurden,
-    // ist die korrekte Anzeige eine leere Liste (0 von 0 Spielen)
-    return [];
-  };
-  
-  // Berechnet Ränge für Ergebnisse einer Gruppe
-  const berechneRaengeFuerGruppe = (gruppenErgebnisse: Ergebnis[], spieleData: Spiel[]): Ergebnis[] => {
-    // Gruppiere Ergebnisse nach Spiel
-    const ergebnisseProSpiel = new Map<string, Ergebnis[]>();
-    
-    gruppenErgebnisse.forEach(ergebnis => {
-      if (!ergebnisseProSpiel.has(ergebnis.spiel_id)) {
-        ergebnisseProSpiel.set(ergebnis.spiel_id, []);
-      }
-      ergebnisseProSpiel.get(ergebnis.spiel_id)?.push(ergebnis);
-    });
-    
-    // Berechne Ränge für jedes Spiel
-    const ergebnisseMitRang: Ergebnis[] = [];
-    
-    ergebnisseProSpiel.forEach((spielErgebnisse, spielId) => {
-      const spiel = spieleData.find(s => s.id === spielId);
-      if (!spiel) return;
-      
-      // Sortiere Ergebnisse basierend auf dem Wertungstyp
-      let sortierteErgebnisse: Ergebnis[];
-      
-      if (spiel.wertungstyp === 'ZEIT_MIN_STRAFE' || spiel.wertungstyp === 'MENGE_MAX_ZEIT') {
-        // Niedrigerer Wert ist besser
-        sortierteErgebnisse = [...spielErgebnisse].sort((a, b) => a.wert_numeric - b.wert_numeric);
-      } else {
-        // Höherer Wert ist besser (Standard)
-        sortierteErgebnisse = [...spielErgebnisse].sort((a, b) => b.wert_numeric - a.wert_numeric);
-      }
-      
-      // Füge Rang hinzu
-      sortierteErgebnisse.forEach((ergebnis, index) => {
-        ergebnisseMitRang.push({
-          ...ergebnis,
-          rang: index + 1,
-          punkte: (index + 1) <= 10 ? (11 - (index + 1)) : 0 // 1. Platz = 10 Punkte, 2. Platz = 9 Punkte, ab Platz 11 = 0 Punkte
-        });
-      });
-    });
-    
-    return ergebnisseMitRang;
-  };
-  
-  // Wir verwenden die zentrale Punkteberechnungsfunktion aus @/lib/points.ts
-  // um sicherzustellen, dass die Punkteberechnung überall konsistent ist
-  
-  // Berechnet Punkte für eine Reihe von Ergebnissen mit Rang
-  const berechnePunkteFuerErgebnisseMitRang = (ergebnisseMitRang: Ergebnis[]): number => {
-    if (ergebnisseMitRang.length === 0) return 0;
-    
-    // Summiere die Punkte basierend auf dem Rang
-    return ergebnisseMitRang.reduce((sum, ergebnis) => {
-      // Prüfe, ob das Ergebnis gültig ist
-      if (!ergebnis) return sum;
-      
-      // Berechne Punkte anhand des Rangs mit der zentralen Funktion
-      const punkte = berechnePunkteFuerRang(ergebnis.rang);
-      
-      return sum + punkte;
-    }, 0);
-  };
 
+    // Fallback: aus tatsächlich erfassten Ergebnissen ableiten
+    const klassenGruppenIds = new Set(
+      spielgruppen.filter((g) => g.klasse === klasse).map((g) => g.id),
+    );
+    const spielIdsAusErgebnissen = new Set(
+      alleErgebnisse.filter((e) => klassenGruppenIds.has(e.spielgruppe_id)).map((e) => e.spiel_id),
+    );
+    return verfuegbareSpiele.filter((s) => spielIdsAusErgebnissen.has(s.id));
+  };
+  
   // Berechnet die Fortschritt-Matrix für alle Gruppen und Spiele
-  const berechneFortschrittMatrix = async (
-    spieleData: Spiel[], 
+  const berechneFortschrittMatrix = (
+    spieleData: Spiel[],
     gruppenData: Spielgruppe[],
     ergebnisseData: Ergebnis[],
-    zuordnungData: KindSpielgruppeZuordnung[]
+    zuordnungData: KindSpielgruppeZuordnung[],
+    spielMap: Map<string, Set<string>>,
   ) => {
-    console.log('MATRIX-DEBUG: berechneFortschrittMatrix gestartet');
-    console.log(`MATRIX-DEBUG: Eingabedaten: ${spieleData.length} Spiele, ${gruppenData.length} Gruppen`);
-    
     const matrix: GruppeSpielStatus[] = [];
-    
-    // Für jede Gruppe und jedes Spiel einen Status berechnen
+
     for (const gruppe of gruppenData) {
-      console.log(`MATRIX-DEBUG: Verarbeite Gruppe ${gruppe.name} (Klasse: ${gruppe.klasse})`);
-      
-      // Bestimme die Spiele, die für diese Klasse relevant sind
-      const spieleFuerKlasse = await ermittleSpieleProKlasse(gruppe.klasse, ergebnisseData, spieleData);
-      console.log(`MATRIX-DEBUG: Für Klasse ${gruppe.klasse} wurden ${spieleFuerKlasse.length} Spiele zurückgegeben`);
-      
-      // Finde alle Kinder in dieser Gruppe
-      const kinderIds = zuordnungData
-        .filter(z => z.spielgruppe_id === gruppe.id)
-        .map(z => z.kind_id);
-      const anzahlKinder = kinderIds.length;
-      
-      // Debug: Prüfe auf einem anderen Weg, ob die Klasse-Spiele korrekt zugeordnet werden können
-      console.log(`MATRIX-DEBUG: Alternative Abfrage für Klasse ${gruppe.klasse} starten`);
-      const { data: direkteAbfrage, error: direkterFehler } = await supabase
-        .from('klasse_spiele')
-        .select('spiel_id')
-        .eq('klasse_id', (await supabase.from('klassen').select('id').eq('name', gruppe.klasse).single()).data?.id);
-      
-      if (direkterFehler) {
-        console.log(`MATRIX-DEBUG: Fehler bei direkter Abfrage:`, direkterFehler);
-      } else {
-        console.log(`MATRIX-DEBUG: Direkte Abfrage für ${gruppe.klasse} ergab ${direkteAbfrage?.length || 0} Zuweisungen:`, direkteAbfrage);
-      }
-      
+      const spieleFuerKlasse = ermittleSpieleProKlasse(gruppe.klasse, ergebnisseData, spieleData, spielMap);
+      const zugewieseneIds = new Set(spieleFuerKlasse.map((s) => s.id));
+
+      const anzahlKinder = zuordnungData.filter((z) => z.spielgruppe_id === gruppe.id).length;
+
       for (const spiel of spieleData) {
-        console.log(`MATRIX-DEBUG: Prüfe Spiel ${spiel.name} (ID: ${spiel.id}) für Gruppe ${gruppe.name}`);
-        
-        // Prüfe, ob dieses Spiel für diese Gruppe vorgesehen ist
-        const istSpielZugewiesen = spieleFuerKlasse.some(s => s.id === spiel.id);
-        console.log(`MATRIX-DEBUG: Spiel ${spiel.name} ist ${istSpielZugewiesen ? 'ZUGEWIESEN' : 'NICHT zugewiesen'} für Gruppe ${gruppe.name}`);
-        
-        if (!istSpielZugewiesen) {
-          console.log(`MATRIX-DEBUG: Füge 'nicht_zugewiesen' Status für ${spiel.name} in Gruppe ${gruppe.name} hinzu`);
+        if (!zugewieseneIds.has(spiel.id)) {
           matrix.push({
             spielgruppe_id: gruppe.id,
             spiel_id: spiel.id,
             status: 'nicht_zugewiesen',
             anzahlErgebnisse: 0,
-            anzahlKinder: 0
+            anzahlKinder: 0,
           });
-          continue; // Skip weitere Verarbeitung für nicht zugewiesene Spiele
+          continue;
         }
-        
-        console.log(`MATRIX-DEBUG: Spiel ${spiel.name} IST zugewiesen für Gruppe ${gruppe.name} - berechne Status`)
-        
-        // Finde alle Ergebnisse für dieses Spiel und diese Gruppe
-        const spielgruppenErgebnisse = ergebnisseData.filter(
-          e => e.spiel_id === spiel.id && e.spielgruppe_id === gruppe.id
-        );
-        
-        const anzahlErgebnisse = spielgruppenErgebnisse.length;
-        
-        // Bestimme den Status
+
+        const anzahlErgebnisse = ergebnisseData.filter(
+          (e) => e.spiel_id === spiel.id && e.spielgruppe_id === gruppe.id,
+        ).length;
+
         let status: 'abgeschlossen' | 'teilweise' | 'offen' = 'offen';
-        
         if (anzahlErgebnisse > 0) {
-          if (anzahlErgebnisse >= anzahlKinder) {
-            status = 'abgeschlossen';
-          } else {
-            status = 'teilweise';
-          }
+          status = anzahlErgebnisse >= anzahlKinder ? 'abgeschlossen' : 'teilweise';
         }
-        
+
         matrix.push({
           spielgruppe_id: gruppe.id,
           spiel_id: spiel.id,
           status,
           anzahlErgebnisse,
-          anzahlKinder
+          anzahlKinder,
         });
       }
     }
-    
+
     setMatrixDaten(matrix);
   };
 
-  // Berechnet Statistiken pro Klasse, inkl. König/Königin
-  const berechneKlassenStatistik = async (
-    spieleData: Spiel[], 
-    gruppenData: Spielgruppe[],
-    ergebnisseData: Ergebnis[],
-    kinderData: Kind[],
-    zuordnungData: KindSpielgruppeZuordnung[]
-  ) => {
-    // Gruppiere die Spielgruppen nach Klasse
-    const klassenMap = new Map<string, Spielgruppe[]>();
-    
-    gruppenData.forEach(gruppe => {
-      if (!klassenMap.has(gruppe.klasse)) {
-        klassenMap.set(gruppe.klasse, []);
-      }
-      klassenMap.get(gruppe.klasse)?.push(gruppe);
-    });
-    
-    const statistiken: KlassenStatistik[] = [];
-    
-    // Für jede Klasse
-    for (const [klasse, gruppen] of klassenMap.entries()) {
-      const gruppenIds = gruppen.map(g => g.id);
-      
-      // Bestimme die Spiele, die für diese Klasse relevant sind
-      const spieleFuerKlasse = await ermittleSpieleProKlasse(klasse, ergebnisseData, spieleData);
-      const spieleIds = spieleFuerKlasse.map(s => s.id);
-      
-      // Speichere die Anzahl der Spiele für diese Klasse
-      const anzahlSpieleKlasse = spieleFuerKlasse.length;
-      
-      // Finde alle Kinder in diesen Gruppen
-      const kinderZuordnungen = zuordnungData.filter(z => gruppenIds.includes(z.spielgruppe_id));
-      const kinderIds = [...new Set(kinderZuordnungen.map(z => z.kind_id))];
-      const klassenKinder = kinderData.filter(k => kinderIds.includes(k.id));
-      
-      // Prüfe, ob alle Ergebnisse vorhanden sind
-      // Berechne die Anzahl der benötigten Ergebnisse basierend auf den Spielen für diese Klasse
-      const benoetigteErgebnisseAnzahl = kinderIds.length * spieleIds.length;
-      const vorhandeneErgebnisseAnzahl = ergebnisseData.filter(
-        e => kinderIds.includes(e.kind_id) && spieleIds.includes(e.spiel_id)
-      ).length;
-      
-      const alleErgebnisseVorhanden = vorhandeneErgebnisseAnzahl >= benoetigteErgebnisseAnzahl;
-      
-      // Berechne Gesamtpunkte pro Kind
-      const kinderMitPunkten = klassenKinder.map(kind => {
-        // Finde die Spielgruppe des Kindes
-        const spielgruppe = gruppenData.find(g => {
-          return kinderZuordnungen.some(z => z.kind_id === kind.id && z.spielgruppe_id === g.id);
-        });
-        
-        if (!spielgruppe) {
-          // Fallback, falls keine Spielgruppe gefunden wurde
-          return {
-            id: kind.id,
-            vorname: kind.vorname,
-            nachname: kind.nachname,
-            geschlecht: kind.geschlecht,
-            gesamtPunkte: 0,
-            platz: 0,
-            spielgruppe_name: 'Unbekannt',
-            status: null as 'koenig' | 'koenigin' | null,
-            anzahl_spiele: 0,
-            gesamt_spiele: spieleIds.length,
-            ist_koenig: false,
-            ist_koenigin: false
-          };
-        }
-        
-        // Finde alle Ergebnisse dieses Kindes in seiner Gruppe
-        const gruppenErgebnisse = ergebnisseData.filter(e => e.spielgruppe_id === spielgruppe.id);
-        const alleKindErgebnisse = gruppenErgebnisse.filter(e => e.kind_id === kind.id);
-        
-        // Bestimme die tatsächlich gespielten Spiele dieser Gruppe
-        const gespielteSpiele = new Set(gruppenErgebnisse.map(e => e.spiel_id));
-        
-        // Kombiniere die zugewiesenen Spiele mit den tatsächlich gespielten
-        const alleRelevanteSpieleIds = new Set([...spieleIds, ...gespielteSpiele]);
-        
-        // Berechne Gesamtpunkte direkt aus den Ergebniswerten
-        let gesamtPunkte = 0;
-        
-        // Summiere die Werte direkt auf
-        gesamtPunkte = alleKindErgebnisse.reduce((sum, ergebnis) => {
-          // Verwende wert_numeric, falls vorhanden, sonst versuche wert zu parsen
-          const wert = ergebnis.wert_numeric !== undefined ? 
-            ergebnis.wert_numeric : 
-            (ergebnis.wert ? parseFloat(ergebnis.wert) || 0 : 0);
-          return sum + wert;
-        }, 0);
-        
-        // Zähle die Anzahl der Spiele, an denen das Kind teilgenommen hat
-        // Wenn alle Kinder alle Spiele absolviert haben, sollte diese Zahl gleich anzahlSpieleKlasse sein
-        const anzahlErgebnisse = anzahlSpieleKlasse; // Alle Kinder haben alle Spiele absolviert
-        
-        // Für TypeScript-Kompatibilität verwenden wir null als Standardstatus
-        // Der tatsächliche Status wird in der UI angezeigt
-        
-        return {
-          id: kind.id,
-          vorname: kind.vorname,
-          nachname: kind.nachname,
-          geschlecht: kind.geschlecht,
-          gesamtPunkte,
-          platz: 0, // wird später gesetzt
-          spielgruppe_name: spielgruppe.name,
-          status: null,
-          anzahl_spiele: anzahlErgebnisse,
-          gesamt_spiele: anzahlSpieleKlasse, // Verwende die korrekte Anzahl der Spiele für diese Klasse
-          ist_koenig: false,
-          ist_koenigin: false
-        };
-      });
-      
-      // Sortiere nach Gesamtpunkten und weise Plätze zu
-      const sortierteKinder = [...kinderMitPunkten].sort((a, b) => b.gesamtPunkte - a.gesamtPunkte);
-      
-      let letzterPlatz = 1;
-      let letztePunkte = sortierteKinder.length > 0 ? sortierteKinder[0].gesamtPunkte : 0;
-      
-      const kinderMitPlatz = sortierteKinder.map((kind, index) => {
-        if (index > 0 && kind.gesamtPunkte < letztePunkte) {
-          letzterPlatz = index + 1;
-          letztePunkte = kind.gesamtPunkte;
-        }
-        
-        return { ...kind, platz: letzterPlatz };
-      });
-      
-      // Bestimme König und Königin (auch wenn nicht alle Ergebnisse vorhanden sind)
-      let koenig: { kind_id: string; punkte: number } | null = null;
-      let koenigin: { kind_id: string; punkte: number } | null = null;
-      
-      // Finde König (bester Junge)
-      const jungen = kinderMitPlatz.filter(k => k.geschlecht === 'männlich');
-      if (jungen.length > 0) {
-        const besterJunge = jungen[0]; // bereits sortiert
-        koenig = { kind_id: besterJunge.id, punkte: besterJunge.gesamtPunkte };
-        
-        // Setze Status für König
-        const koenigKind = kinderMitPlatz.find(k => k.id === besterJunge.id);
-        if (koenigKind) {
-          koenigKind.status = 'koenig';
-          koenigKind.ist_koenig = true;
-        }
-      }
-      
-      // Finde Königin (bestes Mädchen)
-      const maedchen = kinderMitPlatz.filter(k => k.geschlecht === 'weiblich');
-      if (maedchen.length > 0) {
-        const bestesMaedchen = maedchen[0]; // bereits sortiert
-        koenigin = { kind_id: bestesMaedchen.id, punkte: bestesMaedchen.gesamtPunkte };
-        
-        // Setze Status für Königin
-        const koeniginKind = kinderMitPlatz.find(k => k.id === bestesMaedchen.id);
-        if (koeniginKind) {
-          koeniginKind.status = 'koenigin';
-          koeniginKind.ist_koenigin = true;
-        }
-      }
-      
-      // Erstelle Statistik-Objekt für diese Klasse
-      const statistik: KlassenStatistik = {
-        klasse,
-        gruppenIds: gruppen.map(g => g.id),
-        spieleIds: spieleData.map(s => s.id),
-        kinder: kinderMitPlatz,
-        koenig,
-        koenigin,
-        alleErgebnisseVorhanden
-      };
-      
-      statistiken.push(statistik);
-    }
-    
-    setKlassenStatistik(statistiken);
-  };
-
-  // Berechnet Punkte für eine Reihe von Ergebnissen
-  const berechnePunkteFuerErgebnisse = (ergebnisse: Ergebnis[], spieleData: Spiel[]): number => {
+  // Berechnet Punkte für eine Reihe von Ergebnissen.
+  // Pro (Kind, Spiel) gibt es genau einen Datensatz (Mehrfachversuche werden vor dem
+  // Speichern bereits aggregiert), daher reicht eine einfache Summe der Rangpunkte.
+  const berechnePunkteFuerErgebnisse = (ergebnisse: Ergebnis[], _spieleData: Spiel[]): number => {
     if (ergebnisse.length === 0) return 0;
-    
-    // Gruppiere Ergebnisse nach Spiel
-    const ergebnisseProSpiel = new Map<string, Ergebnis[]>();
-    
-    ergebnisse.forEach(ergebnis => {
-      if (!ergebnisseProSpiel.has(ergebnis.spiel_id)) {
-        ergebnisseProSpiel.set(ergebnis.spiel_id, []);
-      }
-      ergebnisseProSpiel.get(ergebnis.spiel_id)?.push(ergebnis);
-    });
-    
-    // Berechne die Punktzahl basierend auf dem Rang
-    let gesamtPunkte = 0;
-    
-    ergebnisseProSpiel.forEach((spielErgebnisse, spielId) => {
-      // Finde das beste Ergebnis für dieses Spiel
-      const spiel = spieleData.find(s => s.id === spielId);
-      if (!spiel) return;
-      
-      // Niedrigerer Wert ist besser (z.B. Zeit)
-      if (spiel.wertungstyp === 'ZEIT_MIN_STRAFE') {
-        const bestesErgebnis = spielErgebnisse.reduce((best, current) => 
-          current.wert_numeric < best.wert_numeric ? current : best
-        );
-        // Verwende die zentrale Punkteberechnungsfunktion für konsistente Ergebnisse
-        gesamtPunkte += berechnePunkteFuerRang(bestesErgebnis.rang);
-      } 
-      // Höherer Wert ist besser (Standard)
-      else {
-        const bestesErgebnis = spielErgebnisse.reduce((best, current) => 
-          current.wert_numeric > best.wert_numeric ? current : best
-        );
-        
-        // Verwende die zentrale Punkteberechnungsfunktion für konsistente Ergebnisse
-        gesamtPunkte += berechnePunkteFuerRang(bestesErgebnis.rang);
-      }
-    });
-    
-    return gesamtPunkte;
+    return ergebnisse.reduce((sum, e) => sum + berechnePunkteFuerRang(e.rang), 0);
   };
 
   // Lade Gesamtauswertung und berechne die Punkte direkt im Frontend
@@ -934,34 +519,20 @@ export default function AuswertungAdmin() {
         };
       });
       
-      // Bestimme die Spiele pro Klasse
+      // Bestimme die Spiele pro Klasse (über bereits geladene spielIdsProKlasse-Map)
       const spieleProKlasse = new Map<string, Spiel[]>();
-      // Sammle zuerst alle eindeutigen Klassen
       const eindeutigeKlassen = [...new Set(kinderMitGruppen.map(kind => kind.klasse))];
-      
-      // Lade die Spiele für jede Klasse
       for (const klasse of eindeutigeKlassen) {
-        const spieleFuerDieseKlasse = await ermittleSpieleProKlasse(klasse, ergebnisseData, spieleData);
-        spieleProKlasse.set(klasse, spieleFuerDieseKlasse);
+        spieleProKlasse.set(klasse, ermittleSpieleProKlasse(klasse, ergebnisseData, spieleData));
       }
       
       // Berechne Gesamtpunkte für jedes Kind
       const kinderMitPunkten = kinderMitGruppen.map(kind => {
         const kindErgebnisse = ergebnisseMitRang.filter(e => e.kind_id === kind.id);
         const gesamtpunkte = berechnePunkteFuerErgebnisse(kindErgebnisse, spieleData);
-        // Für Klasse 1 wissen wir, dass alle Kinder alle Spiele absolviert haben
-        // Daher setzen wir die Anzahl der Spiele gleich der Gesamtzahl der Spiele für diese Klasse
         const spieleFuerKlasse = spieleProKlasse.get(kind.klasse) || [];
         const gesamtSpiele = spieleFuerKlasse.length;
-        
-        // Wenn es sich um Klasse 1 handelt, setzen wir die Anzahl der Spiele auf die Gesamtzahl
-        // Ansonsten berechnen wir sie aus den tatsächlichen Ergebnissen
-        let anzahlSpiele;
-        if (kind.klasse === '1') {
-          anzahlSpiele = gesamtSpiele;
-        } else {
-          anzahlSpiele = new Set(kindErgebnisse.map(e => e.spiel_id)).size;
-        }
+        const anzahlSpiele = new Set(kindErgebnisse.map(e => e.spiel_id)).size;
         
         // Bestimme den Status basierend auf der tatsächlichen Anzahl der Spiele für diese Klasse
         let status = 'unvollständig';
@@ -1047,69 +618,23 @@ export default function AuswertungAdmin() {
     }
   };
   
-  // Hilfsfunktion zum Berechnen der Ränge
+  // Hilfsfunktion zum Berechnen der Ränge — klassenweit, nicht pro Spielgruppe.
+  // Spielgruppen sind nur eine organisatorische Aufteilung; alle Kinder einer Klasse
+  // konkurrieren bei einem Spiel gemeinsam.
   const berechneRaenge = (ergebnisseData: Ergebnis[], kinderData: Kind[], spieleData: Spiel[]): Ergebnis[] => {
-    // Gruppiere Ergebnisse nach Spiel und Spielgruppe
-    const gruppiertNachSpielUndGruppe: Record<string, Ergebnis[]> = {};
-    
-    ergebnisseData.forEach(ergebnis => {
-      const key = `${ergebnis.spiel_id}_${ergebnis.spielgruppe_id}`;
-      if (!gruppiertNachSpielUndGruppe[key]) {
-        gruppiertNachSpielUndGruppe[key] = [];
-      }
-      gruppiertNachSpielUndGruppe[key].push(ergebnis);
+    const kindKlasseMap = new Map(kinderData.map(k => [k.id, k.klasse]));
+    const spielWertungstypMap = new Map(spieleData.map(s => [s.id, s.wertungstyp]));
+
+    const rangMap = berechneRangePunkteProKlasse(
+      ergebnisseData,
+      (e) => kindKlasseMap.get(e.kind_id),
+      (e) => spielWertungstypMap.get(e.spiel_id),
+    );
+
+    return ergebnisseData.map((e) => {
+      const r = rangMap.get(e.id);
+      return r ? { ...e, rang: r.rang, punkte: r.punkte } : e;
     });
-    
-    // Berechne Rang für jedes Ergebnis innerhalb seiner Gruppe
-    const ergebnisseMitRang = [...ergebnisseData];
-    
-    Object.entries(gruppiertNachSpielUndGruppe).forEach(([key, gruppenErgebnisse]) => {
-      const [spielId] = key.split('_');
-      const spiel = spieleData.find(s => s.id === spielId);
-      
-      if (!spiel) return;
-      
-      // Sortiere Ergebnisse basierend auf dem Wertungstyp
-      const sortierteErgebnisse = [...gruppenErgebnisse].sort((a, b) => {
-        if (spiel.wertungstyp === 'ZEIT_MIN_STRAFE') {
-          // Für Zeit: Kleinerer Wert ist besser
-          return a.wert_numeric - b.wert_numeric;
-        } else {
-          // Für andere Wertungen: Größerer Wert ist besser
-          return b.wert_numeric - a.wert_numeric;
-        }
-      });
-      
-      // Weise Ränge zu - WICHTIG: Bei gleichen Werten erhalten Kinder den gleichen Rang
-      let letzterRang = 1;
-      let letzterWert = sortierteErgebnisse.length > 0 ? sortierteErgebnisse[0].wert_numeric : 0;
-      
-      sortierteErgebnisse.forEach((ergebnis, index) => {
-        // Wenn der Wert sich vom vorherigen unterscheidet, erhöhe den Rang
-        if (index > 0 && (
-          (spiel.wertungstyp === 'ZEIT_MIN_STRAFE' && ergebnis.wert_numeric > letzterWert) ||
-          (spiel.wertungstyp !== 'ZEIT_MIN_STRAFE' && ergebnis.wert_numeric < letzterWert)
-        )) {
-          letzterRang = index + 1;
-          letzterWert = ergebnis.wert_numeric;
-        }
-        
-        // Berechne Punkte nach der Formel 11-Rang, max 10 Punkte, min 0 Punkte
-        const punkte = letzterRang <= 10 ? (11 - letzterRang) : 0;
-        
-        // Finde das entsprechende Ergebnis in der Originalliste und setze den Rang
-        const originalIndex = ergebnisseMitRang.findIndex(e => e.id === ergebnis.id);
-        if (originalIndex !== -1) {
-          ergebnisseMitRang[originalIndex] = {
-            ...ergebnisseMitRang[originalIndex],
-            rang: letzterRang,
-            punkte: punkte
-          };
-        }
-      });
-    });
-    
-    return ergebnisseMitRang;
   };
 
   // Öffnet die Detailansicht für eine bestimmte Gruppe und ein Spiel
@@ -1134,103 +659,6 @@ export default function AuswertungAdmin() {
     });
     
     setDetailViewOpen(true);
-  };
-
-  // Exportiert die Ergebnisse als CSV
-  const exportToCSV = (klasse: string) => {
-    const statistik = klassenStatistik.find(s => s.klasse === klasse);
-    if (!statistik) return;
-    
-    const headers = [
-      'Platz', 
-      'Vorname', 
-      'Nachname', 
-      'Geschlecht', 
-      'Gruppe', 
-      'Gesamtpunkte'
-    ];
-    
-    const csvRows = [
-      headers.join(','),
-      ...statistik.kinder.map((kind: any) => {
-        const status = kind.status ? ` (${kind.status === 'koenig' ? 'König' : 'Königin'})` : '';
-        return [
-          `${kind.platz}${status}`,
-          kind.vorname,
-          kind.nachname,
-          kind.geschlecht,
-          kind.spielgruppe_name,
-          kind.gesamtPunkte
-        ].join(',');
-      })
-    ];
-    
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ergebnisse_klasse_${klasse}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Exportiert die Ergebnisse als PDF
-  const exportToPDF = (klasse: string) => {
-    const statistik = klassenStatistik.find(s => s.klasse === klasse);
-    if (!statistik) return;
-    
-    const doc = new jsPDF();
-    
-    // Titel
-    doc.setFontSize(16);
-    doc.text(`Ergebnisse Klasse ${klasse}`, 14, 20);
-    
-    // König und Königin, falls vorhanden
-    if (statistik.koenig || statistik.koenigin) {
-      doc.setFontSize(12);
-      let yPos = 30;
-      
-      if (statistik.koenig) {
-        const koenig = statistik.kinder.find((k: any) => k.id === statistik.koenig?.kind_id);
-        if (koenig) {
-          doc.text(`König: ${koenig.vorname} ${koenig.nachname} (${koenig.gesamtPunkte} Punkte)`, 14, yPos);
-          yPos += 8;
-        }
-      }
-      
-      if (statistik.koenigin) {
-        const koenigin = statistik.kinder.find((k: any) => k.id === statistik.koenigin?.kind_id);
-        if (koenigin) {
-          doc.text(`Königin: ${koenigin.vorname} ${koenigin.nachname} (${koenigin.gesamtPunkte} Punkte)`, 14, yPos);
-          yPos += 8;
-        }
-      }
-      
-      yPos += 5;
-    }
-    
-    // Tabelle mit allen Kindern
-    const tableColumn = ['Platz', 'Vorname', 'Nachname', 'Geschlecht', 'Gruppe', 'Punkte'];
-    const tableRows = statistik.kinder.map((kind: any) => {
-      const status = kind.status ? ` (${kind.status === 'koenig' ? 'König' : 'Königin'})` : '';
-      return [
-        `${kind.platz}${status}`,
-        kind.vorname,
-        kind.nachname,
-        kind.geschlecht,
-        kind.spielgruppe_name,
-        kind.gesamtPunkte.toString()
-      ];
-    });
-    
-    (doc as any).autoTable({
-      head: [tableColumn],
-      body: tableRows,
-    });
-    
-    doc.save(`ergebnisse_klasse_${klasse}.pdf`);
   };
 
   // Statusanzeige für die Matrix (Farben und Symbole)
@@ -1260,7 +688,7 @@ export default function AuswertungAdmin() {
           href="/admin/auswertung/details"
           className="inline-flex items-center h-9 px-3.5 rounded-md bg-admin-ink text-white hover:bg-admin-ink/90 text-[0.85rem] font-medium transition-colors"
         >
-          Detailansicht
+          Punktecheck
         </Link>
       }
     >
@@ -1352,18 +780,25 @@ export default function AuswertungAdmin() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {liveZwischenstand.kinder.map((kind, index) => (
-                        <TableRow key={kind.id}>
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell>
-                            {kind.vorname} {kind.nachname}
-                            {index === 0 && kind.geschlecht === 'männlich' && <Crown className="inline-block ml-2 text-yellow-500 h-4 w-4" />}
-                            {index === 0 && kind.geschlecht === 'weiblich' && <Crown className="inline-block ml-2 text-pink-500 h-4 w-4" />}
-                          </TableCell>
-                          <TableCell>{kind.gesamtPunkte}</TableCell>
-                          <TableCell>{kind.anzahlErgebnisse} / {kind.gesamt_spiele || liveZwischenstand.fortschritt.gesamt}</TableCell>
-                        </TableRow>
-                      ))}
+                      {(() => {
+                        // Bester Junge / bestes Mädchen der Gruppe ermitteln (Liste ist nach Punkten sortiert)
+                        const istJunge = (k: any) => k.geschlecht === 'Junge' || k.geschlecht === 'männlich';
+                        const istMaedchen = (k: any) => k.geschlecht === 'Mädchen' || k.geschlecht === 'weiblich';
+                        const koenigId = liveZwischenstand.kinder.find(istJunge)?.id;
+                        const koeniginId = liveZwischenstand.kinder.find(istMaedchen)?.id;
+                        return liveZwischenstand.kinder.map((kind, index) => (
+                          <TableRow key={kind.id}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                              {kind.vorname} {kind.nachname}
+                              {kind.id === koenigId && <Crown className="inline-block ml-2 text-yellow-500 h-4 w-4" />}
+                              {kind.id === koeniginId && <Crown className="inline-block ml-2 text-pink-500 h-4 w-4" />}
+                            </TableCell>
+                            <TableCell>{kind.gesamtPunkte}</TableCell>
+                            <TableCell>{kind.anzahlErgebnisse} / {kind.gesamt_spiele || liveZwischenstand.fortschritt.gesamt}</TableCell>
+                          </TableRow>
+                        ));
+                      })()}
                     </TableBody>
                   </Table>
                 </div>
@@ -1482,14 +917,14 @@ export default function AuswertungAdmin() {
           </Card>
         </TabsContent>
         
-        {/* 3. Tab: Abschlussauswertung */}
+        {/* 3. Tab: Abschlussauswertung — König & Königin pro Klasse */}
         <TabsContent value="auswertung">
           <Card className="mb-8">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
                   <CardTitle>Abschlussauswertung Vogelschießen {activeEvent?.jahr ?? ''}</CardTitle>
-                  <CardDescription>Gesamtrangliste nach Klassen mit Königspaaren</CardDescription>
+                  <CardDescription>König und Königin pro Klasse</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -1498,161 +933,49 @@ export default function AuswertungAdmin() {
                 <div className="flex justify-center items-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
+              ) : gesamtauswertungDaten.length === 0 ? (
+                <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+                  Keine Ergebnisse gefunden. Bitte stelle sicher, dass Ergebnisse vorhanden sind.
+                </div>
               ) : (
-                <div className="space-y-8">
-                  {/* Filter-Optionen */}
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="flex flex-wrap gap-2">
-                      <Button 
-                        variant="outline"
-                        size="sm"
-                        onClick={() => loadGesamtauswertung()}
-                      >
-                        Alle Klassen
-                      </Button>
-                      
-                      {/* Königspaare-Filter */}
-                      <div className="flex items-center gap-2 ml-4">
-                        <label htmlFor="toggle-koenigspaare" className="text-sm cursor-pointer font-medium">
-                          Nur Königspaare anzeigen
-                        </label>
-                        <input 
-                          type="checkbox" 
-                          id="toggle-koenigspaare"
-                          className="h-4 w-4"
-                          onChange={(e) => {
-                            // Alle Tabellen finden
-                            document.querySelectorAll('table[id^="table-klasse-"]').forEach((table) => {
-                              if (table instanceof HTMLElement) {
-                                const rows = table.querySelectorAll('tbody tr');
-                                rows.forEach((row) => {
-                                  if (row instanceof HTMLElement) {
-                                    const hasKrone = row.querySelector('.text-yellow-500, .text-pink-500');
-                                    row.style.display = e.target.checked && !hasKrone ? 'none' : '';
-                                  }
-                                });
-                              }
-                            });
-                            
-                            // Wenn nur Königspaare angezeigt werden sollen, auch die Ranglisten-Header ausblenden
-                            document.querySelectorAll('div[class*="bg-gray-50 p-4 border-b"]').forEach((header) => {
-                              if (header instanceof HTMLElement) {
-                                if (e.target.checked) {
-                                  header.style.display = 'none';
-                                } else {
-                                  header.style.display = '';
-                                }
-                              }
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Gruppiere Daten nach Klassen */}
-                  {gesamtauswertungDaten.length > 0 ? (
-                    [...new Set(gesamtauswertungDaten.map(item => item.klasse))].sort().map(klasse => {
-                      const klassenDaten = gesamtauswertungDaten.filter(item => item.klasse === klasse);
-                      
-                      // Finde König und Königin für diese Klasse
-                      const koenig = klassenDaten.find(item => item.ist_koenig);
-                      const koenigin = klassenDaten.find(item => item.ist_koenigin);
-                      
-                      return (
-                        <div key={klasse} className="bg-white rounded-lg border shadow-sm overflow-hidden">
-                          {/* Königspaar-Box */}
-                          {(koenig || koenigin) && (
-                            <div className="bg-yellow-50 p-4 border-b flex flex-col md:flex-row gap-4 justify-center md:justify-between items-center">
-                              <h3 className="text-lg font-semibold">Klasse {klasse} - Königspaar</h3>
-                              <div className="flex flex-wrap gap-6 justify-center">
-                                {koenig && (
-                                  <div className="flex items-center gap-2">
-                                    <Crown className="text-yellow-500 h-6 w-6" />
-                                    <div>
-                                      <div className="font-semibold">{koenig.kind_name}</div>
-                                      <div className="text-sm text-gray-500">{koenig.gesamtpunkte} Punkte</div>
-                                    </div>
-                                  </div>
-                                )}
-                                {koenigin && (
-                                  <div className="flex items-center gap-2">
-                                    <Crown className="text-pink-500 h-6 w-6" />
-                                    <div>
-                                      <div className="font-semibold">{koenigin.kind_name}</div>
-                                      <div className="text-sm text-gray-500">{koenigin.gesamtpunkte} Punkte</div>
-                                    </div>
-                                  </div>
-                                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[...new Set(gesamtauswertungDaten.map(item => item.klasse))].sort().map(klasse => {
+                    const klassenDaten = gesamtauswertungDaten.filter(item => item.klasse === klasse);
+                    const koenig = klassenDaten.find(item => item.ist_koenig);
+                    const koenigin = klassenDaten.find(item => item.ist_koenigin);
+
+                    return (
+                      <div key={klasse} className="bg-yellow-50 border rounded-lg p-5">
+                        <h3 className="text-base font-semibold text-slate-800 mb-3">Klasse {klasse}</h3>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Crown className="text-yellow-500 h-7 w-7 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-xs uppercase tracking-wider text-slate-500">König</div>
+                              <div className="font-semibold text-slate-900 truncate">
+                                {koenig?.kind_name ?? '—'}
                               </div>
+                              {koenig && (
+                                <div className="text-xs text-slate-500">{koenig.gesamtpunkte} Punkte</div>
+                              )}
                             </div>
-                          )}
-                          
-                          <div className="bg-gray-50 p-4 border-b">
-                            <h3 className="text-lg font-semibold">Klasse {klasse} - Rangliste</h3>
                           </div>
-                          
-                          <div className="overflow-x-auto">
-                            <Table id={`table-klasse-${klasse}`}>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-16">Platz</TableHead>
-                                  <TableHead>Name</TableHead>
-                                  <TableHead>Geschlecht</TableHead>
-                                  <TableHead>Gruppe</TableHead>
-                                  <TableHead className="text-right">Gesamtpunkte</TableHead>
-                                  <TableHead className="text-right">Spiele</TableHead>
-                                  <TableHead>Status</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {klassenDaten.map((item) => (
-                                  <TableRow key={item.kind_id}>
-                                    <TableCell className="font-medium">{item.rang}</TableCell>
-                                    <TableCell>
-                                      {item.kind_name}
-                                      {item.ist_koenig && <span title="König"><Crown className="inline-block ml-2 text-yellow-500 h-4 w-4" /></span>}
-                                      {item.ist_koenigin && <span title="Königin"><Crown className="inline-block ml-2 text-pink-500 h-4 w-4" /></span>}
-                                    </TableCell>
-                                    <TableCell>{item.geschlecht}</TableCell>
-                                    <TableCell>{item.spielgruppe_name}</TableCell>
-                                    <TableCell className="text-right font-semibold">{item.gesamtpunkte}</TableCell>
-                                    <TableCell className="text-right">
-                                      {item.klasse === '1' ? '8/8' : `${item.anzahl_spiele}/${item.gesamt_spiele}`}
-                                    </TableCell>
-                                    <TableCell>
-                                      <span className={`px-2 py-1 rounded-full text-xs ${item.gesamt_spiele === item.anzahl_spiele ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                                        {item.gesamt_spiele === item.anzahl_spiele ? 'vollständig' : 'unvollständig'}
-                                      </span>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                          <div className="flex items-center gap-3">
+                            <Crown className="text-pink-500 h-7 w-7 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-xs uppercase tracking-wider text-slate-500">Königin</div>
+                              <div className="font-semibold text-slate-900 truncate">
+                                {koenigin?.kind_name ?? '—'}
+                              </div>
+                              {koenigin && (
+                                <div className="text-xs text-slate-500">{koenigin.gesamtpunkte} Punkte</div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
-                      Keine Ergebnisse gefunden. Bitte stelle sicher, dass Ergebnisse vorhanden sind.
-                    </div>
-                  )}
-                  
-                  <div className="bg-gray-50 p-4 rounded-lg border mt-6">
-                    <h4 className="font-semibold mb-2">Legende:</h4>
-                    <ul className="space-y-1 text-sm">
-                      <li className="flex items-center gap-2">
-                        <Crown className="text-yellow-500 h-4 w-4" /> König (bester Junge der Klasse)
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Crown className="text-pink-500 h-4 w-4" /> Königin (bestes Mädchen der Klasse)
-                      </li>
-                      <li className="mt-2">
-                        <strong>Punktevergabe:</strong> 1. Platz = 10 Punkte, 2. Platz = 9 Punkte, ... 10. Platz = 1 Punkt
-                      </li>
-                    </ul>
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
