@@ -440,7 +440,6 @@ function KommentarBadge({ text }: { text: string }) {
   return (
     <span
       tabIndex={0}
-      title={text}
       className="relative group inline-flex items-center cursor-help text-amber-500 hover:text-amber-600 focus:text-amber-600 focus:outline-none"
       aria-label={`Eltern-Kommentar: ${text}`}
     >
