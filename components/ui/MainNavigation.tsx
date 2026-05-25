@@ -92,7 +92,8 @@ export default function MainNavigation() {
   const isHidden =
     pathname.startsWith('/leiter') ||
     pathname.startsWith('/admin') ||
-    pathname.startsWith('/anmeldung');
+    pathname.startsWith('/anmeldung') ||
+    pathname.startsWith('/spielbetreuer');
   if (isHidden) return null;
 
   const handleSmoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {

@@ -140,14 +140,14 @@ export default function SpielbetreuerDetail({ spiel }: { spiel: Spiel }) {
             <ChevronLeft size={22} />
           </Link>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[17px] font-semibold text-slate-900 truncate leading-tight">
+            <div className="text-[17px] font-sans font-semibold text-slate-900 truncate leading-tight">
               {spiel.name}
-            </h1>
+            </div>
             {spiel.ort && (
-              <p className="text-[12px] text-slate-500 leading-tight mt-0.5 inline-flex items-center gap-1">
+              <div className="text-[13px] text-slate-500 leading-tight mt-0.5 inline-flex items-center gap-1">
                 <MapPin size={11} className="shrink-0" />
                 {spiel.ort}
-              </p>
+              </div>
             )}
           </div>
           <button
@@ -280,11 +280,11 @@ function Section({
 }) {
   return (
     <section>
-      <div className="flex items-center gap-1.5 mb-2 px-1">
-        {icon}
-        <p className="text-xs uppercase tracking-wider text-slate-500 font-medium">
+      <div className="flex items-center gap-1.5 mb-2 px-1 leading-none">
+        <span className="inline-flex">{icon}</span>
+        <span className="text-xs uppercase tracking-wider text-slate-500 font-medium">
           {titel} ({count})
-        </p>
+        </span>
       </div>
       {children}
     </section>

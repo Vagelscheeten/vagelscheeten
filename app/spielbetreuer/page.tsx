@@ -43,10 +43,10 @@ export default async function SpielbetreuerIndex() {
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
         <div className="px-3 h-14 flex items-center max-w-2xl mx-auto">
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-slate-900 truncate leading-tight">
+            <div className="text-[17px] font-sans font-semibold text-slate-900 truncate leading-tight">
               Spielbetreuer
-            </h1>
-            <p className="text-xs text-slate-500 leading-tight">{event.name}</p>
+            </div>
+            <div className="text-[13px] text-slate-500 leading-tight mt-0.5">{event.name}</div>
           </div>
         </div>
       </div>
