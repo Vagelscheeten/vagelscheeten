@@ -79,6 +79,8 @@ export default function AuswertungAdmin() {
   const [kinderSpielgruppenZuordnungen, setKinderSpielgruppenZuordnungen] = useState<KindSpielgruppeZuordnung[]>([]);
   // Klassen-Name → Set zugewiesener Spiel-IDs (aus klasse_spiele)
   const [spielIdsProKlasse, setSpielIdsProKlasse] = useState<Map<string, Set<string>>>(new Map());
+  // (spielgruppe_id, spiel_id) → abgeschlossen-Eintrag aus spielgruppe_spiel_status
+  const [abgeschlossenePaare, setAbgeschlossenePaare] = useState<Set<string>>(new Set());
   
   // Filter für Live-Zwischenstand
   const [verfuegbareKlassen, setVerfuegbareKlassen] = useState<string[]>([]);
@@ -217,6 +219,17 @@ export default function AuswertungAdmin() {
       }
       setSpielIdsProKlasse(spielMap);
 
+      // Lade abgeschlossene (Spielgruppe, Spiel)-Paare
+      const { data: statusData, error: statusError } = await supabase
+        .from('spielgruppe_spiel_status')
+        .select('spielgruppe_id, spiel_id')
+        .eq('event_id', eventId);
+      if (statusError) throw statusError;
+      const statusSet = new Set<string>(
+        (statusData ?? []).map((s) => `${s.spielgruppe_id}|${s.spiel_id}`),
+      );
+      setAbgeschlossenePaare(statusSet);
+
       // Bestimme verfügbare Klassen und setze eine Standardauswahl
       const klassen = [...new Set(gruppenData?.map(g => g.klasse) || [])];
       setVerfuegbareKlassen(klassen.sort());
@@ -272,9 +285,19 @@ export default function AuswertungAdmin() {
         (e) => spielWertungstypMap.get(e.spiel_id),
       );
 
-      // Gesamtpunkte pro Kind in der Gruppe
+      // Abgeschlossene Spiele dieser Gruppe (aus spielgruppe_spiel_status)
+      const abgeschlosseneSpielIds = new Set<string>();
+      for (const spiel of spieleFuerKlasse) {
+        if (abgeschlossenePaare.has(`${gruppeId}|${spiel.id}`)) {
+          abgeschlosseneSpielIds.add(spiel.id);
+        }
+      }
+
+      // Gesamtpunkte pro Kind in der Gruppe — nur aus abgeschlossenen Spielen
       const kinderMitPunkten = gruppenKinder.map((kind) => {
-        const alleKindErgebnisse = gruppenErgebnisse.filter((e) => e.kind_id === kind.id);
+        const alleKindErgebnisse = gruppenErgebnisse.filter(
+          (e) => e.kind_id === kind.id && abgeschlosseneSpielIds.has(e.spiel_id),
+        );
         const gesamtPunkte = alleKindErgebnisse.reduce(
           (sum, e) => sum + (rangMap.get(e.id)?.punkte ?? 0),
           0,
@@ -292,8 +315,8 @@ export default function AuswertungAdmin() {
       // Sortiere nach Gesamtpunkten (absteigend)
       const sortierteKinder = [...kinderMitPunkten].sort((a, b) => b.gesamtPunkte - a.gesamtPunkte);
 
-      // Berechne Fortschritt
-      const abgeschlosseneSpiele = new Set(gruppenErgebnisse.map((e) => e.spiel_id)).size;
+      // Fortschritt: Anzahl wirklich abgeschlossener Spiele dieser Gruppe
+      const abgeschlosseneSpiele = abgeschlosseneSpielIds.size;
       const gesamtSpiele = spieleFuerKlasse.length;
 
       setLiveZwischenstand({
