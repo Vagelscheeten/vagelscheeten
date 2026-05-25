@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Mail, CheckCircle2, AlertCircle, Info, Send, ExternalLink, ChevronLeft, ChevronRight, X, Wrench, Utensils, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Phase4KommunizierenProps {
@@ -25,6 +25,23 @@ interface MitbringStatus {
 
 interface FilterOption { id: string; titel: string }
 
+interface AnmeldungDetails {
+  kindVorname: string;
+  kindNachname: string;
+  kindKlasse: string;
+  elternEmail: string | null;
+  weitereKinder: { vorname: string; nachname: string; klasse: string }[];
+  helferWuensche: { aufgabe_id: string; titel: string }[];
+  istSpringer: boolean;
+  springerZeitfenster: string | null;
+  essensspendenAusJson: { spende_id: string; menge: number; titel: string }[];
+  essensspendenBestaetigt: { menge: number; titel: string }[];
+  kommentar: string | null;
+  verifiziertAm: string | null;
+  erstelltAm: string | null;
+  benachrichtigtAm: string | null;
+}
+
 interface VorschauData {
   anmeldungId?: string;
   kindName?: string;
@@ -40,6 +57,7 @@ interface VorschauData {
     aufgaben: FilterOption[];
     spenden: FilterOption[];
   };
+  details?: AnmeldungDetails;
   error?: string;
 }
 
@@ -51,6 +69,7 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
   const [filterAufgabe, setFilterAufgabe] = useState('');
   const [filterSpende, setFilterSpende] = useState('');
   const [vorschauLoading, setVorschauLoading] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [mitbringStatus, setMitbringStatus] = useState<MitbringStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -322,7 +341,14 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
               <div className="flex gap-2 pt-1 mt-1 border-t text-xs text-slate-500">
                 <span className="w-16 shrink-0">Familie:</span>
                 <span>
-                  {vorschau.kindName}{vorschau.kindKlasse ? ` (Klasse ${vorschau.kindKlasse})` : ''}
+                  <button
+                    onClick={() => setDetailsOpen(true)}
+                    className="text-slate-700 hover:text-blue-700 hover:underline underline-offset-2 inline-flex items-center gap-1"
+                    title="Anmeldungs-Details anzeigen"
+                  >
+                    {vorschau.kindName}{vorschau.kindKlasse ? ` (Klasse ${vorschau.kindKlasse})` : ''}
+                    <Info size={11} className="text-slate-400" />
+                  </button>
                   {vorschau.hatZuteilung === false && (
                     <span className="ml-2 text-amber-600">— ohne Helfer-Zuteilung</span>
                   )}
@@ -396,6 +422,121 @@ export function Phase4Kommunizieren({ eventId, onRefresh }: Phase4KommunizierenP
           </div>
         </div>
       )}
+
+      {detailsOpen && vorschau?.details && (
+        <AnmeldungDetailModal details={vorschau.details} onClose={() => setDetailsOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function AnmeldungDetailModal({
+  details,
+  onClose,
+}: {
+  details: AnmeldungDetails;
+  onClose: () => void;
+}) {
+  const d = details;
+  const formatDate = (s: string | null) => {
+    if (!s) return '–';
+    try {
+      return new Date(s).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return s;
+    }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-800">
+            Anmeldung: {d.kindVorname} {d.kindNachname}
+            {d.kindKlasse && <span className="text-slate-400"> · Klasse {d.kindKlasse}</span>}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4 text-sm">
+          <div className="grid grid-cols-[120px_1fr] gap-y-1.5">
+            <span className="text-slate-400">Eltern-E-Mail:</span>
+            <span className="text-slate-800">{d.elternEmail || '–'}</span>
+            {d.weitereKinder.length > 0 && (
+              <>
+                <span className="text-slate-400">Geschwister:</span>
+                <span className="text-slate-800">
+                  {d.weitereKinder
+                    .map((g) => `${g.vorname} ${g.nachname} (${g.klasse || '?'})`)
+                    .join(', ')}
+                </span>
+              </>
+            )}
+            <span className="text-slate-400">Angemeldet:</span>
+            <span className="text-slate-800">{formatDate(d.erstelltAm)}</span>
+            <span className="text-slate-400">Verifiziert:</span>
+            <span className="text-slate-800">{d.verifiziertAm ? formatDate(d.verifiziertAm) : 'Nein'}</span>
+            {d.benachrichtigtAm && (
+              <>
+                <span className="text-slate-400">Mail gesendet:</span>
+                <span className="text-slate-800">{formatDate(d.benachrichtigtAm)}</span>
+              </>
+            )}
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Helfer-Wünsche</div>
+            {d.helferWuensche.length === 0 && !d.istSpringer ? (
+              <div className="text-slate-500 italic">Keine Helfer-Wünsche</div>
+            ) : (
+              <ul className="space-y-1">
+                {d.helferWuensche.map((h, i) => (
+                  <li key={i} className="text-slate-700 inline-flex items-center gap-1.5">
+                    <Wrench size={12} className="text-slate-400 shrink-0" />
+                    <span>{h.titel}</span>
+                  </li>
+                ))}
+                {d.istSpringer && (
+                  <li className="text-purple-700 inline-flex items-center gap-1.5">
+                    <Sparkles size={12} className="shrink-0" />
+                    <span>Springer ({d.springerZeitfenster || 'kein Zeitfenster'})</span>
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Essensspenden</div>
+            {d.essensspendenAusJson.length === 0 ? (
+              <div className="text-slate-500 italic">Keine Essensspenden</div>
+            ) : (
+              <ul className="space-y-1">
+                {d.essensspendenAusJson.map((e, i) => (
+                  <li key={i} className="text-slate-700 inline-flex items-center gap-1.5">
+                    <Utensils size={12} className="text-slate-400 shrink-0" />
+                    <span>
+                      {e.menge}× {e.titel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {d.kommentar && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Kommentar der Eltern</div>
+              <div className="text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-100 rounded p-2">
+                {d.kommentar}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     const [anmeldungenRes, aufgabenRes, spendenRes] = await Promise.all([
       supabaseAdmin
         .from('anmeldungen')
-        .select('id, kind_vorname, kind_nachname, kind_klasse, eltern_email, weitere_kinder_json')
+        .select('id, kind_vorname, kind_nachname, kind_klasse, eltern_email, weitere_kinder_json, helfer_aufgaben_json, essensspenden_json, ist_springer, springer_zeitfenster, kommentar, verifiziert, verifiziert_am, erstellt_am, benachrichtigt_am')
         .eq('event_id', eventId)
         .eq('verifiziert', true)
         .not('eltern_email', 'is', null)
@@ -144,8 +144,16 @@ export async function GET(req: NextRequest) {
     }
 
     const currentIndex = ((requestedIndex % poolSize) + poolSize) % poolSize;
-    const anmeldung = gefiltert[currentIndex];
+    const anmeldung = gefiltert[currentIndex] as any;
     const mail = buildEmailFuerAnmeldung(anmeldung, kontext);
+
+    // Detail-Daten für Modal: Anmeldung + Essensspenden mit Spende-Titel
+    const familienSpenden = (kontext.alleEssensspenden as any[])
+      .filter((e) => e.anmeldung_id === anmeldung.id)
+      .map((e) => {
+        const spende = Array.isArray(e.spende) ? e.spende[0] : e.spende;
+        return { menge: e.menge ?? 1, titel: spende?.titel || 'Spende' };
+      });
 
     return NextResponse.json({
       anmeldungId: anmeldung.id,
@@ -158,6 +166,30 @@ export async function GET(req: NextRequest) {
       poolSize,
       currentIndex,
       filterOptions,
+      // Volle Anmeldungs-Daten für Detail-Modal
+      details: {
+        kindVorname: anmeldung.kind_vorname,
+        kindNachname: anmeldung.kind_nachname,
+        kindKlasse: anmeldung.kind_klasse,
+        elternEmail: anmeldung.eltern_email,
+        weitereKinder: anmeldung.weitere_kinder_json || [],
+        helferWuensche: (anmeldung.helfer_aufgaben_json || []).map((h: any) => ({
+          aufgabe_id: h?.aufgabe_id,
+          titel: (aufgabenRes.data || []).find((a) => a.id === h?.aufgabe_id)?.titel || 'Unbekannt',
+        })),
+        istSpringer: !!anmeldung.ist_springer,
+        springerZeitfenster: anmeldung.springer_zeitfenster,
+        essensspendenAusJson: (anmeldung.essensspenden_json || []).map((e: any) => ({
+          spende_id: e?.spende_id,
+          menge: e?.menge ?? 1,
+          titel: (spendenRes.data || []).find((s) => s.id === e?.spende_id)?.titel || 'Unbekannt',
+        })),
+        essensspendenBestaetigt: familienSpenden,
+        kommentar: anmeldung.kommentar,
+        verifiziertAm: anmeldung.verifiziert_am,
+        erstelltAm: anmeldung.erstellt_am,
+        benachrichtigtAm: anmeldung.benachrichtigt_am,
+      },
     });
   } catch (error: any) {
     console.error('Vorschau-Fehler:', error);
