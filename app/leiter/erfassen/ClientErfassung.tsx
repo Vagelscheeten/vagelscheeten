@@ -877,10 +877,10 @@ export default function ClientErfassung({
             <div className="w-7 shrink-0" />
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-semibold text-slate-900 truncate leading-tight">
+            <h1 className="text-[17px] font-semibold text-slate-900 truncate leading-tight">
               {headerTitel}
             </h1>
-            <p className="text-[11px] text-slate-500 leading-tight">
+            <p className="text-[13px] text-slate-500 leading-tight mt-0.5">
               Gruppe {spielgruppe.name}
             </p>
           </div>
