@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { buildEmailFuerAnmeldung, loadEmailKontext, type AnmeldungMail } from '@/lib/helfer-email';
+import { buildEmailFuerAnmeldung, essensspendenForFamilie, loadEmailKontext, type AnmeldungMail } from '@/lib/helfer-email';
 
 const supabaseAdmin = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -102,19 +102,10 @@ export async function GET(req: NextRequest) {
         if (!hat) return false;
       }
 
-      // Spende: Familie hat eine Essensspende mit dieser spende_id
-      const familienKinderKeys = new Set<string>();
-      familienKinderKeys.add(`${a.kind_nachname}, ${a.kind_vorname} (${a.kind_klasse})`);
-      for (const w of a.weitere_kinder_json || []) {
-        if (w?.vorname && w?.nachname && w?.klasse) {
-          familienKinderKeys.add(`${w.nachname}, ${w.vorname} (${w.klasse})`);
-        }
-      }
-      const familienSpenden = kontext.alleEssensspenden.filter((e) => {
-        if (!e.kind_identifier) return false;
-        const ks = e.kind_identifier.split(' + ');
-        return ks.some((k: string) => familienKinderKeys.has(k));
-      });
+      // Spende: Familie hat eine Essensspende (mit oder ohne spezifische spende_id)
+      // Wichtig: gleiche Match-Logik wie Mail-Rendering — sonst zeigen Filter
+      // 'Keine Essensspende' fälschlich Familien, die doch eine Spende haben.
+      const familienSpenden = essensspendenForFamilie(a, kontext);
 
       if (spendeFilter === 'keine') {
         if (familienSpenden.length > 0) return false;

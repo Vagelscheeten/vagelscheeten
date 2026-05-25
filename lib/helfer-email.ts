@@ -188,6 +188,51 @@ export async function loadEmailKontext(
   };
 }
 
+/**
+ * Liefert für eine Familie alle möglichen `kind_identifier`-Strings, unter denen
+ * Essensspenden gespeichert sein könnten (Anmeldungs-Namensform + Namensform aus
+ * der kinder-Tabelle via firstWord-Fallback).
+ *
+ * Beispiel: Anmeldung 'Anna Bargob (4b)', kinder-Eintrag 'Anna Marlene Bargob (4b)'
+ * → Set enthält beide Varianten 'Bargob, Anna (4b)' und 'Bargob, Anna Marlene (4b)'.
+ */
+export function buildFamilienKinderKeys(anmeldung: AnmeldungMail, kontext: EmailKontext): Set<string> {
+  const keys = new Set<string>();
+  const kinderIdx = buildKinderIndex(kontext.kinder as KindLite[]);
+  const eintraege: { vorname: string; nachname: string; klasse: string }[] = [
+    { vorname: anmeldung.kind_vorname, nachname: anmeldung.kind_nachname, klasse: anmeldung.kind_klasse },
+  ];
+  for (const w of anmeldung.weitere_kinder_json || []) {
+    if (w?.vorname && w?.nachname) {
+      eintraege.push({ vorname: w.vorname, nachname: w.nachname, klasse: w.klasse || '' });
+    }
+  }
+  for (const e of eintraege) {
+    keys.add(`${e.nachname}, ${e.vorname} (${e.klasse})`);
+    const matched = findKindInIndex(e.vorname, e.nachname, e.klasse, kinderIdx);
+    if (matched) {
+      keys.add(`${matched.nachname}, ${matched.vorname} (${matched.klasse || e.klasse})`);
+    }
+  }
+  return keys;
+}
+
+/**
+ * Liefert für eine Familie alle Essensspenden-Einträge aus dem Kontext (über
+ * mehrere kind_identifier-Varianten).
+ */
+export function essensspendenForFamilie(
+  anmeldung: AnmeldungMail,
+  kontext: EmailKontext,
+): any[] {
+  const keys = buildFamilienKinderKeys(anmeldung, kontext);
+  return kontext.alleEssensspenden.filter((e: any) => {
+    if (!e.kind_identifier) return false;
+    const ks = e.kind_identifier.split(' + ');
+    return ks.some((k: string) => keys.has(k));
+  });
+}
+
 export interface BuiltEmail {
   subject: string;
   html: string;
@@ -243,37 +288,7 @@ export function buildEmailFuerAnmeldung(
   const kindName = `${escapeHtml(anmeldung.kind_vorname)} ${escapeHtml(anmeldung.kind_nachname)}`;
   const weitereKinder = anmeldung.weitere_kinder_json || [];
 
-  // Alle möglichen Sub-Identifier dieser Familie sammeln.
-  // Wichtig: Essensspenden können mit dem VOLLEN Namen aus der kinder-Tabelle
-  // gespeichert sein (z.B. 'Bargob, Anna Marlene (4b)'), während die Anmeldung
-  // nur den Rufnamen enthält ('Anna'). Wir matchen daher über kinder-Index
-  // mit firstWord-Fallback und nehmen beide Namensformen als Keys auf.
-  const familienKinderKeys = new Set<string>();
-  const kinderIdx = buildKinderIndex(kontext.kinder as KindLite[]);
-  const familienEintraege: { vorname: string; nachname: string; klasse: string }[] = [
-    { vorname: anmeldung.kind_vorname, nachname: anmeldung.kind_nachname, klasse: anmeldung.kind_klasse },
-  ];
-  for (const w of weitereKinder) {
-    if (w?.vorname && w?.nachname) {
-      familienEintraege.push({ vorname: w.vorname, nachname: w.nachname, klasse: w.klasse || '' });
-    }
-  }
-  for (const e of familienEintraege) {
-    familienKinderKeys.add(`${e.nachname}, ${e.vorname} (${e.klasse})`);
-    const matchedKind = findKindInIndex(e.vorname, e.nachname, e.klasse, kinderIdx);
-    if (matchedKind) {
-      familienKinderKeys.add(`${matchedKind.nachname}, ${matchedKind.vorname} (${matchedKind.klasse || e.klasse})`);
-    }
-  }
-
-  const kindEssensspenden = kontext.alleEssensspenden.filter((e) => {
-    if (!e.kind_identifier) return false;
-    // kind_identifier kann ein einzelnes Kind sein ('Nachname, Vorname (Klasse)')
-    // oder mehrere mit ' + ' verkettet. Match wenn IRGENDEINES der enthaltenen
-    // Kinder zur Familie der Anmeldung gehört.
-    const kinderInIdentifier = e.kind_identifier.split(' + ');
-    return kinderInIdentifier.some((k: string) => familienKinderKeys.has(k));
-  });
+  const kindEssensspenden = essensspendenForFamilie(anmeldung, kontext);
 
   const html = `
 <!DOCTYPE html>
