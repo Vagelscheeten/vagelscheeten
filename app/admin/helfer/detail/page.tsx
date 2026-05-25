@@ -476,60 +476,66 @@ function Pool({
   const { isOver, setNodeRef } = useDroppable({ id: 'pool' });
   return (
     <aside
-      ref={setNodeRef}
-      className={`
+      className="
         w-full lg:w-72 lg:shrink-0
         sticky top-0 z-20
         lg:self-start lg:max-h-[calc(100vh-1.5rem)]
-        bg-white border rounded-xl
-        flex flex-col
-        transition-colors
-        ${isOver ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-slate-200'}
-      `}
+        flex flex-col gap-3
+      "
     >
-      <div className="p-3 border-b border-slate-100 shrink-0">
-        <div className="flex items-baseline justify-between mb-2">
-          <h2 className="text-sm font-semibold text-slate-700">
-            Pool <span className="text-xs font-normal text-slate-400">/ Springer</span>
-          </h2>
-          <span className="text-xs font-medium text-slate-500">{totalInPool}</span>
-        </div>
-        <div className="relative">
-          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => onFilterChange(e.target.value)}
-            placeholder="Suchen…"
-            className="w-full pl-6 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-300 bg-white"
-          />
-        </div>
+      <div className="flex items-center justify-between px-1 shrink-0">
+        <h2 className="text-sm font-semibold text-slate-700">
+          Pool <span className="text-xs font-normal text-slate-400">/ Springer</span>
+        </h2>
+        <span className="text-xs text-slate-400">{totalInPool}</span>
       </div>
-
-      {totalInPool === 0 ? (
-        <p className="text-xs text-slate-400 italic p-3">Alle Helfer sind zugewiesen.</p>
-      ) : helfer.length === 0 ? (
-        <p className="text-xs text-slate-400 italic p-3">Kein Treffer für „{filter}".</p>
-      ) : (
-        <div
-          className="
-            flex lg:flex-col gap-2
-            overflow-x-auto lg:overflow-y-auto
-            p-3
-            max-h-[160px] lg:max-h-none
-          "
-        >
-          {helfer.map((h) => (
-            <PoolHelferCard
-              key={h.id}
-              helfer={h}
-              spiele={spiele}
-              zuteilungen={zuteilungen}
-              onAssign={(spielId) => onAssign(h.id, spielId)}
+      <div
+        ref={setNodeRef}
+        className={`
+          bg-white border rounded-xl
+          flex flex-col min-h-0 lg:flex-1
+          transition-colors
+          ${isOver ? 'border-blue-400 ring-2 ring-blue-200 bg-blue-50' : 'border-slate-200'}
+        `}
+      >
+        <div className="p-3 border-b border-slate-100 shrink-0">
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => onFilterChange(e.target.value)}
+              placeholder="Suchen…"
+              className="w-full pl-6 pr-2 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-300 bg-white"
             />
-          ))}
+          </div>
         </div>
-      )}
+
+        {totalInPool === 0 ? (
+          <p className="text-xs text-slate-400 italic p-3">Alle Helfer sind zugewiesen.</p>
+        ) : helfer.length === 0 ? (
+          <p className="text-xs text-slate-400 italic p-3">Kein Treffer für „{filter}".</p>
+        ) : (
+          <div
+            className="
+              flex lg:flex-col gap-2
+              overflow-x-auto lg:overflow-y-auto
+              p-3
+              max-h-[160px] lg:max-h-none lg:flex-1
+            "
+          >
+            {helfer.map((h) => (
+              <PoolHelferCard
+                key={h.id}
+                helfer={h}
+                spiele={spiele}
+                zuteilungen={zuteilungen}
+                onAssign={(spielId) => onAssign(h.id, spielId)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </aside>
   );
 }
