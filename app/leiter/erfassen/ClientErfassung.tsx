@@ -5,7 +5,7 @@ import type { Database } from '@/lib/database.types'; // Korrekter Import der Da
 import { KindAuswahl, SpielAuswahl, ErgebnisErfassung } from './ErfassungsSchritte';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
+import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -34,6 +34,7 @@ import {
 interface ClientErfassungProps {
   spielgruppe: Database['public']['Tables']['spielgruppen']['Row'];
   kinder: Database['public']['Tables']['kinder']['Row'][];
+  logoutAction: () => Promise<void>;
 }
 
 type Schritt = 'spiel' | 'kind' | 'ergebnis';
@@ -41,7 +42,9 @@ type Schritt = 'spiel' | 'kind' | 'ergebnis';
 export default function ClientErfassung({
   spielgruppe,
   kinder: initialKinder,
+  logoutAction,
 }: ClientErfassungProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   // ALLE STATES ZUERST!
   const [refreshKey, setRefreshKey] = useState(0);
   const [schritt, setSchritt] = React.useState<Schritt>('spiel');
@@ -631,170 +634,167 @@ export default function ClientErfassung({
     setAusgewaehltesKind(null);
   };
 
-  // Rendere den aktuellen Schritt
   const renderSchritt = () => {
     switch (schritt) {
       case 'spiel':
         if (loadingSpiele) {
-          return <div className="text-center py-8">Lade Spiele...</div>;
+          return <div className="text-center py-12 text-slate-500">Lade Spiele…</div>;
         }
+        const offeneSpiele = spiele.filter(s => s.status !== 'abgeschlossen');
+        const abgeschlosseneSpiele = spiele.filter(s => s.status === 'abgeschlossen');
         return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">Spiel auswählen</h2>
-            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
-              {spiele
-                .filter(spiel => spiel.status !== 'abgeschlossen')
-                .map(spiel => (
-                  <Card 
-                    key={spiel.id} 
-                    className="w-full cursor-pointer hover:bg-accent transition-colors"
-                    onClick={() => handleSpielSelected(spiel)}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex flex-col space-y-3">
-                        <h3 className="text-xl font-semibold">{spiel.name}</h3>
-                        <p className="text-base text-muted-foreground">
-                          {spiel.beschreibung || 'Keine Beschreibung'}
-                        </p>
-                        {spiel.zeitlimit_sekunden && (
-                          <p className="text-sm font-medium">
-                            {spiel.zeitlimit_sekunden} Sekunden Zeit. {spiel.einheit && `Pro ${spiel.einheit} 1 Punkt.`}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-base font-medium">{ergebnisCounts.get(spiel.id) || 0} Ergebnisse</span>
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-slate-500 mb-2 px-1">
+                Wähle ein Spiel
+              </p>
+              <div className="space-y-2">
+                {offeneSpiele.map(spiel => {
+                  const count = ergebnisCounts.get(spiel.id) || 0;
+                  return (
+                    <button
+                      key={spiel.id}
+                      onClick={() => handleSpielSelected(spiel)}
+                      className="w-full text-left bg-white border border-slate-200 rounded-xl px-4 py-3 hover:border-melsdorf-orange/60 hover:bg-melsdorf-orange/5 active:scale-[0.99] transition-all"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
+                          {spiel.zeitlimit_sekunden && (
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              {spiel.zeitlimit_sekunden}s Zeitlimit{spiel.einheit ? ` · pro ${spiel.einheit} 1 Punkt` : ''}
+                            </div>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap">
+                          {count} {count === 1 ? 'Erg.' : 'Erg.'}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-
-              {/* Abgeschlossene Spiele */}
-              {spiele.filter(spiel => spiel.status === 'abgeschlossen').length > 0 && (
-                <div className="col-span-full mt-8">
-                  <h3 className="text-lg font-medium mb-4">Abgeschlossene Spiele</h3>
-                  <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
-                    {spiele
-                      .filter(spiel => spiel.status === 'abgeschlossen')
-                      .map(spiel => (
-                        <Card 
-                          key={spiel.id} 
-                          className="w-full cursor-pointer hover:bg-accent/10 transition-colors opacity-80"
-                          onClick={() => handleErgebnisseAnzeigen(spiel)}
-                        >
-                          <CardContent className="p-6">
-                            <div className="flex flex-col space-y-3">
-                              <div className="flex justify-between items-center">
-                                <h3 className="text-xl font-semibold">{spiel.name}</h3>
-                                <span className="text-sm bg-muted px-3 py-1 rounded-full">
-                                  Abgeschlossen
-                                </span>
-                              </div>
-                              <p className="text-base text-muted-foreground">
-                                {spiel.beschreibung || 'Keine Beschreibung'}
-                              </p>
-                              {spiel.zeitlimit_sekunden && (
-                                <p className="text-sm font-medium">
-                                  {spiel.zeitlimit_sekunden} Sekunden Zeit. {spiel.einheit && `Pro ${spiel.einheit} 1 Punkt.`}
-                                </p>
-                              )}
-                              <div className="flex items-center justify-between mt-2">
-                                <span className="text-base font-medium">{ergebnisCounts.get(spiel.id) || 0} Ergebnisse</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      case 'kind':
-        if (loadingErgebnisse) {
-          return <div className="text-center py-8">Lade Ergebnisse...</div>;
-        }
-        return (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">
-                {ausgewaehltesSpiel?.name} - Kind auswählen
-              </h2>
-              <div className="space-x-2">
-                {/* "Zurück"-Button entfernt, da redundant mit "Anderes Spiel wählen" */}
-                {ausgewaehltesSpiel?.status !== 'abgeschlossen' && (
-                  <Button 
-                    variant="destructive" 
-                    onClick={handleSpielAbschliessen}
-                    // Immer aktiviert, unabhängig von der Anzahl der Ergebnisse
-                  >
-                    Spiel abschließen
-                  </Button>
+                    </button>
+                  );
+                })}
+                {offeneSpiele.length === 0 && (
+                  <p className="text-sm text-slate-500 italic py-4 text-center">
+                    Alle Spiele sind abgeschlossen.
+                  </p>
                 )}
               </div>
             </div>
 
-            {/* Kinderliste für neue Ergebnisse - ZUERST anzeigen */}
-            {ausgewaehltesSpiel?.status !== 'abgeschlossen' && (
-              <div className="mb-6">
-                <h3 className="font-medium mb-2">Neues Ergebnis erfassen</h3>
+            {abgeschlosseneSpiele.length > 0 && (
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-500 mb-2 px-1">
+                  Abgeschlossen ({abgeschlosseneSpiele.length})
+                </p>
+                <div className="space-y-2">
+                  {abgeschlosseneSpiele.map(spiel => {
+                    const count = ergebnisCounts.get(spiel.id) || 0;
+                    return (
+                      <button
+                        key={spiel.id}
+                        onClick={() => handleErgebnisseAnzeigen(spiel)}
+                        className="w-full text-left bg-green-50 border border-green-200 rounded-xl px-4 py-3 active:scale-[0.99] transition-all"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
+                            <div className="text-xs text-green-700 mt-0.5">
+                              ✓ Abgeschlossen · {count} Ergebnisse
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'kind':
+        if (loadingErgebnisse) {
+          return <div className="text-center py-12 text-slate-500">Lade Ergebnisse…</div>;
+        }
+        const offeneKinder = kinder.filter(k => !vorhandeneErgebnisse.has(k.id));
+        const erfassteKinder = kinder.filter(k => vorhandeneErgebnisse.has(k.id));
+        return (
+          <div className="space-y-5">
+            {ausgewaehltesSpiel?.status !== 'abgeschlossen' && offeneKinder.length > 0 && (
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-500 mb-2 px-1">
+                  Offen ({offeneKinder.length})
+                </p>
                 <KindAuswahl
-                  kinder={kinder.filter(kind => !vorhandeneErgebnisse.has(kind.id))}
+                  kinder={offeneKinder}
                   onKindSelected={handleKindSelected}
                 />
               </div>
             )}
 
-            {/* Vorhandene Ergebnisse anzeigen - DANACH anzeigen */}
-            {vorhandeneErgebnisse.size > 0 && (
-              <div className="border rounded-lg p-4 bg-gray-50">
-                <h3 className="font-medium mb-2">Erfasste Ergebnisse</h3>
-                <div className="space-y-2">
-                  {kinder
-                    .filter(kind => vorhandeneErgebnisse.has(kind.id))
-                    .map(kind => (
-                      <div key={kind.id} className="flex justify-between items-center p-2 border-b">
-                        <span>{kind.vorname} {kind.nachname}</span>
-                        {editingKindId === kind.id ? (
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="number"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              className="w-20 p-1 border rounded"
-                              step="any"
-                            />
-                            <Button size="sm" onClick={() => handleEditSave(kind.id)}>
-                              Speichern
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={handleEditCancel}>
-                              Abbrechen
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-2">
-                            <span className="font-medium">
-                              {vorhandeneErgebnisse.get(kind.id)} {ausgewaehltesSpiel?.einheit || ''}
-                            </span>
-                            {ausgewaehltesSpiel?.status !== 'abgeschlossen' && (
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                onClick={() => handleEditStart(kind.id, vorhandeneErgebnisse.get(kind.id) || 0)}
-                              >
-                                Bearbeiten
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+            {erfassteKinder.length > 0 && (
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-500 mb-2 px-1">
+                  Erfasst ({erfassteKinder.length})
+                </p>
+                <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+                  {erfassteKinder.map(kind => (
+                    <div key={kind.id} className="flex items-center justify-between px-4 py-3 gap-3">
+                      <span className="font-medium text-slate-900 truncate">
+                        {kind.vorname} {kind.nachname}
+                      </span>
+                      {editingKindId === kind.id ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <input
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="w-20 px-2 py-1 text-base border border-slate-300 rounded"
+                            step="any"
+                            autoFocus
+                          />
+                          <Button size="sm" onClick={() => handleEditSave(kind.id)}>OK</Button>
+                          <Button size="sm" variant="outline" onClick={handleEditCancel}>×</Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-semibold text-melsdorf-orange tabular-nums">
+                            {vorhandeneErgebnisse.get(kind.id)}
+                            {ausgewaehltesSpiel?.einheit ? ` ${ausgewaehltesSpiel.einheit}` : ''}
+                          </span>
+                          {ausgewaehltesSpiel?.status !== 'abgeschlossen' && (
+                            <button
+                              onClick={() => handleEditStart(kind.id, vorhandeneErgebnisse.get(kind.id) || 0)}
+                              className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2"
+                            >
+                              ändern
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+              </div>
+            )}
+
+            {/* Spiel abschließen — unten, sekundär */}
+            {ausgewaehltesSpiel?.status !== 'abgeschlossen' && (
+              <div className="pt-4 border-t border-slate-200">
+                <button
+                  onClick={handleSpielAbschliessen}
+                  className="w-full text-sm py-3 rounded-lg border border-red-200 text-red-700 bg-red-50/50 hover:bg-red-100 active:scale-[0.99] transition-all font-medium"
+                >
+                  Spiel für diese Gruppe abschließen
+                </button>
+                <p className="text-[11px] text-slate-400 text-center mt-2">
+                  Danach sind keine Änderungen mehr möglich.
+                </p>
               </div>
             )}
           </div>
         );
+
       case 'ergebnis':
         if (!ausgewaehltesKind || !ausgewaehltesSpiel) {
           return <div>Fehler: Kein Kind oder Spiel ausgewählt</div>;
@@ -804,74 +804,126 @@ export default function ClientErfassung({
             kind={ausgewaehltesKind}
             spiel={ausgewaehltesSpiel}
             onErgebnisSubmit={handleErgebnisSubmit}
-            // onBack-Prop entfernt, da redundant mit "Anderes Spiel wählen"-Button
           />
         );
+
       default:
         return <div>Unbekannter Schritt</div>;
     }
   };
 
-  return (
-    <div className="container mx-auto py-6 px-4">
-      {(!isOnline || queueLen > 0) && (
-        <div
-          className={`sticky top-0 z-30 -mx-4 mb-4 px-4 py-2 flex items-center gap-2 text-sm shadow-sm ${
-            !isOnline
-              ? 'bg-amber-100 border-b border-amber-300 text-amber-900'
-              : 'bg-blue-50 border-b border-blue-300 text-blue-900'
-          }`}
-        >
-          {!isOnline ? (
-            <>
-              <WifiOff size={16} className="shrink-0" />
-              <span className="font-medium">Keine Verbindung.</span>
-              <span>Deine Eingaben werden gespeichert und übertragen, sobald wieder Empfang da ist.</span>
-            </>
-          ) : (
-            <>
-              {flushing ? (
-                <RefreshCw size={16} className="shrink-0 animate-spin" />
-              ) : (
-                <AlertTriangle size={16} className="shrink-0" />
-              )}
-              <span className="font-medium">{queueLen} Eingabe{queueLen === 1 ? '' : 'n'} warten auf Übertragung.</span>
-              {!flushing && (
-                <button
-                  onClick={() => flushQueue()}
-                  className="ml-auto underline underline-offset-2 font-medium"
-                >
-                  Jetzt versuchen
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
+  // Header-Texte je nach Schritt
+  const headerTitel =
+    schritt === 'spiel'
+      ? 'Spielauswahl'
+      : ausgewaehltesSpiel?.name || '';
+  const zeigeZurueck = schritt !== 'spiel';
 
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">
-          Ergebniserfassung: {spielgruppe.name}
-        </h1>
-        {schritt !== 'spiel' && (
-          <Button variant="outline" onClick={handleNeuesSpiel}>
-            Anderes Spiel wählen
-          </Button>
+  return (
+    <div className="min-h-screen bg-pastel-yellow/30">
+      {/* Sticky Top-Bar */}
+      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
+        {(!isOnline || queueLen > 0) && (
+          <div
+            className={`px-4 py-1.5 flex items-center gap-2 text-[12px] ${
+              !isOnline
+                ? 'bg-amber-100 text-amber-900'
+                : 'bg-blue-50 text-blue-900'
+            }`}
+          >
+            {!isOnline ? (
+              <>
+                <WifiOff size={13} className="shrink-0" />
+                <span className="font-medium">Keine Verbindung</span>
+                <span className="hidden sm:inline">— Eingaben werden zwischengespeichert.</span>
+              </>
+            ) : (
+              <>
+                {flushing ? (
+                  <RefreshCw size={13} className="shrink-0 animate-spin" />
+                ) : (
+                  <AlertTriangle size={13} className="shrink-0" />
+                )}
+                <span className="font-medium">{queueLen} warten auf Übertragung</span>
+                {!flushing && (
+                  <button
+                    onClick={() => flushQueue()}
+                    className="ml-auto underline underline-offset-2 font-medium"
+                  >
+                    Jetzt
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         )}
+        <div className="flex items-center gap-2 px-3 h-12">
+          {zeigeZurueck ? (
+            <button
+              onClick={schritt === 'ergebnis' ? handleBack : handleNeuesSpiel}
+              className="-ml-1 p-2 text-slate-700 hover:text-slate-900 active:scale-95 transition-transform"
+              aria-label="Zurück"
+            >
+              <ChevronLeft size={22} />
+            </button>
+          ) : (
+            <div className="w-7 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[15px] font-semibold text-slate-900 truncate leading-tight">
+              {headerTitel}
+            </h1>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              Gruppe {spielgruppe.name}
+            </p>
+          </div>
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              className="p-2 text-slate-600 hover:text-slate-900 active:scale-95 transition-transform"
+              aria-label="Mehr"
+            >
+              <MoreVertical size={20} />
+            </button>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-lg min-w-[160px] overflow-hidden">
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      onClick={() => setMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left text-slate-700 hover:bg-slate-50"
+                    >
+                      <LogOut size={14} />
+                      Abmelden
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
-      {renderSchritt()}
+      {/* Inhalt */}
+      <div className="px-3 py-4 max-w-2xl mx-auto pb-24">
+        {renderSchritt()}
+      </div>
 
       {/* Bestätigungsdialog für Spielabschluss */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Spiel abschließen</DialogTitle>
+            <DialogTitle>Spiel abschließen?</DialogTitle>
             <DialogDescription>
-              Möchtest du das Spiel &quot;{ausgewaehltesSpiel?.name}&quot; wirklich abschließen?
+              <strong>{ausgewaehltesSpiel?.name}</strong> für Gruppe <strong>{spielgruppe.name}</strong> wirklich abschließen?
               <br />
               <br />
-              <strong>Achtung:</strong> Nach dem Abschluss können keine weiteren Ergebnisse mehr erfasst werden.
+              Nach dem Abschluss kannst Du keine Ergebnisse mehr ändern.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end space-x-2">
@@ -879,7 +931,7 @@ export default function ClientErfassung({
               Abbrechen
             </Button>
             <Button variant="destructive" onClick={handleSpielAbschliessenConfirm}>
-              Spiel abschließen
+              Ja, abschließen
             </Button>
           </DialogFooter>
         </DialogContent>

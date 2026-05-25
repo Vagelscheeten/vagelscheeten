@@ -7,53 +7,51 @@ import type { Database } from '@/lib/database.types';
 import { getWertGrenzen, istWertPlausibel } from '@/lib/ergebnis-limits';
 import { toast } from 'sonner';
 
-// Schritt 1: Kind auswählen
-export function KindAuswahl({ 
-  kinder, 
-  onKindSelected 
-}: { 
-  kinder: Database['public']['Tables']['kinder']['Row'][],
-  onKindSelected: (kind: Database['public']['Tables']['kinder']['Row']) => void 
+// Schritt 1: Kind auswählen — Listen-Style, mobile-dicht
+export function KindAuswahl({
+  kinder,
+  onKindSelected,
+}: {
+  kinder: Database['public']['Tables']['kinder']['Row'][];
+  onKindSelected: (kind: Database['public']['Tables']['kinder']['Row']) => void;
 }) {
   const [filter, setFilter] = React.useState('');
-  
-  const filteredKinder = kinder.filter(kind => 
-    `${kind.vorname} ${kind.nachname}`.toLowerCase().includes(filter.toLowerCase())
+
+  const filteredKinder = kinder.filter((kind) =>
+    `${kind.vorname} ${kind.nachname}`.toLowerCase().includes(filter.toLowerCase()),
   );
 
   return (
-    <div className="space-y-6">
-      <Input
-        type="search"
-        placeholder="Kind suchen..."
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="w-full text-xl h-14 px-4"
-      />
-      <ScrollArea className="max-h-fit">
-        <div className="grid grid-cols-1 gap-4 p-1"> 
-          {filteredKinder.length > 0 ? (
-            filteredKinder.map((kind) => (
-              <Card 
-                key={kind.id}
-                className="w-full cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => onKindSelected(kind)}
-              >
-                <CardContent className="p-6">
-                  <div className="flex flex-col">
-                    <h3 className="text-xl font-medium">{kind.vorname} {kind.nachname}</h3>
-                    <p className="text-base text-muted-foreground">{kind.geschlecht}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <div className="text-center p-4">
-              <p className="text-lg text-muted-foreground">Keine Kinder gefunden</p>
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+    <div className="space-y-3">
+      {kinder.length > 6 && (
+        <Input
+          type="search"
+          placeholder="Kind suchen…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="w-full text-base h-11"
+        />
+      )}
+      <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
+        {filteredKinder.length > 0 ? (
+          filteredKinder.map((kind) => (
+            <button
+              key={kind.id}
+              onClick={() => onKindSelected(kind)}
+              className="w-full text-left flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 active:bg-melsdorf-orange/10 transition-colors"
+            >
+              <span className="font-medium text-slate-900 text-base">
+                {kind.vorname} {kind.nachname}
+              </span>
+              <span className="text-slate-300 text-lg shrink-0">›</span>
+            </button>
+          ))
+        ) : (
+          <div className="px-4 py-6 text-center text-sm text-slate-500">
+            Keine Treffer
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -143,68 +141,51 @@ export function ErgebnisErfassung({
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="p-6">
-          <div className="space-y-2 mb-6">
-            <h3 className="text-2xl font-medium">
-              {kind.vorname} {kind.nachname}
-            </h3>
-            <p className="text-xl text-muted-foreground">
-              {spiel.name}
-            </p>
-          </div>
+    <div className="space-y-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-slate-900 leading-tight">
+            {kind.vorname} {kind.nachname}
+          </h2>
+          <p className="text-sm text-slate-500 mt-0.5">{spiel.name}</p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-4">
-              <label htmlFor="wert" className="text-lg font-medium block">
-                {getWertLabel(spiel)}
-              </label>
-              <Input
-                id="wert"
-                type="number"
-                inputMode="decimal"
-                min={grenzen.min}
-                max={grenzen.max}
-                step={grenzen.step}
-                value={wert}
-                onChange={(e) => setWert(e.target.value)}
-                className={`text-3xl h-20 text-center font-bold ${
-                  !liveCheck.ok ? 'border-red-500 focus-visible:ring-red-300' : ''
-                }`}
-                placeholder={getPlaceholder(spiel)}
-                required
-              />
-              <p className="text-base text-muted-foreground text-center">
-                {spiel.einheit || grenzen.einheitDefault}
-                <span className="block text-sm text-slate-400 mt-1">
-                  Erlaubter Bereich: {grenzen.min}–{grenzen.max}
-                  {grenzen.hinweis ? ` · ${grenzen.hinweis}` : ''}
-                </span>
-              </p>
-              {!liveCheck.ok && (
-                <p className="text-sm text-red-600 text-center font-medium">
-                  {liveCheck.grund}
-                </p>
-              )}
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label htmlFor="wert" className="text-sm font-medium text-slate-700 block">
+            {getWertLabel(spiel)}
+          </label>
+          <Input
+            id="wert"
+            type="number"
+            inputMode="decimal"
+            min={grenzen.min}
+            max={grenzen.max}
+            step={grenzen.step}
+            value={wert}
+            onChange={(e) => setWert(e.target.value)}
+            className={`text-4xl h-20 text-center font-bold ${
+              !liveCheck.ok ? 'border-red-500 focus-visible:ring-red-300' : ''
+            }`}
+            placeholder={getPlaceholder(spiel)}
+            required
+            autoFocus
+          />
+          <p className="text-xs text-slate-500 text-center">
+            {spiel.einheit || grenzen.einheitDefault} · Bereich {grenzen.min}–{grenzen.max}
+            {grenzen.hinweis ? ` · ${grenzen.hinweis}` : ''}
+          </p>
+          {!liveCheck.ok && (
+            <p className="text-sm text-red-600 text-center font-medium">{liveCheck.grund}</p>
+          )}
 
-            <Button
-              type="submit"
-              className="w-full h-20 text-xl font-bold mt-6"
-              disabled={!wert || !liveCheck.ok}
-            >
-              Ergebnis speichern
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <hr className="my-4 border-gray-300 dark:border-gray-700" />
-
-      {/* Section 2: ErgebnisListe */}
-      <div>
-        {/* TODO: Ergebnisliste */}
+          <Button
+            type="submit"
+            className="w-full h-14 text-lg font-bold"
+            disabled={!wert || !liveCheck.ok}
+          >
+            Speichern
+          </Button>
+        </form>
       </div>
     </div>
   );
