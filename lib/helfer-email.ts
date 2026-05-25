@@ -137,8 +137,8 @@ export async function loadEmailKontext(
       supabaseAdmin
         .from('helfer_zuteilungen')
         .select(`
-          kind_id, zeitfenster,
-          aufgabe:helferaufgaben(titel, beschreibung),
+          kind_id, aufgabe_id, zeitfenster,
+          aufgabe:helferaufgaben(id, titel, beschreibung),
           zeitslot:helferaufgabe_zeitslots(titel, standort, start_zeit, end_zeit)
         `)
         .eq('event_id', eventId),
