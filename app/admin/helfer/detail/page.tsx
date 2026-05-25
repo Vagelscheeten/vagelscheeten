@@ -14,6 +14,7 @@ import {
   Mail,
   ChevronLeft,
   ChevronRight,
+  MessageSquareText,
 } from 'lucide-react';
 import {
   DndContext,
@@ -41,7 +42,7 @@ interface Helfer {
   name: string;
   klasse?: string;
   istExtern: boolean;
-  freitext?: string | null;
+  kommentar?: string | null;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -95,16 +96,23 @@ export default function DetailZuteilungPage() {
         supabase.from('helfer_spiel_zuteilungen').select('helfer_id, spiel_id, benachrichtigt_am'),
         supabase
           .from('helfer_rueckmeldungen')
-          .select('kind_id, freitext')
+          .select('kind_id, freitext, kommentar')
           .eq('event_id', event.id)
-          .not('freitext', 'is', null),
+          .or('freitext.not.is.null,kommentar.not.is.null'),
       ]);
 
       setSpiele(spieleRes.data || []);
 
-      const freitextByKind: Record<string, string> = {};
+      const kommentarByKind: Record<string, string> = {};
       (freitextRes.data || []).forEach((r: any) => {
-        if (r.kind_id && r.freitext) freitextByKind[r.kind_id] = r.freitext;
+        if (!r.kind_id) return;
+        // Beide Quellen kombinieren (freitext ist legacy, kommentar ist neue Quelle)
+        const parts = [r.kommentar, r.freitext].filter((v) => typeof v === 'string' && v.trim());
+        if (parts.length === 0) return;
+        const combined = parts.join(' • ');
+        if (!kommentarByKind[r.kind_id]) {
+          kommentarByKind[r.kind_id] = combined;
+        }
       });
 
       const transformedHelfer: Helfer[] = (helferRes.data || []).map((h: any) => {
@@ -116,7 +124,7 @@ export default function DetailZuteilungPage() {
             name: `${kind.vorname} ${kind.nachname}`,
             klasse: kind.klasse,
             istExtern: false,
-            freitext: freitextByKind[kind.id] || null,
+            kommentar: kommentarByKind[kind.id] || null,
           };
         }
         return { id: h.id, name: ext?.name || 'Externer Helfer', istExtern: true };
@@ -428,6 +436,35 @@ function countComplete(spiele: Spiel[], zuteilungen: Record<string, string[]>): 
   return spiele.filter((s) => (zuteilungen[s.id]?.length ?? 0) >= MAX_PER_SPIEL).length;
 }
 
+function KommentarBadge({ text }: { text: string }) {
+  return (
+    <span
+      tabIndex={0}
+      title={text}
+      className="relative group inline-flex items-center cursor-help text-amber-500 hover:text-amber-600 focus:text-amber-600 focus:outline-none"
+      aria-label={`Eltern-Kommentar: ${text}`}
+    >
+      <MessageSquareText size={13} />
+      <span
+        className="
+          invisible group-hover:visible group-focus:visible
+          opacity-0 group-hover:opacity-100 group-focus:opacity-100
+          transition-opacity duration-100
+          absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1
+          w-max max-w-[280px]
+          bg-slate-800 text-white text-[11px] leading-snug
+          rounded-md p-2 shadow-lg
+          whitespace-normal break-words text-left
+          pointer-events-none
+        "
+        role="tooltip"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === 'idle') {
     return <span className="text-xs text-slate-400">Auto-Speichern aktiv</span>;
@@ -572,6 +609,7 @@ function PoolHelferCard({
               extern
             </span>
           )}
+          {helfer.kommentar && <KommentarBadge text={helfer.kommentar} />}
         </div>
         <button
           {...attributes}
@@ -582,11 +620,6 @@ function PoolHelferCard({
           <GripVertical size={14} />
         </button>
       </div>
-      {helfer.freitext && (
-        <div className="text-[11px] text-slate-500 italic mb-2 border-l-2 border-amber-200 pl-2 line-clamp-2">
-          „{helfer.freitext}"
-        </div>
-      )}
       <select
         className="w-full text-[11px] border border-slate-200 rounded-md px-1.5 py-1 text-slate-600 bg-white"
         value=""
@@ -717,6 +750,7 @@ function AssignedHelferRow({
             extern
           </span>
         )}
+        {helfer.kommentar && <KommentarBadge text={helfer.kommentar} />}
       </div>
       <select
         className="text-[11px] border border-slate-200 rounded px-1 py-0.5 text-slate-500 bg-white max-w-[100px]"
