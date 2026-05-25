@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { buildEmailFuerAnmeldung, essensspendenForFamilie, loadEmailKontext, type AnmeldungMail } from '@/lib/helfer-email';
+import { buildEmailFuerAnmeldung, essensspendenForFamilie, kindIdsForFamilie, loadEmailKontext, type AnmeldungMail } from '@/lib/helfer-email';
 
 const supabaseAdmin = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,17 +78,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Aufgabe: Familie hat zuteilung zu dieser aufgabe (oder zu IRGENDEINER, wenn 'keine'=invertiert)
-      const familienKindIds = kontext.kinder
-        .filter(
-          (k) =>
-            (k.vorname.toLowerCase() === a.kind_vorname.toLowerCase() &&
-              k.nachname.toLowerCase() === a.kind_nachname.toLowerCase()) ||
-            (a.weitere_kinder_json || []).some(
-              (w) => w?.vorname?.toLowerCase() === k.vorname.toLowerCase()
-                && w?.nachname?.toLowerCase() === k.nachname.toLowerCase(),
-            ),
-        )
-        .map((k) => k.id);
+      // Gleicher Helper wie Mail-Rendering: matcht auch 'Emmi' ↔ 'Emmi Helena' via firstWord.
+      const familienKindIds = kindIdsForFamilie(a, kontext);
       const familienZuteilungen = kontext.zuteilungen.filter((z) => familienKindIds.includes(z.kind_id));
 
       if (aufgabeFilter === 'keine') {

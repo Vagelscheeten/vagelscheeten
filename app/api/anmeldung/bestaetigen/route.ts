@@ -85,6 +85,11 @@ export async function POST(request: Request) {
         // Only use match if exactly one result — ambiguous names require manual assignment
         const autoKindId = (kindMatch && kindMatch.length === 1) ? kindMatch[0].id : null;
 
+        // Junction-Tabelle anmeldungs_kinder: Verknüpfung Anmeldung → kinder (Hauptkind + Geschwister)
+        // Stabile FK, ersetzt das fragile String-Matching beim Mail-Versand.
+        const { syncAnmeldungJunction } = await import('@/lib/anmeldungen-bereinigen');
+        await syncAnmeldungJunction(supabaseAdmin, anmeldung.id);
+
         // Create helfer_rueckmeldungen
         // First check if Springer - create a Springer record
         if (anmeldung.ist_springer) {

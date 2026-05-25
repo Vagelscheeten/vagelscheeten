@@ -7,6 +7,7 @@
 // verifizierten Anmeldungen generiert werden.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildKinderIndex, findKindInIndex, type KindLite } from './helfer-utils';
 
 interface WeiteresKind { vorname: string; nachname: string; klasse: string }
 
@@ -102,6 +103,57 @@ async function regeneriereAusAnmeldung(supabaseAdmin: SupabaseClient, a: Anmeldu
       menge: eintrag.menge ?? 1,
     });
   }
+
+  // Junction synchronisieren
+  await syncAnmeldungJunction(supabaseAdmin, a.id);
+}
+
+/**
+ * Synchronisiert die Junction-Tabelle anmeldungs_kinder für eine Anmeldung:
+ * löscht alte Einträge, schreibt aktuelle für Hauptkind + Geschwister via
+ * Name-Match (firstWord-Fallback) in der kinder-Tabelle.
+ *
+ * Aufrufen nach jeder Anmeldungs-Änderung (kind_vorname/nachname/klasse,
+ * weitere_kinder_json) sowie nach Bestätigung.
+ */
+export async function syncAnmeldungJunction(
+  supabaseAdmin: SupabaseClient,
+  anmeldungId: string,
+): Promise<{ haupt: number; geschwister: number }> {
+  const { data: a } = await supabaseAdmin
+    .from('anmeldungen')
+    .select('id, event_id, kind_vorname, kind_nachname, kind_klasse, weitere_kinder_json')
+    .eq('id', anmeldungId)
+    .single();
+  if (!a || !a.event_id) return { haupt: 0, geschwister: 0 };
+
+  const { data: alleKinder } = await supabaseAdmin
+    .from('kinder')
+    .select('id, vorname, nachname, klasse, geschlecht')
+    .eq('event_id', a.event_id);
+
+  const kinderIdx = buildKinderIndex((alleKinder || []) as KindLite[]);
+  const inserts: { anmeldung_id: string; kind_id: string; ist_haupt: boolean }[] = [];
+  const haupt = findKindInIndex(a.kind_vorname, a.kind_nachname, a.kind_klasse, kinderIdx);
+  if (haupt) inserts.push({ anmeldung_id: a.id, kind_id: haupt.id, ist_haupt: true });
+  const weitere = Array.isArray(a.weitere_kinder_json) ? (a.weitere_kinder_json as WeiteresKind[]) : [];
+  for (const w of weitere) {
+    if (!w?.vorname || !w?.nachname) continue;
+    const g = findKindInIndex(w.vorname, w.nachname, w.klasse, kinderIdx);
+    if (g && (!haupt || g.id !== haupt.id) && !inserts.some((x) => x.kind_id === g.id)) {
+      inserts.push({ anmeldung_id: a.id, kind_id: g.id, ist_haupt: false });
+    }
+  }
+
+  // Alte Einträge löschen, neue schreiben (vollständiger Sync)
+  await supabaseAdmin.from('anmeldungs_kinder').delete().eq('anmeldung_id', a.id);
+  if (inserts.length > 0) {
+    await supabaseAdmin.from('anmeldungs_kinder').insert(inserts);
+  }
+  return {
+    haupt: haupt ? 1 : 0,
+    geschwister: inserts.length - (haupt ? 1 : 0),
+  };
 }
 
 // Für einen kind_identifier: lösche alle abgeleiteten Einträge, regeneriere aus

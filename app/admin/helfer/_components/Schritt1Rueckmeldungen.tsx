@@ -1599,6 +1599,12 @@ function VerknuepfenModal({
           })
           .eq('id', anmeldung.id);
         if (error) throw error;
+        // Junction-Tabelle anmeldungs_kinder synchronisieren
+        await fetch('/api/helfer/anmeldungen-bereinigen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ syncAnmeldungIds: [anmeldung.id] }),
+        });
         toast.success(`${eintrag.kind.vorname} ${eintrag.kind.nachname} ist jetzt Hauptkind der Anmeldung.`);
       } else {
         const bisherigeWeitere: WeiteresKind[] = Array.isArray(anmeldung.weitere_kinder_json)
@@ -1622,6 +1628,12 @@ function VerknuepfenModal({
           .update({ weitere_kinder_json: neueWeitere })
           .eq('id', anmeldung.id);
         if (error) throw error;
+        // Junction-Tabelle anmeldungs_kinder synchronisieren
+        await fetch('/api/helfer/anmeldungen-bereinigen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ syncAnmeldungIds: [anmeldung.id] }),
+        });
         toast.success(`${eintrag.kind.vorname} ${eintrag.kind.nachname} als Geschwister hinzugefügt.`);
       }
       onSuccess();

@@ -38,6 +38,8 @@ export interface EmailKontext {
   zuteilungen: any[];
   alleEssensspenden: any[];
   kinder: { id: string; vorname: string; nachname: string; klasse?: string }[];
+  /** anmeldung_id → kind_ids[] aus Junction-Tabelle (autoritativ) */
+  anmeldungsKinder: Map<string, string[]>;
   mitbringHtml: string;
   ablaufHtml: string;
 }
@@ -130,7 +132,7 @@ export async function loadEmailKontext(
   supabaseAdmin: SupabaseClient,
   eventId: string,
 ): Promise<EmailKontext> {
-  const [zuteilungenRes, essensspendenRes, kinderRes, mitbringRes, ablaufRes, eventRes] =
+  const [zuteilungenRes, essensspendenRes, kinderRes, mitbringRes, ablaufRes, eventRes, junctionRes] =
     await Promise.all([
       supabaseAdmin
         .from('helfer_zuteilungen')
@@ -165,6 +167,12 @@ export async function loadEmailKontext(
         .select('mitbringliste_pdf_filename')
         .eq('id', eventId)
         .single(),
+      // Junction-Tabelle: Anmeldung → kinder (Hauptkind + Geschwister) — autoritativ.
+      // Filter über JOIN auf anmeldungen.event_id (Junction hat keine event_id-Spalte).
+      supabaseAdmin
+        .from('anmeldungs_kinder')
+        .select('anmeldung_id, kind_id, ist_haupt, anmeldungen!inner(event_id)')
+        .eq('anmeldungen.event_id', eventId),
     ]);
 
   const mitbringPdfUrl = eventRes.data?.mitbringliste_pdf_filename
@@ -179,13 +187,52 @@ export async function loadEmailKontext(
   );
   const ablaufHtml = renderAblauf((ablaufRes.data || []) as AblaufEintrag[]);
 
+  // Junction-Map bauen: anmeldung_id → kind_ids[]
+  const anmeldungsKinder = new Map<string, string[]>();
+  for (const j of junctionRes.data || []) {
+    const list = anmeldungsKinder.get(j.anmeldung_id) || [];
+    list.push(j.kind_id);
+    anmeldungsKinder.set(j.anmeldung_id, list);
+  }
+
   return {
     zuteilungen: zuteilungenRes.data || [],
     alleEssensspenden: essensspendenRes.data || [],
     kinder: kinderRes.data || [],
+    anmeldungsKinder,
     mitbringHtml,
     ablaufHtml,
   };
+}
+
+/**
+ * Liefert für eine Anmeldung ALLE verknüpften kind_ids aus der Junction-Tabelle
+ * anmeldungs_kinder (Hauptkind + Geschwister). Autoritativ — kein String-Match.
+ *
+ * Fallback (für Legacy-Anmeldungen ohne Junction-Einträge): per Name-Match
+ * mit firstWord-Fallback.
+ */
+export function kindIdsForFamilie(anmeldung: AnmeldungMail, kontext: EmailKontext): string[] {
+  // Primär: Junction
+  const fromJunction = kontext.anmeldungsKinder.get(anmeldung.id);
+  if (fromJunction && fromJunction.length > 0) return fromJunction;
+
+  // Fallback: String-Match (sollte nie greifen, wenn Junction sauber befüllt ist)
+  const kinderIdx = buildKinderIndex(kontext.kinder as KindLite[]);
+  const eintraege: { vorname: string; nachname: string; klasse: string }[] = [
+    { vorname: anmeldung.kind_vorname, nachname: anmeldung.kind_nachname, klasse: anmeldung.kind_klasse },
+  ];
+  for (const w of anmeldung.weitere_kinder_json || []) {
+    if (w?.vorname && w?.nachname) {
+      eintraege.push({ vorname: w.vorname, nachname: w.nachname, klasse: w.klasse || '' });
+    }
+  }
+  const ids: string[] = [];
+  for (const e of eintraege) {
+    const k = findKindInIndex(e.vorname, e.nachname, e.klasse, kinderIdx);
+    if (k && !ids.includes(k.id)) ids.push(k.id);
+  }
+  return ids;
 }
 
 /**
@@ -280,11 +327,8 @@ export function buildEmailFuerAnmeldung(
   anmeldung: AnmeldungMail,
   kontext: EmailKontext,
 ): BuiltEmail {
-  const kind = kontext.kinder.find(
-    (k) =>
-      k.vorname.toLowerCase() === anmeldung.kind_vorname.toLowerCase() &&
-      k.nachname.toLowerCase() === anmeldung.kind_nachname.toLowerCase(),
-  );
+  // ALLE kind_ids der Familie finden (Hauptkind + Geschwister, mit firstWord-Fallback)
+  const familienKindIds = kindIdsForFamilie(anmeldung, kontext);
 
   const familienZuteilungen: {
     titel: string;
@@ -295,8 +339,8 @@ export function buildEmailFuerAnmeldung(
     slotZeit: string | null;
   }[] = [];
 
-  if (kind) {
-    const treffer = kontext.zuteilungen.filter((z) => z.kind_id === kind.id);
+  if (familienKindIds.length > 0) {
+    const treffer = kontext.zuteilungen.filter((z) => familienKindIds.includes(z.kind_id));
     for (const z of treffer) {
       const aufgabe = Array.isArray(z.aufgabe) ? z.aufgabe[0] : z.aufgabe;
       const slot: any = Array.isArray(z.zeitslot) ? z.zeitslot[0] : z.zeitslot;
