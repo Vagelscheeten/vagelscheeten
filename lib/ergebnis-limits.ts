@@ -37,15 +37,12 @@ export function getWertGrenzen(wertungstyp: string | null | undefined): WertGren
 }
 
 /**
- * Prüft, ob ein Wert plausibel ist. Negative Werte werden generell abgelehnt.
- * NaN/Infinity ebenfalls.
+ * Prüft nur noch, ob überhaupt eine gültige Zahl eingegeben wurde.
+ * KEINE Höchstmengen-/Range-Prüfung mehr — jeder numerische Wert ist erlaubt.
  */
-export function istWertPlausibel(wert: number, wertungstyp: string | null | undefined): { ok: boolean; grund?: string } {
+export function istWertPlausibel(wert: number, _wertungstyp?: string | null | undefined): { ok: boolean; grund?: string } {
   if (!Number.isFinite(wert)) {
     return { ok: false, grund: 'Bitte eine gültige Zahl eingeben.' };
   }
-  const { min, max } = getWertGrenzen(wertungstyp);
-  if (wert < min) return { ok: false, grund: `Der Wert muss mindestens ${min} sein.` };
-  if (wert > max) return { ok: false, grund: `Der Wert darf höchstens ${max} sein (Plausibilitätsgrenze).` };
   return { ok: true };
 }

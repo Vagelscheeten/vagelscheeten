@@ -158,8 +158,6 @@ export function ErgebnisErfassung({
             id="wert"
             type="number"
             inputMode="decimal"
-            min={grenzen.min}
-            max={grenzen.max}
             step={grenzen.step}
             value={wert}
             onChange={(e) => setWert(e.target.value)}
@@ -171,8 +169,7 @@ export function ErgebnisErfassung({
             autoFocus
           />
           <p className="text-xs text-slate-500 text-center">
-            {spiel.einheit || grenzen.einheitDefault} · Bereich {grenzen.min}–{grenzen.max}
-            {grenzen.hinweis ? ` · ${grenzen.hinweis}` : ''}
+            {spiel.einheit || grenzen.einheitDefault}
           </p>
           {!liveCheck.ok && (
             <p className="text-sm text-red-600 text-center font-medium">{liveCheck.grund}</p>

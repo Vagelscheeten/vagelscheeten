@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { verifyLeiterSession } from '@/lib/leiter-auth';
-import { istWertPlausibel } from '@/lib/ergebnis-limits';
 
 const supabaseAdmin = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,19 +25,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'spielId, kindId und wert (Zahl) erforderlich' }, { status: 400 });
   }
 
-  // Spiel laden für Wertungstyp-Check + Event-Validierung
+  // Spiel laden für Event-Validierung (keine Höchstmengen-/Range-Prüfung mehr)
   const { data: spiel, error: spielError } = await supabaseAdmin
     .from('spiele')
-    .select('id, wertungstyp')
+    .select('id')
     .eq('id', spielId)
     .single();
   if (spielError || !spiel) {
     return NextResponse.json({ error: 'Spiel nicht gefunden' }, { status: 404 });
-  }
-
-  const plaus = istWertPlausibel(wert, spiel.wertungstyp);
-  if (!plaus.ok) {
-    return NextResponse.json({ error: plaus.grund }, { status: 400 });
   }
 
   // Gruppe + Event verifizieren
