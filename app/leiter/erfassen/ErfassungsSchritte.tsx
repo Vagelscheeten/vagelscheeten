@@ -158,7 +158,7 @@ export function ErgebnisErfassung({
             id="wert"
             type="number"
             inputMode="decimal"
-            step={grenzen.step}
+            step="any"
             value={wert}
             onChange={(e) => setWert(e.target.value)}
             className={`text-4xl h-20 text-center font-bold ${
