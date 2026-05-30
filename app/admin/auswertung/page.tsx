@@ -7,8 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Crown, Loader2 } from 'lucide-react';
+import { Crown, Loader2, Copy } from 'lucide-react';
 import { PageShell } from '@/components/admin';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { berechnePunkteFuerRang, berechneRangePunkteProBucket } from '@/lib/points';
 import { Punktecheck } from './_components/Punktecheck';
 
@@ -586,6 +588,35 @@ export default function AuswertungAdmin() {
     });
   };
 
+  // Königspaare als Text in die Zwischenablage kopieren (zum Weiterleiten)
+  const kopiereKoenigspaare = async () => {
+    if (gesamtauswertungDaten.length === 0) {
+      toast.error('Keine Daten zum Kopieren vorhanden.');
+      return;
+    }
+    const klassen = [...new Set(gesamtauswertungDaten.map((i) => i.klasse))].sort();
+    const zeilen: string[] = [
+      `Königspaare Vogelschießen ${activeEvent?.jahr ?? ''}`.trim(),
+      '',
+    ];
+    klassen.forEach((klasse) => {
+      const klassenDaten = gesamtauswertungDaten.filter((i) => i.klasse === klasse);
+      const koenig = klassenDaten.find((i) => i.ist_koenig);
+      const koenigin = klassenDaten.find((i) => i.ist_koenigin);
+      zeilen.push(`Klasse ${klasse}`);
+      zeilen.push(`König: ${koenig ? `${koenig.kind_name} (${koenig.gesamtpunkte} Punkte)` : '—'}`);
+      zeilen.push(`Königin: ${koenigin ? `${koenigin.kind_name} (${koenigin.gesamtpunkte} Punkte)` : '—'}`);
+      zeilen.push('');
+    });
+    const text = zeilen.join('\n').trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Königspaare in die Zwischenablage kopiert.');
+    } catch {
+      toast.error('Kopieren fehlgeschlagen. Bitte manuell markieren und kopieren.');
+    }
+  };
+
   // UI-Darstellung
   return (
     <PageShell
@@ -742,11 +773,21 @@ export default function AuswertungAdmin() {
         <TabsContent value="auswertung">
           <Card className="mb-8">
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center gap-3">
                 <div>
                   <CardTitle>Abschlussauswertung Vogelschießen {activeEvent?.jahr ?? ''}</CardTitle>
                   <CardDescription>König und Königin pro Klasse</CardDescription>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={kopiereKoenigspaare}
+                  disabled={gesamtauswertungDaten.length === 0}
+                  className="gap-2 shrink-0"
+                >
+                  <Copy className="h-4 w-4" />
+                  Kopieren
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
