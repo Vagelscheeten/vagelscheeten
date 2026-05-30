@@ -61,7 +61,7 @@ export default function SpielbetreuerDetail({ spiel }: { spiel: Spiel }) {
     }
     setEventId(event.id);
 
-    const [{ data: gruppenData }, { data: statusData }, { data: ergebnisseData }] = await Promise.all([
+    const [{ data: gruppenData }, { data: statusData }, { data: ergebnisseData }, { data: klassenData }] = await Promise.all([
       supabase
         .from('spielgruppen')
         .select('id, name, klasse')
@@ -78,9 +78,23 @@ export default function SpielbetreuerDetail({ spiel }: { spiel: Spiel }) {
         .select('spielgruppe_id')
         .eq('event_id', event.id)
         .eq('spiel_id', spiel.id),
+      // Klassen, denen dieses Spiel zugeordnet ist (nur aktives Event)
+      supabase
+        .from('klasse_spiele')
+        .select('klassen!inner(name, event_id)')
+        .eq('spiel_id', spiel.id)
+        .eq('klassen.event_id', event.id),
     ]);
 
-    setGruppen(gruppenData || []);
+    // Nur Gruppen anzeigen, deren Klasse dem Spiel zugeordnet ist
+    const erlaubteKlassen = new Set<string>(
+      (klassenData || []).map((r: any) => r.klassen?.name).filter(Boolean),
+    );
+    const gefilterteGruppen = (gruppenData || []).filter(
+      (g) => g.klasse != null && erlaubteKlassen.has(g.klasse),
+    );
+
+    setGruppen(gefilterteGruppen);
     setStatusRows(statusData || []);
 
     const counts = new Map<string, number>();

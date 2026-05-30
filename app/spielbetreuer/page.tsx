@@ -24,13 +24,31 @@ export default async function SpielbetreuerIndex() {
     );
   }
 
-  const [{ data: spiele }, { data: gruppen }, { data: statusData }] = await Promise.all([
+  const [{ data: spiele }, { data: gruppen }, { data: statusData }, { data: klasseSpiele }] = await Promise.all([
     supabase.from('spiele').select('id, name, ort').order('name'),
-    supabase.from('spielgruppen').select('id').eq('event_id', event.id),
+    supabase.from('spielgruppen').select('id, klasse').eq('event_id', event.id),
     supabase.from('spielgruppe_spiel_status').select('spiel_id, spielgruppe_id').eq('event_id', event.id),
+    // Spiel↔Klasse-Zuordnungen (nur Klassen des aktiven Events)
+    supabase
+      .from('klasse_spiele')
+      .select('spiel_id, klassen!inner(name, event_id)')
+      .eq('klassen.event_id', event.id),
   ]);
 
-  const gruppenGesamt = (gruppen || []).length;
+  // Anzahl Gruppen je Klassenname (im aktiven Event)
+  const gruppenProKlasse = new Map<string, number>();
+  for (const g of gruppen || []) {
+    if (g.klasse) gruppenProKlasse.set(g.klasse, (gruppenProKlasse.get(g.klasse) || 0) + 1);
+  }
+
+  // Pro Spiel: Gesamtzahl der relevanten Gruppen (Summe über zugeordnete Klassen)
+  const gruppenGesamtProSpiel = new Map<string, number>();
+  for (const row of klasseSpiele || []) {
+    const klasseName = (row as any).klassen?.name as string | undefined;
+    if (!klasseName) continue;
+    const anzahl = gruppenProKlasse.get(klasseName) || 0;
+    gruppenGesamtProSpiel.set(row.spiel_id, (gruppenGesamtProSpiel.get(row.spiel_id) || 0) + anzahl);
+  }
 
   // Pro Spiel: Anzahl abgeschlossen
   const abgeschlossenProSpiel = new Map<string, number>();
@@ -58,6 +76,7 @@ export default async function SpielbetreuerIndex() {
         <div className="space-y-2">
           {(spiele || []).map((spiel) => {
             const erledigt = abgeschlossenProSpiel.get(spiel.id) || 0;
+            const gruppenGesamt = gruppenGesamtProSpiel.get(spiel.id) || 0;
             const istKomplett = gruppenGesamt > 0 && erledigt >= gruppenGesamt;
             return (
               <Link
