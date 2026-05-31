@@ -89,10 +89,10 @@ export default function LeiterChatSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 max-w-lg w-[calc(100vw-1.5rem)] h-[80vh] flex flex-col overflow-hidden">
-        <DialogHeader className="px-4 py-3 border-b border-slate-200 shrink-0">
+      <DialogContent className="p-0 gap-0 w-[calc(100vw-1.5rem)] sm:max-w-md h-[70dvh] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
+        <DialogHeader className="px-4 py-2.5 border-b border-slate-200 shrink-0 text-left">
           <DialogTitle className="text-base">Orga-Chat</DialogTitle>
-          <p className="text-xs text-slate-500">
+          <p className="text-[11px] text-slate-500 leading-tight">
             Öffentlich — alle Gruppen und die Orga sehen Fragen und Antworten.
           </p>
         </DialogHeader>
