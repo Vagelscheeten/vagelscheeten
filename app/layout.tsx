@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter, Fraunces, Caveat } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
@@ -42,6 +42,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Vogelschießen der Regenbogenschule Melsdorf",
   description: "Das Vogelschießen der Regenbogenschule Melsdorf - Ein Fest für Kinder, Eltern und Besucher",
+};
+
+// Sorgt dafür, dass die Seite auf Mobilgeräten in Gerätebreite (100%) geladen wird
+// und nicht "reingezoomt" / abgeschnitten erscheint.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
