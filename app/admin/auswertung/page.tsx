@@ -164,7 +164,7 @@ export default function AuswertungAdmin() {
       // Aktives Event ermitteln — Quelle für das Event-Scoping aller Queries
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('id, jahr')
+        .select('id, jahr, koenigspaare_einzelmodus')
         .eq('ist_aktiv', true)
         .maybeSingle();
 
@@ -388,7 +388,12 @@ export default function AuswertungAdmin() {
   const loadGesamtauswertung = async () => {
     try {
       setIsLoadingGesamtauswertung(true);
-      
+
+      // Einzelmodus: bei true wird bei Punktgleichstand nur EIN König/eine Königin
+      // angezeigt (eingefrorene Siegerehrung). Default true = sicher (nicht versehentlich
+      // mehrere anzeigen), wird unten aus dem aktiven Event aktualisiert.
+      let einzelmodus = activeEvent?.koenigspaare_einzelmodus ?? true;
+
       // Lade alle benötigten Daten, falls sie noch nicht geladen wurden
       let spieleData = spiele;
       let kinderData = kinder;
@@ -402,12 +407,13 @@ export default function AuswertungAdmin() {
         if (!eventId) {
           const { data: ev } = await supabase
             .from('events')
-            .select('id, jahr')
+            .select('id, jahr, koenigspaare_einzelmodus')
             .eq('ist_aktiv', true)
             .maybeSingle();
           if (ev) {
             setActiveEvent(ev);
             eventId = ev.id;
+            einzelmodus = ev.koenigspaare_einzelmodus ?? true;
           }
         }
         if (!eventId) {
@@ -558,13 +564,23 @@ export default function AuswertungAdmin() {
           // Bestimme König und Königin
           const maennlicheKinder = sortierteKinder.filter(k => k.geschlecht === 'männlich' || k.geschlecht === 'Junge');
           const weiblicheKinder = sortierteKinder.filter(k => k.geschlecht === 'weiblich' || k.geschlecht === 'Mädchen');
-          
-          const istKoenig = (kind.geschlecht === 'männlich' || kind.geschlecht === 'Junge') && 
-            (maennlicheKinder.length > 0 && maennlicheKinder[0].kind_id === kind.kind_id);
-            
-          const istKoenigin = (kind.geschlecht === 'weiblich' || kind.geschlecht === 'Mädchen') && 
-            (weiblicheKinder.length > 0 && weiblicheKinder[0].kind_id === kind.kind_id);
-          
+          const istJungeK = kind.geschlecht === 'männlich' || kind.geschlecht === 'Junge';
+          const istMaedchenK = kind.geschlecht === 'weiblich' || kind.geschlecht === 'Mädchen';
+
+          let istKoenig: boolean;
+          let istKoenigin: boolean;
+          if (einzelmodus) {
+            // Eingefroren: genau EIN König / EINE Königin (erster der Sortierung) — Siegerehrung bleibt unverändert
+            istKoenig = istJungeK && maennlicheKinder.length > 0 && maennlicheKinder[0].kind_id === kind.kind_id;
+            istKoenigin = istMaedchenK && weiblicheKinder.length > 0 && weiblicheKinder[0].kind_id === kind.kind_id;
+          } else {
+            // Bei Punktgleichstand mehrere: alle Kinder mit der Höchstpunktzahl ihres Geschlechts
+            const maxJunge = maennlicheKinder.length > 0 ? maennlicheKinder[0].gesamtpunkte : 0;
+            const maxMaedchen = weiblicheKinder.length > 0 ? weiblicheKinder[0].gesamtpunkte : 0;
+            istKoenig = istJungeK && maxJunge > 0 && kind.gesamtpunkte === maxJunge;
+            istKoenigin = istMaedchenK && maxMaedchen > 0 && kind.gesamtpunkte === maxMaedchen;
+          }
+
           ergebnis.push({
             ...kind,
             rang,
@@ -614,11 +630,13 @@ export default function AuswertungAdmin() {
     ];
     klassen.forEach((klasse) => {
       const klassenDaten = gesamtauswertungDaten.filter((i) => i.klasse === klasse);
-      const koenig = klassenDaten.find((i) => i.ist_koenig);
-      const koenigin = klassenDaten.find((i) => i.ist_koenigin);
+      const koenige = klassenDaten.filter((i) => i.ist_koenig);
+      const koeniginnen = klassenDaten.filter((i) => i.ist_koenigin);
+      const fmt = (arr: any[]) =>
+        arr.length === 0 ? '—' : arr.map((k) => `${k.kind_name} (${k.gesamtpunkte} Punkte)`).join(', ');
       zeilen.push(`Klasse ${klasse}`);
-      zeilen.push(`König: ${koenig ? `${koenig.kind_name} (${koenig.gesamtpunkte} Punkte)` : '—'}`);
-      zeilen.push(`Königin: ${koenigin ? `${koenigin.kind_name} (${koenigin.gesamtpunkte} Punkte)` : '—'}`);
+      zeilen.push(`${koenige.length > 1 ? 'Könige' : 'König'}: ${fmt(koenige)}`);
+      zeilen.push(`${koeniginnen.length > 1 ? 'Königinnen' : 'Königin'}: ${fmt(koeniginnen)}`);
       zeilen.push('');
     });
     const text = zeilen.join('\n').trim();
@@ -816,34 +834,50 @@ export default function AuswertungAdmin() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[...new Set(gesamtauswertungDaten.map(item => item.klasse))].sort().map(klasse => {
                     const klassenDaten = gesamtauswertungDaten.filter(item => item.klasse === klasse);
-                    const koenig = klassenDaten.find(item => item.ist_koenig);
-                    const koenigin = klassenDaten.find(item => item.ist_koenigin);
+                    const koenige = klassenDaten.filter(item => item.ist_koenig);
+                    const koeniginnen = klassenDaten.filter(item => item.ist_koenigin);
 
                     return (
                       <div key={klasse} className="bg-yellow-50 border rounded-lg p-5">
                         <h3 className="text-base font-semibold text-slate-800 mb-3">Klasse {klasse}</h3>
                         <div className="space-y-3">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-start gap-3">
                             <Crown className="text-yellow-500 h-7 w-7 shrink-0" />
                             <div className="min-w-0">
-                              <div className="text-xs uppercase tracking-wider text-slate-500">König</div>
-                              <div className="font-semibold text-slate-900 truncate">
-                                {koenig?.kind_name ?? '—'}
+                              <div className="text-xs uppercase tracking-wider text-slate-500">
+                                {koenige.length > 1 ? 'Könige' : 'König'}
                               </div>
-                              {koenig && (
-                                <div className="text-xs text-slate-500">{koenig.gesamtpunkte} Punkte</div>
+                              {koenige.length === 0 ? (
+                                <div className="font-semibold text-slate-900">—</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {koenige.map(k => (
+                                    <div key={k.kind_id}>
+                                      <div className="font-semibold text-slate-900 truncate">{k.kind_name}</div>
+                                      <div className="text-xs text-slate-500">{k.gesamtpunkte} Punkte</div>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-start gap-3">
                             <Crown className="text-pink-500 h-7 w-7 shrink-0" />
                             <div className="min-w-0">
-                              <div className="text-xs uppercase tracking-wider text-slate-500">Königin</div>
-                              <div className="font-semibold text-slate-900 truncate">
-                                {koenigin?.kind_name ?? '—'}
+                              <div className="text-xs uppercase tracking-wider text-slate-500">
+                                {koeniginnen.length > 1 ? 'Königinnen' : 'Königin'}
                               </div>
-                              {koenigin && (
-                                <div className="text-xs text-slate-500">{koenigin.gesamtpunkte} Punkte</div>
+                              {koeniginnen.length === 0 ? (
+                                <div className="font-semibold text-slate-900">—</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {koeniginnen.map(k => (
+                                    <div key={k.kind_id}>
+                                      <div className="font-semibold text-slate-900 truncate">{k.kind_name}</div>
+                                      <div className="text-xs text-slate-500">{k.gesamtpunkte} Punkte</div>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           </div>
