@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ChatPanel, type ChatNachricht } from '@/components/chat/ChatPanel';
 import { playChatSound, unlockChatSound } from '@/lib/chatSound';
 
@@ -142,53 +143,72 @@ export default function LeiterChatSheet({
     [isOnline, lade],
   );
 
-  const onDelete = useCallback(
-    async (n: ChatNachricht) => {
-      if (!window.confirm('Diese Nachricht löschen?')) return;
-      try {
-        const res = await fetch('/api/leiter/chat', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: n.id }),
-        });
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          toast.error(json.error || 'Löschen fehlgeschlagen.');
-          return;
-        }
-        setNachrichten((prev) => prev.filter((m) => m.id !== n.id));
-        void lade();
-      } catch {
-        toast.error('Löschen fehlgeschlagen.');
+  const [confirmDelete, setConfirmDelete] = useState<ChatNachricht | null>(null);
+
+  const requestDelete = useCallback((n: ChatNachricht) => {
+    // Tastatur schließen, damit das Bestätigungs-Modal nicht dahinter liegt
+    (document.activeElement as HTMLElement | null)?.blur();
+    setConfirmDelete(n);
+  }, []);
+
+  const performDelete = useCallback(async () => {
+    const n = confirmDelete;
+    setConfirmDelete(null);
+    if (!n) return;
+    try {
+      const res = await fetch('/api/leiter/chat', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: n.id }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        toast.error(json.error || 'Löschen fehlgeschlagen.');
+        return;
       }
-    },
-    [lade],
-  );
+      setNachrichten((prev) => prev.filter((m) => m.id !== n.id));
+      void lade();
+    } catch {
+      toast.error('Löschen fehlgeschlagen.');
+    }
+  }, [confirmDelete, lade]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        id="leiter-chat-content"
-        className="p-0 gap-0 w-[calc(100vw-1.5rem)] sm:max-w-md h-[70dvh] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden"
-      >
-        <DialogHeader className="px-4 py-2.5 border-b border-slate-200 shrink-0 text-left">
-          <DialogTitle className="text-base">Orga-Chat</DialogTitle>
-          <p className="text-[11px] text-slate-500 leading-tight">
-            Öffentlich — alle Gruppen und die Orga sehen Fragen und Antworten.
-          </p>
-        </DialogHeader>
-        <ChatPanel
-          className="flex-1 min-h-0"
-          nachrichten={nachrichten}
-          loading={loading}
-          onSend={onSend}
-          istEigene={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
-          canDelete={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
-          onDelete={onDelete}
-          disabled={!isOnline}
-          disabledHinweis="Keine Verbindung — du kannst gerade nichts senden."
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          id="leiter-chat-content"
+          className="p-0 gap-0 w-[calc(100vw-1.5rem)] sm:max-w-md h-[70dvh] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden"
+        >
+          <DialogHeader className="px-4 py-2.5 border-b border-slate-200 shrink-0 text-left">
+            <DialogTitle className="text-base">Orga-Chat</DialogTitle>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              Öffentlich — alle Gruppen und die Orga sehen Fragen und Antworten.
+            </p>
+          </DialogHeader>
+          <ChatPanel
+            className="flex-1 min-h-0"
+            nachrichten={nachrichten}
+            loading={loading}
+            onSend={onSend}
+            istEigene={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
+            canDelete={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
+            onDelete={requestDelete}
+            disabled={!isOnline}
+            disabledHinweis="Keine Verbindung — du kannst gerade nichts senden."
+          />
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title="Nachricht löschen?"
+        description="Deine Nachricht wird für alle entfernt."
+        confirmText="Löschen"
+        variant="destructive"
+        onConfirm={() => void performDelete()}
+        onCancel={() => setConfirmDelete(null)}
+      />
+    </>
   );
 }

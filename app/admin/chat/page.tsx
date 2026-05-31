@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { Trash2 } from 'lucide-react';
 import { PageShell } from '@/components/admin';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ChatPanel, type ChatNachricht } from '@/components/chat/ChatPanel';
 import { markChatGesehen } from '@/lib/hooks/useChatUnread';
 import { armChatSound, playChatSound } from '@/lib/chatSound';
@@ -14,6 +15,7 @@ export default function AdminChatPage() {
   const [loading, setLoading] = useState(true);
   const [eventId, setEventId] = useState<string | null>(null);
   const [adminName, setAdminName] = useState<string>('Orga');
+  const [confirm, setConfirm] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   const eventIdRef = useRef<string | null>(null);
   const letzteLeiterIdRef = useRef<string | null>(null);
@@ -120,9 +122,8 @@ export default function AdminChatPage() {
     [eventId, adminName, supabase, ladeNachrichten],
   );
 
-  const onDelete = useCallback(
+  const loescheNachricht = useCallback(
     async (n: ChatNachricht) => {
-      if (!window.confirm('Diese Nachricht löschen?')) return;
       const { error } = await supabase.from('chat_nachrichten').delete().eq('id', n.id);
       if (error) {
         toast.error('Löschen fehlgeschlagen.');
@@ -133,9 +134,8 @@ export default function AdminChatPage() {
     [supabase],
   );
 
-  const chatLeeren = useCallback(async () => {
+  const leereChat = useCallback(async () => {
     if (!eventId) return;
-    if (!window.confirm('Den gesamten Chat unwiderruflich löschen?')) return;
     const { error } = await supabase.from('chat_nachrichten').delete().eq('event_id', eventId);
     if (error) {
       toast.error('Löschen fehlgeschlagen.');
@@ -144,6 +144,25 @@ export default function AdminChatPage() {
     setNachrichten([]);
     toast.success('Chat geleert.');
   }, [eventId, supabase]);
+
+  const onDelete = useCallback(
+    (n: ChatNachricht) => {
+      setConfirm({
+        title: 'Nachricht löschen?',
+        description: 'Diese Nachricht wird für alle entfernt.',
+        onConfirm: () => void loescheNachricht(n),
+      });
+    },
+    [loescheNachricht],
+  );
+
+  const chatLeerenAnfragen = useCallback(() => {
+    setConfirm({
+      title: 'Gesamten Chat löschen?',
+      description: 'Alle Nachrichten dieses Events werden unwiderruflich entfernt.',
+      onConfirm: () => void leereChat(),
+    });
+  }, [leereChat]);
 
   return (
     <PageShell
@@ -155,7 +174,7 @@ export default function AdminChatPage() {
         {nachrichten.length > 0 && (
           <div className="flex justify-end mb-2">
             <button
-              onClick={chatLeeren}
+              onClick={chatLeerenAnfragen}
               className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-melsdorf-red border border-slate-200 rounded-md px-2.5 py-1.5 hover:border-melsdorf-red/40 transition-colors"
             >
               <Trash2 size={13} />
@@ -181,6 +200,19 @@ export default function AdminChatPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!confirm}
+        title={confirm?.title ?? ''}
+        description={confirm?.description ?? ''}
+        confirmText="Löschen"
+        variant="destructive"
+        onConfirm={() => {
+          confirm?.onConfirm();
+          setConfirm(null);
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </PageShell>
   );
 }
