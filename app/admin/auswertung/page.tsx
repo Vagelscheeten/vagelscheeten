@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Crown, Loader2, Copy } from 'lucide-react';
+import { Crown, Loader2, Copy, Lock, Users } from 'lucide-react';
 import { PageShell } from '@/components/admin';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -91,7 +91,8 @@ export default function AuswertungAdmin() {
   const [filteredGruppen, setFilteredGruppen] = useState<Spielgruppe[]>([]);
   
   // Aktives Event (Scoping-Quelle für alle Queries)
-  const [activeEvent, setActiveEvent] = useState<{ id: string; jahr: number } | null>(null);
+  const [activeEvent, setActiveEvent] = useState<{ id: string; jahr: number; koenigspaare_einzelmodus?: boolean } | null>(null);
+  const [einzelmodusSpeichern, setEinzelmodusSpeichern] = useState(false);
 
   // State und Berechnete Daten
   const [isLoading, setIsLoading] = useState(true);
@@ -385,14 +386,15 @@ export default function AuswertungAdmin() {
   };
 
   // Lade Gesamtauswertung und berechne die Punkte direkt im Frontend
-  const loadGesamtauswertung = async () => {
+  const loadGesamtauswertung = async (einzelmodusOverride?: boolean) => {
     try {
       setIsLoadingGesamtauswertung(true);
 
       // Einzelmodus: bei true wird bei Punktgleichstand nur EIN König/eine Königin
       // angezeigt (eingefrorene Siegerehrung). Default true = sicher (nicht versehentlich
       // mehrere anzeigen), wird unten aus dem aktiven Event aktualisiert.
-      let einzelmodus = activeEvent?.koenigspaare_einzelmodus ?? true;
+      // einzelmodusOverride erlaubt den Toggle-Button, sofort mit dem neuen Wert neu zu rechnen.
+      let einzelmodus = einzelmodusOverride ?? (activeEvent?.koenigspaare_einzelmodus ?? true);
 
       // Lade alle benötigten Daten, falls sie noch nicht geladen wurden
       let spieleData = spiele;
@@ -413,7 +415,7 @@ export default function AuswertungAdmin() {
           if (ev) {
             setActiveEvent(ev);
             eventId = ev.id;
-            einzelmodus = ev.koenigspaare_einzelmodus ?? true;
+            if (einzelmodusOverride === undefined) einzelmodus = ev.koenigspaare_einzelmodus ?? true;
           }
         }
         if (!eventId) {
@@ -648,6 +650,30 @@ export default function AuswertungAdmin() {
     }
   };
 
+  // Einzelmodus für das aktive Event umschalten (an = bei Gleichstand nur eine/r).
+  const toggleEinzelmodus = async () => {
+    if (!activeEvent?.id) return;
+    const neu = !(activeEvent.koenigspaare_einzelmodus ?? true);
+    setEinzelmodusSpeichern(true);
+    const { error } = await supabase
+      .from('events')
+      .update({ koenigspaare_einzelmodus: neu })
+      .eq('id', activeEvent.id);
+    if (error) {
+      toast.error('Konnte Einstellung nicht speichern.');
+      setEinzelmodusSpeichern(false);
+      return;
+    }
+    setActiveEvent({ ...activeEvent, koenigspaare_einzelmodus: neu });
+    await loadGesamtauswertung(neu);
+    toast.success(
+      neu
+        ? 'Einzelmodus aktiv: bei Gleichstand wird nur ein König / eine Königin angezeigt.'
+        : 'Bei Punktgleichstand werden jetzt alle punktgleichen Kinder angezeigt.',
+    );
+    setEinzelmodusSpeichern(false);
+  };
+
   // UI-Darstellung
   return (
     <PageShell
@@ -809,16 +835,37 @@ export default function AuswertungAdmin() {
                   <CardTitle>Abschlussauswertung Vogelschießen {activeEvent?.jahr ?? ''}</CardTitle>
                   <CardDescription>König und Königin pro Klasse</CardDescription>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={kopiereKoenigspaare}
-                  disabled={gesamtauswertungDaten.length === 0}
-                  className="gap-2 shrink-0"
-                >
-                  <Copy className="h-4 w-4" />
-                  Kopieren
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleEinzelmodus}
+                    disabled={einzelmodusSpeichern || !activeEvent?.id}
+                    className="gap-2"
+                    title="Bei Punktgleichstand an der Spitze: nur eine/n oder alle punktgleichen Kinder als König/Königin anzeigen"
+                  >
+                    {einzelmodusSpeichern ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (activeEvent?.koenigspaare_einzelmodus ?? true) ? (
+                      <Lock className="h-4 w-4" />
+                    ) : (
+                      <Users className="h-4 w-4" />
+                    )}
+                    {(activeEvent?.koenigspaare_einzelmodus ?? true)
+                      ? 'Gleichstand: nur eine/r'
+                      : 'Gleichstand: mehrere'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={kopiereKoenigspaare}
+                    disabled={gesamtauswertungDaten.length === 0}
+                    className="gap-2"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Kopieren
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
