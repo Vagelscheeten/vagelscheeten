@@ -9,6 +9,7 @@ import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut, M
 import { Button } from '@/components/ui/button';
 import LeiterChatSheet from '@/app/leiter/chat/LeiterChatSheet';
 import { armChatSound, unlockChatSound, playChatSound } from '@/lib/chatSound';
+import { SpielAnleitung } from '@/components/SpielAnleitung';
 import {
   Card,
   CardContent,
@@ -728,26 +729,31 @@ export default function ClientErfassung({
                 {offeneSpiele.map(spiel => {
                   const count = ergebnisCounts.get(spiel.id) || 0;
                   return (
-                    <button
+                    <div
                       key={spiel.id}
-                      onClick={() => handleSpielSelected(spiel)}
-                      className="w-full text-left bg-white border border-slate-200 rounded-xl px-4 py-3 hover:border-melsdorf-orange/60 hover:bg-melsdorf-orange/5 active:scale-[0.99] transition-all"
+                      className="flex items-stretch bg-white border border-slate-200 rounded-xl hover:border-melsdorf-orange/60 hover:bg-melsdorf-orange/5 transition-all"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
-                          {spiel.ort ? (
-                            <div className="text-xs text-slate-500 mt-0.5 inline-flex items-center gap-1">
-                              <MapPin size={11} className="shrink-0" />
-                              {spiel.ort}
-                            </div>
-                          ) : null}
+                      <button
+                        onClick={() => handleSpielSelected(spiel)}
+                        className="flex-1 min-w-0 text-left px-4 py-3 active:scale-[0.99] transition-transform"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
+                            {spiel.ort ? (
+                              <div className="text-xs text-slate-500 mt-0.5 inline-flex items-center gap-1">
+                                <MapPin size={11} className="shrink-0" />
+                                {spiel.ort}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="shrink-0 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap">
+                            {count} Erg.
+                          </div>
                         </div>
-                        <div className="shrink-0 text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap">
-                          {count} Erg.
-                        </div>
-                      </div>
-                    </button>
+                      </button>
+                      <SpielAnleitung spiel={spiel} className="px-3 self-center" />
+                    </div>
                   );
                 })}
                 {offeneSpiele.length === 0 && (
@@ -767,26 +773,31 @@ export default function ClientErfassung({
                   {abgeschlosseneSpiele.map(spiel => {
                     const count = ergebnisCounts.get(spiel.id) || 0;
                     return (
-                      <button
+                      <div
                         key={spiel.id}
-                        onClick={() => handleErgebnisseAnzeigen(spiel)}
-                        className="w-full text-left bg-green-50 border border-green-200 rounded-xl px-4 py-3 active:scale-[0.99] transition-all"
+                        className="flex items-stretch bg-green-50 border border-green-200 rounded-xl"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
-                            <div className="text-xs text-green-700 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                              <span>✓ Abgeschlossen · {count} Ergebnisse</span>
-                              {spiel.ort && (
-                                <span className="inline-flex items-center gap-1 text-slate-500">
-                                  <MapPin size={11} className="shrink-0" />
-                                  {spiel.ort}
-                                </span>
-                              )}
+                        <button
+                          onClick={() => handleErgebnisseAnzeigen(spiel)}
+                          className="flex-1 min-w-0 text-left px-4 py-3 active:scale-[0.99] transition-transform"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-base text-slate-900 truncate">{spiel.name}</div>
+                              <div className="text-xs text-green-700 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span>✓ Abgeschlossen · {count} Ergebnisse</span>
+                                {spiel.ort && (
+                                  <span className="inline-flex items-center gap-1 text-slate-500">
+                                    <MapPin size={11} className="shrink-0" />
+                                    {spiel.ort}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        <SpielAnleitung spiel={spiel} className="px-3 self-center" />
+                      </div>
                     );
                   })}
                 </div>
