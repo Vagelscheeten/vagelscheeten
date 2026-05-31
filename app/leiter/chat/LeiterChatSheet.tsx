@@ -54,6 +54,46 @@ export default function LeiterChatSheet({
     };
   }, [open, lade]);
 
+  // Sheet an den sichtbaren Viewport anpassen, damit das Eingabefeld nicht von der
+  // Tastatur verdeckt wird (iOS/Android). Reagiert live auf das Öffnen/Schließen der Tastatur.
+  useEffect(() => {
+    if (!open) return;
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+
+    const update = () => {
+      const node = document.getElementById('leiter-chat-content');
+      if (!node) return;
+      const margin = 8;
+      const tastaturHoehe = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const tastaturOffen = tastaturHoehe > 120;
+      let hoehe: number;
+      let top: number;
+      if (tastaturOffen) {
+        // Sichtbaren Bereich über der Tastatur ausfüllen
+        hoehe = vv.height - margin;
+        top = vv.offsetTop + margin / 2;
+      } else {
+        // Kompaktes, mittig platziertes Fenster
+        hoehe = Math.min(vv.height - margin * 2, Math.round(vv.height * 0.72));
+        top = vv.offsetTop + (vv.height - hoehe) / 2;
+      }
+      node.style.top = `${top}px`;
+      node.style.height = `${hoehe}px`;
+      node.style.maxHeight = `${hoehe}px`;
+      node.style.translate = '-50% 0'; // vertikale Zentrierung aufheben, horizontal beibehalten
+    };
+
+    const raf = requestAnimationFrame(update);
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      cancelAnimationFrame(raf);
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [open]);
+
   const onSend = useCallback(
     async (inhalt: string): Promise<boolean> => {
       if (!isOnline) {
@@ -89,7 +129,10 @@ export default function LeiterChatSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 w-[calc(100vw-1.5rem)] sm:max-w-md h-[70dvh] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
+      <DialogContent
+        id="leiter-chat-content"
+        className="p-0 gap-0 w-[calc(100vw-1.5rem)] sm:max-w-md h-[70dvh] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden"
+      >
         <DialogHeader className="px-4 py-2.5 border-b border-slate-200 shrink-0 text-left">
           <DialogTitle className="text-base">Orga-Chat</DialogTitle>
           <p className="text-[11px] text-slate-500 leading-tight">
