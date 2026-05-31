@@ -104,6 +104,30 @@ export default function AuswertungAdmin() {
 
   const supabase = createClient();
 
+  // Lädt ALLE Ergebnisse eines Events seitenweise.
+  // Notwendig, weil Supabase/PostgREST pro Query max. 1000 Zeilen liefert –
+  // bei >1000 Ergebnissen würden sonst Kinder ohne Punkte erscheinen.
+  const ladeAlleErgebnisse = async (eventId: string): Promise<Ergebnis[]> => {
+    const SEITE = 1000;
+    let von = 0;
+    const alle: Ergebnis[] = [];
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await supabase
+        .from('ergebnisse')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('id', { ascending: true })
+        .range(von, von + SEITE - 1);
+      if (error) throw error;
+      const batch = data || [];
+      alle.push(...batch);
+      if (batch.length < SEITE) break;
+      von += SEITE;
+    }
+    return alle;
+  };
+
   // Lade Daten beim ersten Rendern
   useEffect(() => {
     const loadData = async () => {
@@ -198,14 +222,9 @@ export default function AuswertungAdmin() {
       if (zuordnungError) throw zuordnungError;
       setKinderSpielgruppenZuordnungen(zuordnungData || []);
 
-      // Lade Ergebnisse des aktiven Events für Matrix und Statistik
-      const { data: ergebnisseData, error: ergebnisseError } = await supabase
-        .from('ergebnisse')
-        .select('*')
-        .eq('event_id', eventId);
-
-      if (ergebnisseError) throw ergebnisseError;
-      setErgebnisse(ergebnisseData || []);
+      // Lade Ergebnisse des aktiven Events (seitenweise, da >1000 möglich)
+      const ergebnisseData = await ladeAlleErgebnisse(eventId);
+      setErgebnisse(ergebnisseData);
 
       // Lade Spiel-Zuweisungen pro Klasse aus der DB (einmalig)
       const { data: klasseSpieleData, error: klasseSpieleError } = await supabase
@@ -418,15 +437,9 @@ export default function AuswertungAdmin() {
           kinderData = neueKinder || [];
         }
 
-        // Lade Ergebnisse, falls noch nicht geladen
+        // Lade Ergebnisse, falls noch nicht geladen (seitenweise, da >1000 möglich)
         if (ergebnisseData.length === 0) {
-          const { data: neueErgebnisse, error: ergebnisseError } = await supabase
-            .from('ergebnisse')
-            .select('*')
-            .eq('event_id', eventId);
-
-          if (ergebnisseError) throw ergebnisseError;
-          ergebnisseData = neueErgebnisse || [];
+          ergebnisseData = await ladeAlleErgebnisse(eventId);
         }
 
         // Lade Spielgruppen (vor Zuordnungen, damit wir die IDs haben)

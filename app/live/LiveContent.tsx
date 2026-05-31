@@ -94,21 +94,40 @@ export default function LiveContent({
 
     const supabase = createClient();
 
+    // Lädt ALLE Ergebnisse seitenweise – Supabase/PostgREST liefert pro Query
+    // max. 1000 Zeilen; bei >1000 Ergebnissen würden sonst Kinder fehlen.
+    const ladeAlleErgebnisse = async (): Promise<Ergebnis[]> => {
+      const SEITE = 1000;
+      let von = 0;
+      const alle: Ergebnis[] = [];
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data } = await supabase
+          .from('ergebnisse')
+          .select('id, kind_id, spiel_id, spielgruppe_id, wert_numeric')
+          .eq('event_id', eventId)
+          .order('id', { ascending: true })
+          .range(von, von + SEITE - 1);
+        const batch = (data ?? []) as Ergebnis[];
+        alle.push(...batch);
+        if (batch.length < SEITE) break;
+        von += SEITE;
+      }
+      return alle;
+    };
+
     const [
       { data: kinderData },
       { data: spieleData },
       { data: gruppenData },
-      { data: ergebnisseData },
+      ergebnisseData,
       { data: statusData },
       { data: klasseSpieleData },
     ] = await Promise.all([
       supabase.from('kinder').select('id, klasse, geschlecht').eq('event_id', eventId),
       supabase.from('spiele').select('id, name, wertungstyp, einheit').order('name'),
       supabase.from('spielgruppen').select('id, klasse').eq('event_id', eventId),
-      supabase
-        .from('ergebnisse')
-        .select('id, kind_id, spiel_id, spielgruppe_id, wert_numeric')
-        .eq('event_id', eventId),
+      ladeAlleErgebnisse(),
       supabase
         .from('spielgruppe_spiel_status')
         .select('spielgruppe_id, spiel_id')
