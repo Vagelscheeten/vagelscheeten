@@ -5,8 +5,9 @@ import type { Database } from '@/lib/database.types'; // Korrekter Import der Da
 import { KindAuswahl, SpielAuswahl, ErgebnisErfassung } from './ErfassungsSchritte';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut, MapPin } from 'lucide-react';
+import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut, MapPin, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import LeiterChatSheet from '@/app/leiter/chat/LeiterChatSheet';
 import {
   Card,
   CardContent,
@@ -76,6 +77,67 @@ export default function ClientErfassung({
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const supabase = createClient();
+
+  // ----- Orga-Chat -----
+  const chatLastSeenKey = `chat_last_seen_leiter_${spielgruppe.id}`;
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  const markChatGelesen = useCallback(() => {
+    try {
+      localStorage.setItem(chatLastSeenKey, new Date().toISOString());
+    } catch {
+      /* ignore */
+    }
+    setChatUnread(0);
+  }, [chatLastSeenKey]);
+
+  // Ungelesene Chat-Nachrichten zählen (nur solange das Sheet geschlossen ist)
+  useEffect(() => {
+    if (chatOpen) return;
+    let stop = false;
+    const check = async () => {
+      if (!isOnline) return;
+      try {
+        const res = await fetch('/api/leiter/chat', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        let lastSeen: string | null = null;
+        try {
+          lastSeen = localStorage.getItem(chatLastSeenKey);
+        } catch {
+          /* ignore */
+        }
+        if (!lastSeen) {
+          // Erstkontakt: alles bisherige als gesehen markieren
+          const jetzt = new Date().toISOString();
+          try {
+            localStorage.setItem(chatLastSeenKey, jetzt);
+          } catch {
+            /* ignore */
+          }
+          lastSeen = jetzt;
+        }
+        const seen = new Date(lastSeen).getTime();
+        const liste = (json.nachrichten ?? []) as Array<{ absender_name: string; created_at: string }>;
+        const cnt = liste.filter(
+          (n) => n.absender_name !== spielgruppe.name && new Date(n.created_at).getTime() > seen,
+        ).length;
+        if (!stop) setChatUnread(cnt);
+      } catch {
+        /* ignore */
+      }
+    };
+    void check();
+    const id = setInterval(check, 20000);
+    const onFocus = () => void check();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      stop = true;
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [chatOpen, isOnline, chatLastSeenKey, spielgruppe.name]);
 
   // ----- Offline-Queue -----
   type QueueItem =
@@ -884,6 +946,21 @@ export default function ClientErfassung({
               Gruppe {spielgruppe.name}
             </div>
           </div>
+          <button
+            onClick={() => {
+              setChatOpen(true);
+              markChatGelesen();
+            }}
+            className="relative shrink-0 p-2 text-slate-600 hover:text-slate-900 active:scale-95 transition-transform"
+            aria-label="Orga-Chat"
+          >
+            <MessageCircle size={20} />
+            {chatUnread > 0 && (
+              <span className="absolute top-0.5 right-0.5 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-melsdorf-red text-white text-[9px] font-semibold leading-none">
+                {chatUnread > 9 ? '9+' : chatUnread}
+              </span>
+            )}
+          </button>
           <div className="relative shrink-0">
             <button
               onClick={() => setMenuOpen(v => !v)}
@@ -943,6 +1020,15 @@ export default function ClientErfassung({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Orga-Chat */}
+      <LeiterChatSheet
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        gruppenname={spielgruppe.name}
+        isOnline={isOnline}
+        onGelesen={markChatGelesen}
+      />
     </div>
   );
 }

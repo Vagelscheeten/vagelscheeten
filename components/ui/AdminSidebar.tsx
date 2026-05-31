@@ -7,8 +7,9 @@ import {
   Menu, X, LayoutDashboard, Clock, HelpCircle, Crown, Settings,
   CalendarDays, GraduationCap, Gamepad2, UserCheck,
   Image as ImageIcon, Download, BarChart3, Wrench, ArrowLeft,
-  ChevronDown, UserCog, Inbox, ListChecks,
+  ChevronDown, UserCog, Inbox, ListChecks, MessageCircle,
 } from 'lucide-react';
+import { useChatUnread } from '@/lib/hooks/useChatUnread';
 
 const adminGroups = [
   {
@@ -39,6 +40,7 @@ const adminGroups = [
         ],
       },
       { href: '/admin/postfach', label: 'Postfach', icon: Inbox },
+      { href: '/admin/chat', label: 'Orga-Chat', icon: MessageCircle },
     ],
   },
   {
@@ -53,6 +55,7 @@ const adminGroups = [
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const chatUnread = useChatUnread();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(adminGroups.map(g => g.title))
@@ -235,6 +238,11 @@ export default function AdminSidebar() {
                             )}
                             <Icon size={14} className="shrink-0" />
                             <span className="truncate">{item.label}</span>
+                            {item.href === '/admin/chat' && chatUnread > 0 && (
+                              <span className="ml-auto shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-melsdorf-red text-white text-[10px] font-semibold leading-none">
+                                {chatUnread > 99 ? '99+' : chatUnread}
+                              </span>
+                            )}
                           </div>
                         </Link>
                         {showSubs && (
