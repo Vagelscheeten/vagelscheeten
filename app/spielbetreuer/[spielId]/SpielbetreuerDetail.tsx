@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { SpielAnleitung } from '@/components/SpielAnleitung';
 import {
   ChevronLeft,
   MapPin,
@@ -16,6 +17,9 @@ interface Spiel {
   id: string;
   name: string;
   ort: string | null;
+  wertungstyp?: string | null;
+  einheit?: string | null;
+  erfassung_anleitung?: string | null;
 }
 
 interface Spielgruppe {
@@ -164,6 +168,7 @@ export default function SpielbetreuerDetail({ spiel }: { spiel: Spiel }) {
               </div>
             )}
           </div>
+          <SpielAnleitung spiel={spiel} className="p-2 shrink-0" />
           <button
             onClick={() => lade(false)}
             disabled={refreshing || loading}

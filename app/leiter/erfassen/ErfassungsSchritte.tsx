@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import type { Database } from '@/lib/database.types';
 import { getWertGrenzen, istWertPlausibel } from '@/lib/ergebnis-limits';
+import { SpielAnleitung } from '@/components/SpielAnleitung';
 import { toast } from 'sonner';
 
 // Schritt 1: Kind auswählen — Listen-Style, mobile-dicht
@@ -151,9 +152,12 @@ export function ErgebnisErfassung({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <label htmlFor="wert" className="text-sm font-medium text-slate-700 block">
-            {getWertLabel(spiel)}
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="wert" className="text-sm font-medium text-slate-700">
+              {getWertLabel(spiel)}
+            </label>
+            <SpielAnleitung spiel={spiel} />
+          </div>
           <Input
             id="wert"
             type="number"

@@ -14,7 +14,7 @@ export default async function SpielStatusPage({
   const supabase = await createClient();
   const { data: spiel } = await supabase
     .from('spiele')
-    .select('id, name, ort')
+    .select('id, name, ort, wertungstyp, einheit, erfassung_anleitung')
     .eq('id', spielId)
     .single();
 
