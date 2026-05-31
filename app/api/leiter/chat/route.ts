@@ -112,3 +112,41 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ nachricht: data });
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await verifyLeiterSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Nicht autorisiert' }, { status: 401 });
+  }
+
+  let body: { id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Ungültiger Request-Body' }, { status: 400 });
+  }
+
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) {
+    return NextResponse.json({ error: 'id erforderlich' }, { status: 400 });
+  }
+
+  // Nur eigene Leiter-Nachricht darf gelöscht werden
+  const { data: msg } = await supabaseAdmin
+    .from('chat_nachrichten')
+    .select('id, absender_typ, absender_name')
+    .eq('id', id)
+    .single();
+  if (!msg) {
+    return NextResponse.json({ error: 'Nachricht nicht gefunden' }, { status: 404 });
+  }
+  if (msg.absender_typ !== 'leiter' || msg.absender_name !== session.gruppenname) {
+    return NextResponse.json({ error: 'Nur eigene Nachrichten können gelöscht werden.' }, { status: 403 });
+  }
+
+  const { error } = await supabaseAdmin.from('chat_nachrichten').delete().eq('id', id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}

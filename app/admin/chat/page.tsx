@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { Trash2 } from 'lucide-react';
 import { PageShell } from '@/components/admin';
 import { ChatPanel, type ChatNachricht } from '@/components/chat/ChatPanel';
 import { markChatGesehen } from '@/lib/hooks/useChatUnread';
@@ -119,26 +120,66 @@ export default function AdminChatPage() {
     [eventId, adminName, supabase, ladeNachrichten],
   );
 
+  const onDelete = useCallback(
+    async (n: ChatNachricht) => {
+      if (!window.confirm('Diese Nachricht löschen?')) return;
+      const { error } = await supabase.from('chat_nachrichten').delete().eq('id', n.id);
+      if (error) {
+        toast.error('Löschen fehlgeschlagen.');
+        return;
+      }
+      setNachrichten((prev) => prev.filter((m) => m.id !== n.id));
+    },
+    [supabase],
+  );
+
+  const chatLeeren = useCallback(async () => {
+    if (!eventId) return;
+    if (!window.confirm('Den gesamten Chat unwiderruflich löschen?')) return;
+    const { error } = await supabase.from('chat_nachrichten').delete().eq('event_id', eventId);
+    if (error) {
+      toast.error('Löschen fehlgeschlagen.');
+      return;
+    }
+    setNachrichten([]);
+    toast.success('Chat geleert.');
+  }, [eventId, supabase]);
+
   return (
     <PageShell
       title="Orga-Chat"
       description="Öffentlicher Chat mit den Spielgruppen-Leitern. Fragen und Antworten sehen alle."
       breadcrumbs={[{ label: 'Admin', href: '/admin' }, { label: 'Chat' }]}
     >
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col h-[72vh] max-w-3xl">
-        {!loading && !eventId ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
-            Kein aktives Event.
+      <div className="max-w-3xl">
+        {nachrichten.length > 0 && (
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={chatLeeren}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-melsdorf-red border border-slate-200 rounded-md px-2.5 py-1.5 hover:border-melsdorf-red/40 transition-colors"
+            >
+              <Trash2 size={13} />
+              Chat leeren
+            </button>
           </div>
-        ) : (
-          <ChatPanel
-            className="flex-1 min-h-0"
-            nachrichten={nachrichten}
-            loading={loading}
-            onSend={onSend}
-            istEigene={(n) => n.absender_typ === 'admin'}
-          />
         )}
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col h-[72vh]">
+          {!loading && !eventId ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
+              Kein aktives Event.
+            </div>
+          ) : (
+            <ChatPanel
+              className="flex-1 min-h-0"
+              nachrichten={nachrichten}
+              loading={loading}
+              onSend={onSend}
+              istEigene={(n) => n.absender_typ === 'admin'}
+              canDelete={() => true}
+              onDelete={onDelete}
+            />
+          )}
+        </div>
       </div>
     </PageShell>
   );

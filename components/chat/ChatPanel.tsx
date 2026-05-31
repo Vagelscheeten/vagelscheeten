@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Trash2 } from 'lucide-react';
 
 export interface ChatNachricht {
   id: string;
@@ -24,6 +24,10 @@ interface ChatPanelProps {
   disabled?: boolean;
   disabledHinweis?: string;
   className?: string;
+  /** Wenn gesetzt: Nachricht löschen. */
+  onDelete?: (n: ChatNachricht) => void | Promise<void>;
+  /** Bestimmt, ob für eine Nachricht ein Lösch-Button gezeigt wird. */
+  canDelete?: (n: ChatNachricht) => boolean;
 }
 
 function formatZeit(iso: string): string {
@@ -42,6 +46,8 @@ export function ChatPanel({
   disabled = false,
   disabledHinweis,
   className = '',
+  onDelete,
+  canDelete,
 }: ChatPanelProps) {
   const [text, setText] = useState('');
   const [senden, setSenden] = useState(false);
@@ -72,7 +78,10 @@ export function ChatPanel({
   return (
     <div className={`flex flex-col min-h-0 ${className}`}>
       {/* Nachrichtenliste */}
-      <div ref={listeRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+      <div
+        ref={listeRef}
+        className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-2 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]"
+      >
         {loading && nachrichten.length === 0 ? (
           <div className="text-center text-sm text-slate-400 py-8">Lade Nachrichten…</div>
         ) : nachrichten.length === 0 ? (
@@ -106,8 +115,23 @@ export function ChatPanel({
                     )}
                   </div>
                   <div className="text-sm whitespace-pre-wrap break-words">{n.inhalt}</div>
-                  <div className={`text-[10px] mt-0.5 text-right ${eigene ? 'text-white/70' : 'text-slate-400'}`}>
-                    {formatZeit(n.created_at)}
+                  <div
+                    className={`text-[10px] mt-0.5 flex items-center gap-2 ${
+                      eigene ? 'justify-end text-white/70' : 'justify-end text-slate-400'
+                    }`}
+                  >
+                    {canDelete?.(n) && onDelete && (
+                      <button
+                        onClick={() => void onDelete(n)}
+                        className={`inline-flex items-center ${
+                          eigene ? 'text-white/70 hover:text-white' : 'text-slate-400 hover:text-melsdorf-red'
+                        }`}
+                        aria-label="Nachricht löschen"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                    <span>{formatZeit(n.created_at)}</span>
                   </div>
                 </div>
               </div>

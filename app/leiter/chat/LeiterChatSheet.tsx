@@ -142,6 +142,29 @@ export default function LeiterChatSheet({
     [isOnline, lade],
   );
 
+  const onDelete = useCallback(
+    async (n: ChatNachricht) => {
+      if (!window.confirm('Diese Nachricht löschen?')) return;
+      try {
+        const res = await fetch('/api/leiter/chat', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: n.id }),
+        });
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          toast.error(json.error || 'Löschen fehlgeschlagen.');
+          return;
+        }
+        setNachrichten((prev) => prev.filter((m) => m.id !== n.id));
+        void lade();
+      } catch {
+        toast.error('Löschen fehlgeschlagen.');
+      }
+    },
+    [lade],
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -160,6 +183,8 @@ export default function LeiterChatSheet({
           loading={loading}
           onSend={onSend}
           istEigene={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
+          canDelete={(n) => n.absender_typ === 'leiter' && n.absender_name === gruppenname}
+          onDelete={onDelete}
           disabled={!isOnline}
           disabledHinweis="Keine Verbindung — du kannst gerade nichts senden."
         />
