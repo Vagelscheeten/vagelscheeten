@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ChatPanel, type ChatNachricht } from '@/components/chat/ChatPanel';
+import { playChatSound, unlockChatSound } from '@/lib/chatSound';
 
 interface LeiterChatSheetProps {
   open: boolean;
@@ -25,24 +26,38 @@ export default function LeiterChatSheet({
   const [loading, setLoading] = useState(true);
   const onGelesenRef = useRef(onGelesen);
   onGelesenRef.current = onGelesen;
+  const letzteFremdIdRef = useRef<string | null>(null);
+  const initRef = useRef(false);
 
   const lade = useCallback(async () => {
     try {
       const res = await fetch('/api/leiter/chat', { cache: 'no-store' });
       if (!res.ok) return;
       const json = await res.json();
-      setNachrichten(json.nachrichten ?? []);
+      const liste: ChatNachricht[] = json.nachrichten ?? [];
+      setNachrichten(liste);
+      // Ton bei neuer Nachricht von jemand anderem (Orga oder andere Gruppe)
+      const fremd = liste.filter(
+        (n) => !(n.absender_typ === 'leiter' && n.absender_name === gruppenname),
+      );
+      const letzteFremdId = fremd.length > 0 ? fremd[fremd.length - 1].id : null;
+      if (initRef.current && letzteFremdId && letzteFremdId !== letzteFremdIdRef.current) {
+        playChatSound();
+      }
+      letzteFremdIdRef.current = letzteFremdId;
+      initRef.current = true;
       onGelesenRef.current?.();
     } catch {
       // offline o. ä. — still ignorieren, nächster Poll versucht es erneut
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [gruppenname]);
 
   // Polling nur, solange das Sheet offen ist.
   useEffect(() => {
     if (!open) return;
+    unlockChatSound(); // Öffnen ist eine Nutzer-Geste → Ton freischalten
     setLoading(true);
     void lade();
     const interval = setInterval(() => void lade(), 5000);

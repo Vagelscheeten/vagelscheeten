@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { WifiOff, RefreshCw, AlertTriangle, MoreVertical, ChevronLeft, LogOut, MapPin, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import LeiterChatSheet from '@/app/leiter/chat/LeiterChatSheet';
+import { armChatSound, unlockChatSound, playChatSound } from '@/lib/chatSound';
 import {
   Card,
   CardContent,
@@ -82,6 +83,12 @@ export default function ClientErfassung({
   const chatLastSeenKey = `chat_last_seen_leiter_${spielgruppe.id}`;
   const [chatOpen, setChatOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
+  const prevChatUnreadRef = useRef<number | null>(null);
+
+  // Audio-Ton einmalig für spätere Wiedergabe vorbereiten (entsperrt bei erster Geste)
+  useEffect(() => {
+    armChatSound();
+  }, []);
 
   const markChatGelesen = useCallback(() => {
     try {
@@ -123,7 +130,14 @@ export default function ClientErfassung({
         const cnt = liste.filter(
           (n) => n.absender_name !== spielgruppe.name && new Date(n.created_at).getTime() > seen,
         ).length;
-        if (!stop) setChatUnread(cnt);
+        if (!stop) {
+          setChatUnread(cnt);
+          // Ton, wenn neue ungelesene Nachrichten dazugekommen sind
+          if (prevChatUnreadRef.current !== null && cnt > prevChatUnreadRef.current) {
+            playChatSound();
+          }
+          prevChatUnreadRef.current = cnt;
+        }
       } catch {
         /* ignore */
       }
@@ -948,6 +962,7 @@ export default function ClientErfassung({
           </div>
           <button
             onClick={() => {
+              unlockChatSound();
               setChatOpen(true);
               markChatGelesen();
             }}

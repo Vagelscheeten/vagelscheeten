@@ -6,30 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { PageShell } from '@/components/admin';
 import { ChatPanel, type ChatNachricht } from '@/components/chat/ChatPanel';
 import { markChatGesehen } from '@/lib/hooks/useChatUnread';
-
-// Kurzer Hinweiston via Web Audio API (kein Asset nötig).
-function spieleHinweiston() {
-  try {
-    const Ctx =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.36);
-    osc.onended = () => ctx.close();
-  } catch {
-    // Autoplay-Policy o. ä. — Ton ist nur ein Bonus
-  }
-}
+import { armChatSound, playChatSound } from '@/lib/chatSound';
 
 export default function AdminChatPage() {
   const [nachrichten, setNachrichten] = useState<ChatNachricht[]>([]);
@@ -49,7 +26,7 @@ export default function AdminChatPage() {
     const leiter = liste.filter((n) => n.absender_typ === 'leiter');
     const letzteLeiterId = leiter.length > 0 ? leiter[leiter.length - 1].id : null;
     if (initialisiertRef.current && letzteLeiterId && letzteLeiterId !== letzteLeiterIdRef.current) {
-      spieleHinweiston();
+      playChatSound();
     }
     letzteLeiterIdRef.current = letzteLeiterId;
     initialisiertRef.current = true;
@@ -72,6 +49,7 @@ export default function AdminChatPage() {
 
   // Init: Admin-Name + aktives Event
   useEffect(() => {
+    armChatSound();
     let abbruch = false;
     (async () => {
       const { data: userData } = await supabase.auth.getUser();
